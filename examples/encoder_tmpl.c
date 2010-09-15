@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2010 The VP8 project authors. All Rights Reserved.
+ *  Copyright (c) 2010 The WebM project authors. All Rights Reserved.
  *
- *  Use of this source code is governed by a BSD-style license and patent
- *  grant that can be found in the LICENSE file in the root of the source
- *  tree. All contributing project authors may be found in the AUTHORS
- *  file in the root of the source tree.
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
  */
 
 
@@ -16,12 +17,10 @@
 #include <stdarg.h>
 #include <string.h>
 #define VPX_CODEC_DISABLE_COMPAT 1
-#include "vpx_encoder.h"
-#if CONFIG_VP8_ENCODER && !defined(interface)
-#include "vp8cx.h"
+#include "vpx/vpx_encoder.h"
+#include "vpx/vp8cx.h"
 #define interface (&vpx_codec_vp8_cx_algo)
 #define fourcc    0x30385056
-#endif
 @EXTRA_INCLUDES
 
 #define IVF_FILE_HDR_SZ  (32)
@@ -129,7 +128,7 @@ int main(int argc, char **argv) {
     height = strtol(argv[2], NULL, 0);
     if(width < 16 || width%2 || height <16 || height%2)
         die("Invalid resolution: %ldx%ld", width, height);
-    if(!vpx_img_alloc(&raw, IMG_FMT_YV12, width, height, 1))
+    if(!vpx_img_alloc(&raw, VPX_IMG_FMT_I420, width, height, 1))
         die("Faile to allocate image", width, height);
     if(!(outfile = fopen(argv[4], "wb")))
         die("Failed to open %s for writing", argv[4]);

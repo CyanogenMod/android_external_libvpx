@@ -2,18 +2,15 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES = \
-    vpx_codec/src/vpx_codec.c \
-    vpx_codec/src/vpx_decoder.c \
-    vpx_codec/src/vpx_decoder_compat.c \
-    vpx_codec/src/vpx_image.c \
-    vpx_codec/src/vpx_encoder.c \
+    vpx/src/vpx_codec.c \
+    vpx/src/vpx_decoder.c \
+    vpx/src/vpx_image.c \
     vpx_mem/vpx_mem.c \
     vpx_scale/generic/vpxscale.c \
     vpx_scale/generic/yv12config.c \
     vpx_scale/generic/yv12extend.c \
     vpx_scale/generic/scalesystemdependant.c \
     vpx_scale/generic/gen_scalers.c \
-    vp8/common/segmentation_common.c \
     vp8/common/alloccommon.c \
     vp8/common/blockd.c \
     vp8/common/debugmodes.c \
@@ -47,13 +44,14 @@ LOCAL_SRC_FILES = \
     vp8/decoder/dboolhuff.c \
     vp8/decoder/decodemv.c \
     vp8/decoder/decodframe.c \
-    vp8/decoder/demode.c \
     vp8/decoder/dequantize.c \
     vp8/decoder/detokenize.c \
     vp8/decoder/generic/dsystemdependent.c \
     vp8/decoder/onyxd_if.c \
     vp8/decoder/threading.c \
+    vp8/vp8_dx_iface.c \
     vpx_config.c \
+    vp8/decoder/arm/neon/idct_blk_neon.c \
 
 LOCAL_CFLAGS := \
     -DHAVE_CONFIG_H=vpx_config.h
@@ -102,9 +100,10 @@ ASM_FILES = \
     vp8/common/arm/neon/sixtappredict4x4_neon.s \
     vp8/common/arm/neon/sixtappredict8x4_neon.s \
     vp8/common/arm/neon/sixtappredict8x8_neon.s \
-    vp8/decoder/arm/neon/dequantdcidct_neon.s \
-    vp8/decoder/arm/neon/dequantidct_neon.s \
-    vp8/decoder/arm/neon/dequantizeb_neon.s
+    vp8/common/arm/neon/dc_only_idct_add_neon.s \
+    vp8/decoder/arm/neon/dequantizeb_neon.s \
+    vp8/decoder/arm/neon/dequant_dc_idct_neon.s \
+    vp8/decoder/arm/neon/dequant_idct_neon.s \
 
 # All the assembly sources must be converted from ADS to GAS compatible format
 VPX_GEN := $(addprefix $(intermediates)/, $(ASM_FILES))

@@ -1,10 +1,11 @@
 ##
-##  Copyright (c) 2010 The VP8 project authors. All Rights Reserved.
+##  Copyright (c) 2010 The WebM project authors. All Rights Reserved.
 ##
-##  Use of this source code is governed by a BSD-style license and patent
-##  grant that can be found in the LICENSE file in the root of the source
-##  tree. All contributing project authors may be found in the AUTHORS
-##  file in the root of the source tree.
+##  Use of this source code is governed by a BSD-style license
+##  that can be found in the LICENSE file in the root of the source
+##  tree. An additional intellectual property rights grant can be found
+##  in the file PATENTS.  All contributing project authors may
+##  be found in the AUTHORS file in the root of the source tree.
 ##
 
 
@@ -18,6 +19,7 @@ ifeq ($(target),)
         done
 all: .DEFAULT
 clean:: .DEFAULT
+install:: .DEFAULT
 
 
 # Note: md5sum is not installed on OS X, but openssl is. Openssl may not be
@@ -29,7 +31,7 @@ md5sum := $(firstword $(wildcard \
 md5sum := $(if $(filter %openssl,$(md5sum)),$(md5sum) dgst -md5,$(md5sum))
 
 TGT_CC:=$(word 3, $(subst -, ,$(TOOLCHAIN)))
-install:
+dist:
 	@for t in $(ALL_TARGETS); do \
 	     $(MAKE) --no-print-directory target=$$t $(MAKECMDGOALS) || exit $$?;\
         done
@@ -37,13 +39,8 @@ install:
 	@if [ -d "$(DIST_DIR)/src" ]; then \
             mkdir -p "$(DIST_DIR)/build"; \
             cd "$(DIST_DIR)/build"; \
-            if [ $(TGT_CC) = "rvct" ] ; then \
-				echo "../src/configure --target=$(TOOLCHAIN) --libc=$(ALT_LIBC)"; \
-				../src/configure --target=$(TOOLCHAIN) --libc=$(ALT_LIBC); \
-			else \
-				echo "../src/configure --target=$(TOOLCHAIN)"; \
-				../src/configure --target=$(TOOLCHAIN); \
-			fi; \
+            echo "Rerunning configure $(CONFIGURE_ARGS)"; \
+            ../src/configure $(CONFIGURE_ARGS); \
             $(if $(filter vs%,$(TGT_CC)),make NO_LAUNCH_DEVENV=1;) \
         fi
 	@if [ -d "$(DIST_DIR)" ]; then \
@@ -55,7 +52,6 @@ install:
         fi
 
 
-svnstat: ALL_TARGETS:=$(firstword $(ALL_TARGETS))
 endif
 
 ifneq ($(target),)
@@ -94,10 +90,10 @@ clean::
 	rm -f $(OBJS-yes) $(OBJS-yes:.o=.d) $(OBJS-yes:.asm.s.o=.asm.s)
 	rm -f $(CLEAN-OBJS)
 
+.PHONY: dist
+dist:
 .PHONY: install
-install:
-.PHONY: install-helper
-install-helper:
+install::
 
 $(BUILD_PFX)%.c.d: %.c
 	$(if $(quiet),@echo "    [DEP] $@")
@@ -218,6 +214,20 @@ $(1):
 	$(qexec)$$(AR) $$(ARFLAGS) $$@ $$?
 endef
 
+define so_template
+# Not using a pattern rule here because we don't want to generate empty
+# archives when they are listed as a dependency in files not responsible
+# for creating them.
+#
+# This needs further abstraction for dealing with non-GNU linkers.
+$(1):
+	$(if $(quiet),@echo "    [LD] $$@")
+	$(qexec)$$(LD) -shared $$(LDFLAGS) \
+            -Wl,--no-undefined -Wl,-soname,$$(SONAME) \
+            -Wl,--version-script,$$(SO_VERSION_SCRIPT) -o $$@ \
+            $$(filter %.o,$$?) $$(extralibs)
+endef
+
 define lipo_lib_template
 $(1): $(addsuffix /$(1),$(FAT_ARCHS))
 	$(if $(quiet),@echo "    [LIPO] $$@")
@@ -254,6 +264,9 @@ DOCS=$(call cond_enabled,CONFIG_INSTALL_DOCS,DOCS)
 	@touch $@
 
 INSTALL-DOCS=$(call cond_enabled,CONFIG_INSTALL_DOCS,INSTALL-DOCS)
+ifeq ($(MAKECMDGOALS),dist)
+INSTALL-DOCS+=$(call cond_enabled,CONFIG_INSTALL_DOCS,DIST-DOCS)
+endif
 .install-docs: .docs $(addprefix $(DIST_DIR)/,$(INSTALL-DOCS))
 	@touch $@
 
@@ -265,6 +278,9 @@ BINS=$(call enabled,BINS)
 	@touch $@
 
 INSTALL-BINS=$(call cond_enabled,CONFIG_INSTALL_BINS,INSTALL-BINS)
+ifeq ($(MAKECMDGOALS),dist)
+INSTALL-BINS+=$(call cond_enabled,CONFIG_INSTALL_BINS,DIST-BINS)
+endif
 .install-bins: .bins $(addprefix $(DIST_DIR)/,$(INSTALL-BINS))
 	@touch $@
 
@@ -275,8 +291,12 @@ LIBS=$(call enabled,LIBS)
 .libs: $(LIBS)
 	@touch $@
 $(foreach lib,$(filter %_g.a,$(LIBS)),$(eval $(call archive_template,$(lib))))
+$(foreach lib,$(filter %so.$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH),$(LIBS)),$(eval $(call so_template,$(lib))))
 
 INSTALL-LIBS=$(call cond_enabled,CONFIG_INSTALL_LIBS,INSTALL-LIBS)
+ifeq ($(MAKECMDGOALS),dist)
+INSTALL-LIBS+=$(call cond_enabled,CONFIG_INSTALL_LIBS,DIST-LIBS)
+endif
 .install-libs: .libs $(addprefix $(DIST_DIR)/,$(INSTALL-LIBS))
 	@touch $@
 
@@ -289,6 +309,9 @@ PROJECTS=$(call enabled,PROJECTS)
 	@touch $@
 
 INSTALL-PROJECTS=$(call cond_enabled,CONFIG_INSTALL_PROJECTS,INSTALL-PROJECTS)
+ifeq ($(MAKECMDGOALS),dist)
+INSTALL-PROJECTS+=$(call cond_enabled,CONFIG_INSTALL_PROJECTS,DIST-PROJECTS)
+endif
 .install-projects: .projects $(addprefix $(DIST_DIR)/,$(INSTALL-PROJECTS))
 	@touch $@
 
@@ -296,26 +319,30 @@ clean::
 	rm -f .projects .install-projects $(PROJECTS)
 endif
 
-# If there are any source files to be installed, then include the build
+# If there are any source files to be distributed, then include the build
 # system too.
-ifneq ($(call enabled,INSTALL-SRCS),)
-    INSTALL-SRCS-yes            += configure
-    INSTALL-SRCS-yes            += build/make/configure.sh
-    INSTALL-SRCS-yes            += build/make/gen_asm_deps.sh
-    INSTALL-SRCS-yes            += build/make/Makefile
-    INSTALL-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_def.sh
-    INSTALL-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_proj.sh
-    INSTALL-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_sln.sh
-    INSTALL-SRCS-$(CONFIG_RVCT) += build/make/armlink_adapter.sh
+ifneq ($(call enabled,DIST-SRCS),)
+    DIST-SRCS-yes            += configure
+    DIST-SRCS-yes            += build/make/configure.sh
+    DIST-SRCS-yes            += build/make/gen_asm_deps.sh
+    DIST-SRCS-yes            += build/make/Makefile
+    DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_def.sh
+    DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_proj.sh
+    DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_sln.sh
+    DIST-SRCS-$(CONFIG_MSVS)  += build/x86-msvs/yasm.rules
+    DIST-SRCS-$(CONFIG_RVCT) += build/make/armlink_adapter.sh
     #
     # This isn't really ARCH_ARM dependent, it's dependant on whether we're
     # using assembly code or not (CONFIG_OPTIMIZATIONS maybe). Just use
     # this for now.
-    INSTALL-SRCS-$(ARCH_ARM)    += build/make/obj_int_extract.c
-    INSTALL-SRCS-$(ARCH_ARM)    += build/make/ads2gas.pl
-    INSTALL-SRCS-yes            += $(target:-$(TOOLCHAIN)=).mk
+    DIST-SRCS-$(ARCH_ARM)    += build/make/obj_int_extract.c
+    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2gas.pl
+    DIST-SRCS-yes            += $(target:-$(TOOLCHAIN)=).mk
 endif
 INSTALL-SRCS := $(call cond_enabled,CONFIG_INSTALL_SRCS,INSTALL-SRCS)
+ifeq ($(MAKECMDGOALS),dist)
+INSTALL-SRCS += $(call cond_enabled,CONFIG_INSTALL_SRCS,DIST-SRCS)
+endif
 .install-srcs: $(addprefix $(DIST_DIR)/src/,$(INSTALL-SRCS))
 	@touch $@
 
@@ -329,13 +356,5 @@ endif
 BUILD_TARGETS += .docs .libs .bins
 INSTALL_TARGETS += .install-docs .install-srcs .install-libs .install-bins
 all-$(target): $(BUILD_TARGETS)
-install: $(INSTALL_TARGETS)
-
-#
-# Development helper targets
-#
-ifneq ($(SRC_PATH_BARE),)
-.PHONY: svnstat
-svnstat:
-	svn stat $(SRC_PATH_BARE)
-endif
+install:: $(INSTALL_TARGETS)
+dist: $(INSTALL_TARGETS)

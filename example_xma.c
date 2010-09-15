@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2010 The VP8 project authors. All Rights Reserved.
+ *  Copyright (c) 2010 The WebM project authors. All Rights Reserved.
  *
- *  Use of this source code is governed by a BSD-style license and patent
- *  grant that can be found in the LICENSE file in the root of the source
- *  tree. All contributing project authors may be found in the AUTHORS
- *  file in the root of the source tree.
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
  */
 
 
@@ -15,10 +16,10 @@
 #include <string.h>
 #define VPX_CODEC_DISABLE_COMPAT 1
 #include "vpx_config.h"
-#include "vpx_decoder.h"
-#include "vpx_integer.h"
+#include "vpx/vpx_decoder.h"
+#include "vpx/vpx_integer.h"
 #if CONFIG_VP8_DECODER
-#include "vp8dx.h"
+#include "vpx/vp8dx.h"
 #endif
 
 static char *exec_name;

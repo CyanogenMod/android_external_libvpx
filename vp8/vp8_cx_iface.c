@@ -1,18 +1,19 @@
 /*
- *  Copyright (c) 2010 The VP8 project authors. All Rights Reserved.
+ *  Copyright (c) 2010 The WebM project authors. All Rights Reserved.
  *
- *  Use of this source code is governed by a BSD-style license and patent
- *  grant that can be found in the LICENSE file in the root of the source
- *  tree. All contributing project authors may be found in the AUTHORS
- *  file in the root of the source tree.
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
  */
 
 
-#include "vpx_codec/vpx_codec.h"
-#include "vpx_codec/internal/vpx_codec_internal.h"
+#include "vpx/vpx_codec.h"
+#include "vpx/internal/vpx_codec_internal.h"
 #include "vpx_version.h"
 #include "onyx_int.h"
-#include "vp8e.h"
+#include "vpx/vp8e.h"
 #include "onyx.h"
 #include <stdlib.h>
 #include <string.h>
@@ -52,15 +53,15 @@ static const struct extraconfig_map extracfg_map[] =
             NULL,
 #if !(CONFIG_REALTIME_ONLY)
             VP8_BEST_QUALITY_ENCODING,  /* Encoding Mode */
-            -4,                         /* cpu_used      */
+            0,                          /* cpu_used      */
 #else
             VP8_REAL_TIME_ENCODING,     /* Encoding Mode */
-            -8,                         /* cpu_used      */
+            4,                          /* cpu_used      */
 #endif
             0,                          /* enable_auto_alt_ref */
             0,                          /* noise_sensitivity */
             0,                          /* Sharpness */
-            800,                        /* static_thresh */
+            0,                          /* static_thresh */
             VP8_ONE_TOKENPARTITION,     /* token_partitions */
             0, /* arnr_max_frames */
             0, /* arnr_strength */
@@ -81,7 +82,7 @@ struct vpx_codec_alg_priv
     vpx_image_t             preview_img;
     unsigned int            next_frame_flag;
     vp8_postproc_cfg_t      preview_ppcfg;
-    vpx_codec_pkt_list_decl(26) pkt_list;              // changed to accomendate the maximum number of lagged frames allowed
+    vpx_codec_pkt_list_decl(64) pkt_list;              // changed to accomendate the maximum number of lagged frames allowed
     int                         deprecated_mode;
     unsigned int                fixed_kf_cntr;
 };
@@ -108,7 +109,7 @@ update_error_state(vpx_codec_alg_priv_t                 *ctx,
     } while(0)
 
 #define RANGE_CHECK(p,memb,lo,hi) do {\
-        if(!((p)->memb >= (lo) && (p)->memb <= hi)) \
+        if(!(((p)->memb == lo || (p)->memb > (lo)) && (p)->memb <= hi)) \
             ERROR(#memb " out of range ["#lo".."#hi"]");\
     } while(0)
 
@@ -177,7 +178,7 @@ static vpx_codec_err_t validate_config(vpx_codec_alg_priv_t      *ctx,
 
     RANGE_CHECK(vp8_cfg, token_partitions,   VP8_ONE_TOKENPARTITION, VP8_EIGHT_TOKENPARTITION);
     RANGE_CHECK(vp8_cfg, Sharpness,         0, 7);
-    RANGE_CHECK(vp8_cfg, arnr_max_frames,    0, 25);
+    RANGE_CHECK(vp8_cfg, arnr_max_frames,    0, 15);
     RANGE_CHECK(vp8_cfg, arnr_strength,     0, 6);
     RANGE_CHECK(vp8_cfg, arnr_type,         0, 0xffffffff);
 
@@ -211,10 +212,10 @@ static vpx_codec_err_t validate_img(vpx_codec_alg_priv_t *ctx,
 {
     switch (img->fmt)
     {
-    case IMG_FMT_YV12:
-    case IMG_FMT_I420:
-    case IMG_FMT_VPXI420:
-    case IMG_FMT_VPXYV12:
+    case VPX_IMG_FMT_YV12:
+    case VPX_IMG_FMT_I420:
+    case VPX_IMG_FMT_VPXI420:
+    case VPX_IMG_FMT_VPXYV12:
         break;
     default:
         ERROR("Invalid image format. Only YV12 and I420 images are supported");
@@ -295,9 +296,9 @@ static vpx_codec_err_t set_vp8e_config(VP8_CONFIG *oxcf,
     oxcf->under_shoot_pct         = cfg.rc_undershoot_pct;
     //oxcf->over_shoot_pct        = cfg.rc_overshoot_pct;
 
-    oxcf->maximum_buffer_size     = cfg.rc_buf_sz / 1000;
-    oxcf->starting_buffer_level   = cfg.rc_buf_initial_sz / 1000;
-    oxcf->optimal_buffer_level    = cfg.rc_buf_optimal_sz / 1000;
+    oxcf->maximum_buffer_size     = cfg.rc_buf_sz;
+    oxcf->starting_buffer_level   = cfg.rc_buf_initial_sz;
+    oxcf->optimal_buffer_level    = cfg.rc_buf_optimal_sz;
 
     oxcf->two_pass_vbrbias        = cfg.rc_2pass_vbr_bias_pct;
     oxcf->two_pass_vbrmin_section  = cfg.rc_2pass_vbr_minsection_pct;
@@ -536,20 +537,20 @@ static vpx_codec_err_t image2yuvconfig(const vpx_image_t   *img,
                                        YV12_BUFFER_CONFIG  *yv12)
 {
     vpx_codec_err_t        res = VPX_CODEC_OK;
-    yv12->y_buffer = img->planes[PLANE_Y];
-    yv12->u_buffer = img->planes[PLANE_U];
-    yv12->v_buffer = img->planes[PLANE_V];
+    yv12->y_buffer = img->planes[VPX_PLANE_Y];
+    yv12->u_buffer = img->planes[VPX_PLANE_U];
+    yv12->v_buffer = img->planes[VPX_PLANE_V];
 
     yv12->y_width  = img->d_w;
     yv12->y_height = img->d_h;
     yv12->uv_width = (1 + yv12->y_width) / 2;
     yv12->uv_height = (1 + yv12->y_height) / 2;
 
-    yv12->y_stride = img->stride[PLANE_Y];
-    yv12->uv_stride = img->stride[PLANE_U];
+    yv12->y_stride = img->stride[VPX_PLANE_Y];
+    yv12->uv_stride = img->stride[VPX_PLANE_U];
 
-    yv12->border  = (img->stride[PLANE_Y] - img->w) / 2;
-    yv12->clrtype = (img->fmt == IMG_FMT_VPXI420 || img->fmt == IMG_FMT_VPXYV12); //REG_YUV = 0
+    yv12->border  = (img->stride[VPX_PLANE_Y] - img->w) / 2;
+    yv12->clrtype = (img->fmt == VPX_IMG_FMT_VPXI420 || img->fmt == VPX_IMG_FMT_VPXYV12); //REG_YUV = 0
     return res;
 }
 
@@ -825,7 +826,9 @@ static vpx_codec_err_t vp8e_set_previewpp(vpx_codec_alg_priv_t *ctx,
         int ctr_id,
         va_list args)
 {
+#if CONFIG_POSTPROC
     vp8_postproc_cfg_t *data = va_arg(args, vp8_postproc_cfg_t *);
+    (void)ctr_id;
 
     if (data)
     {
@@ -834,6 +837,12 @@ static vpx_codec_err_t vp8e_set_previewpp(vpx_codec_alg_priv_t *ctx,
     }
     else
         return VPX_CODEC_INVALID_PARAM;
+#else
+    (void)ctx;
+    (void)ctr_id;
+    (void)args;
+    return VPX_CODEC_INCAPABLE;
+#endif
 }
 
 
@@ -846,7 +855,7 @@ static vpx_image_t *vp8e_get_preview(vpx_codec_alg_priv_t *ctx)
     {
 
         /*
-        vpx_img_wrap(&ctx->preview_img, IMG_FMT_YV12,
+        vpx_img_wrap(&ctx->preview_img, VPX_IMG_FMT_YV12,
             sd.y_width + 2*VP8BORDERINPIXELS,
             sd.y_height + 2*VP8BORDERINPIXELS,
             1,
@@ -857,23 +866,23 @@ static vpx_image_t *vp8e_get_preview(vpx_codec_alg_priv_t *ctx)
             */
 
         ctx->preview_img.bps = 12;
-        ctx->preview_img.planes[PLANE_Y] = sd.y_buffer;
-        ctx->preview_img.planes[PLANE_U] = sd.u_buffer;
-        ctx->preview_img.planes[PLANE_V] = sd.v_buffer;
+        ctx->preview_img.planes[VPX_PLANE_Y] = sd.y_buffer;
+        ctx->preview_img.planes[VPX_PLANE_U] = sd.u_buffer;
+        ctx->preview_img.planes[VPX_PLANE_V] = sd.v_buffer;
 
         if (sd.clrtype == REG_YUV)
-            ctx->preview_img.fmt = IMG_FMT_I420;
+            ctx->preview_img.fmt = VPX_IMG_FMT_I420;
         else
-            ctx->preview_img.fmt = IMG_FMT_VPXI420;
+            ctx->preview_img.fmt = VPX_IMG_FMT_VPXI420;
 
         ctx->preview_img.x_chroma_shift = 1;
         ctx->preview_img.y_chroma_shift = 1;
 
         ctx->preview_img.d_w = ctx->cfg.g_w;
         ctx->preview_img.d_h = ctx->cfg.g_h;
-        ctx->preview_img.stride[PLANE_Y] = sd.y_stride;
-        ctx->preview_img.stride[PLANE_U] = sd.uv_stride;
-        ctx->preview_img.stride[PLANE_V] = sd.uv_stride;
+        ctx->preview_img.stride[VPX_PLANE_Y] = sd.y_stride;
+        ctx->preview_img.stride[VPX_PLANE_U] = sd.uv_stride;
+        ctx->preview_img.stride[VPX_PLANE_V] = sd.uv_stride;
         ctx->preview_img.w   = sd.y_width;
         ctx->preview_img.h   = sd.y_height;
 
@@ -1023,7 +1032,7 @@ static vpx_codec_enc_cfg_map_t vp8e_usage_cfg_map[] =
 
         0,                  /* g_lag_in_frames */
 
-        70,                 /* rc_dropframe_thresh */
+        0,                  /* rc_dropframe_thresh */
         0,                  /* rc_resize_allowed */
         60,                 /* rc_resize_down_thresold */
         30,                 /* rc_resize_up_thresold */
@@ -1067,7 +1076,7 @@ static vpx_codec_enc_cfg_map_t vp8e_usage_cfg_map[] =
 #endif
 vpx_codec_iface_t vpx_codec_vp8_cx_algo =
 {
-    "vpx Technologies VP8 Encoder" VERSION_STRING,
+    "WebM Project VP8 Encoder" VERSION_STRING,
     VPX_CODEC_INTERNAL_ABI_VERSION,
     VPX_CODEC_CAP_ENCODER | VPX_CODEC_CAP_PSNR,
     /* vpx_codec_caps_t          caps; */
@@ -1156,7 +1165,7 @@ static vpx_codec_err_t api1_encode(vpx_codec_alg_priv_t  *ctx,
 
 vpx_codec_iface_t vpx_enc_vp8_algo =
 {
-    "vpx Technologies VP8 Encoder (Deprecated API)" VERSION_STRING,
+    "WebM Project VP8 Encoder (Deprecated API)" VERSION_STRING,
     VPX_CODEC_INTERNAL_ABI_VERSION,
     VPX_CODEC_CAP_ENCODER,
     /* vpx_codec_caps_t          caps; */

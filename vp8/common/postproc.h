@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2010 The VP8 project authors. All Rights Reserved.
+ *  Copyright (c) 2010 The WebM project authors. All Rights Reserved.
  *
- *  Use of this source code is governed by a BSD-style license and patent
- *  grant that can be found in the LICENSE file in the root of the source
- *  tree. All contributing project authors may be found in the AUTHORS
- *  file in the root of the source tree.
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
  */
 
 
@@ -87,4 +88,11 @@ void vp8_de_noise(YV12_BUFFER_CONFIG         *source,
                   int                         low_var_thresh,
                   int                         flag,
                   vp8_postproc_rtcd_vtable_t *rtcd);
+
+void vp8_deblock(YV12_BUFFER_CONFIG         *source,
+                 YV12_BUFFER_CONFIG         *post,
+                 int                         q,
+                 int                         low_var_thresh,
+                 int                         flag,
+                 vp8_postproc_rtcd_vtable_t *rtcd);
 #endif

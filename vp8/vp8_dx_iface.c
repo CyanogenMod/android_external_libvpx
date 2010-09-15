@@ -1,18 +1,19 @@
 /*
- *  Copyright (c) 2010 The VP8 project authors. All Rights Reserved.
+ *  Copyright (c) 2010 The WebM project authors. All Rights Reserved.
  *
- *  Use of this source code is governed by a BSD-style license and patent
- *  grant that can be found in the LICENSE file in the root of the source
- *  tree. All contributing project authors may be found in the AUTHORS
- *  file in the root of the source tree.
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
  */
 
 
 #include <stdlib.h>
 #include <string.h>
-#include "vpx_codec/vpx_decoder.h"
-#include "vp8dx.h"
-#include "vpx_codec/internal/vpx_codec_internal.h"
+#include "vpx/vpx_decoder.h"
+#include "vpx/vp8dx.h"
+#include "vpx/internal/vpx_codec_internal.h"
 #include "vpx_version.h"
 #include "onyxd.h"
 #include "onyxd_int.h"
@@ -195,9 +196,6 @@ static void vp8_finalize_mmaps(vpx_codec_alg_priv_t *ctx)
     ctx->pbi->fb_storage_ptr[0] = mmap_lkup(ctx, VP6_SEG_IMG0_STRG);
     ctx->pbi->fb_storage_ptr[1] = mmap_lkup(ctx, VP6_SEG_IMG1_STRG);
     ctx->pbi->fb_storage_ptr[2] = mmap_lkup(ctx, VP6_SEG_IMG2_STRG);
-    #if CONFIG_NEW_TOKENS
-    ctx->pbi->token_graph = mmap_lkup(ctx, VP6_SEG_TOKEN_GRAPH);
-    #endif
     #if CONFIG_POSTPROC
     ctx->pbi->postproc.deblock.fragment_variances = mmap_lkup(ctx, VP6_SEG_DEBLOCKER);
     ctx->pbi->fb_storage_ptr[3] = mmap_lkup(ctx, VP6_SEG_PP_IMG_STRG);
@@ -225,11 +223,12 @@ static vpx_codec_err_t vp8_init(vpx_codec_ctx_t *ctx)
         res = vp8_mmap_alloc(&mmap);
 
         if (!res)
+        {
             vp8_init_ctx(ctx, &mmap);
 
-        ctx->priv->alg_priv->defer_alloc = 1;
-        /*post processing level initialized to do nothing */
-
+            ctx->priv->alg_priv->defer_alloc = 1;
+            /*post processing level initialized to do nothing */
+        }
     }
 
     return res;
@@ -257,12 +256,12 @@ static vpx_codec_err_t vp8_peek_si(const uint8_t         *data,
 
     vpx_codec_err_t res = VPX_CODEC_OK;
     {
-        /*Parse from VP8 compressed data, the implies knowledge of the
-         *VP8 bitsteam.
-         * First 3 byte header including version, frame type and an offset
-         * Next 3 bytes are image sizewith 12 bit each for width and height
+        /* Parse uncompresssed part of key frame header.
+         * 3 bytes:- including version, frame type and an offset
+         * 3 bytes:- sync code (0x9d, 0x01, 0x2a)
+         * 4 bytes:- including image width and height in the lowest 14 bits
+         *           of each 2-byte value.
          */
-
         si->is_kf = 0;
 
         if (data_sz >= 10 && !(data[0] & 0x01))  /* I-Frame */
@@ -434,7 +433,7 @@ static vpx_codec_err_t vp8_decode(vpx_codec_alg_priv_t  *ctx,
             unsigned int a_w = (sd.y_width + 15) & ~15;
             unsigned int a_h = (sd.y_height + 15) & ~15;
 
-            vpx_img_wrap(&ctx->img, IMG_FMT_I420,
+            vpx_img_wrap(&ctx->img, VPX_IMG_FMT_I420,
                          a_w + 2 * VP8BORDERINPIXELS,
                          a_h + 2 * VP8BORDERINPIXELS,
                          1,
@@ -529,7 +528,7 @@ static vpx_codec_err_t vp8_xma_set_mmap(vpx_codec_ctx_t         *ctx,
 
     done = 1;
 
-    if (ctx->priv->alg_priv)
+    if (!res && ctx->priv->alg_priv)
     {
         for (i = 0; i < NELEMENTS(vp8_mem_req_segs); i++)
         {
@@ -557,20 +556,20 @@ static vpx_codec_err_t image2yuvconfig(const vpx_image_t   *img,
                                        YV12_BUFFER_CONFIG  *yv12)
 {
     vpx_codec_err_t        res = VPX_CODEC_OK;
-    yv12->y_buffer = img->planes[PLANE_Y];
-    yv12->u_buffer = img->planes[PLANE_U];
-    yv12->v_buffer = img->planes[PLANE_V];
+    yv12->y_buffer = img->planes[VPX_PLANE_Y];
+    yv12->u_buffer = img->planes[VPX_PLANE_U];
+    yv12->v_buffer = img->planes[VPX_PLANE_V];
 
     yv12->y_width  = img->d_w;
     yv12->y_height = img->d_h;
     yv12->uv_width = yv12->y_width / 2;
     yv12->uv_height = yv12->y_height / 2;
 
-    yv12->y_stride = img->stride[PLANE_Y];
-    yv12->uv_stride = img->stride[PLANE_U];
+    yv12->y_stride = img->stride[VPX_PLANE_Y];
+    yv12->uv_stride = img->stride[VPX_PLANE_U];
 
-    yv12->border  = (img->stride[PLANE_Y] - img->d_w) / 2;
-    yv12->clrtype = (img->fmt == IMG_FMT_VPXI420 || img->fmt == IMG_FMT_VPXYV12);
+    yv12->border  = (img->stride[VPX_PLANE_Y] - img->d_w) / 2;
+    yv12->clrtype = (img->fmt == VPX_IMG_FMT_VPXI420 || img->fmt == VPX_IMG_FMT_VPXYV12);
 
     return res;
 }
@@ -656,7 +655,7 @@ vpx_codec_ctrl_fn_map_t vp8_ctf_maps[] =
 #endif
 vpx_codec_iface_t vpx_codec_vp8_dx_algo =
 {
-    "vpx Technologies VP8 Decoder" VERSION_STRING,
+    "WebM Project VP8 Decoder" VERSION_STRING,
     VPX_CODEC_INTERNAL_ABI_VERSION,
     VPX_CODEC_CAP_DECODER | VP8_CAP_POSTPROC,
     /* vpx_codec_caps_t          caps; */
@@ -679,7 +678,7 @@ vpx_codec_iface_t vpx_codec_vp8_dx_algo =
  */
 vpx_codec_iface_t vpx_codec_vp8_algo =
 {
-    "vpx Technologies VP8 Decoder (Deprecated API)" VERSION_STRING,
+    "WebM Project VP8 Decoder (Deprecated API)" VERSION_STRING,
     VPX_CODEC_INTERNAL_ABI_VERSION,
     VPX_CODEC_CAP_DECODER | VP8_CAP_POSTPROC,
     /* vpx_codec_caps_t          caps; */
