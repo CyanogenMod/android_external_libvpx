@@ -51,7 +51,7 @@ LOCAL_SRC_FILES = \
     vp8/decoder/threading.c \
     vp8/vp8_dx_iface.c \
     vpx_config.c \
-    vp8/decoder/arm/neon/idct_blk_neon.c \
+    vp8/decoder/arm/neon/idct_blk_neon.c
 
 LOCAL_CFLAGS := \
     -DHAVE_CONFIG_H=vpx_config.h
@@ -113,6 +113,10 @@ $(VPX_GEN) : $(intermediates)/%.s : $(LOCAL_PATH)/%.asm
 	$(transform-generated-source)
 
 LOCAL_GENERATED_SOURCES += $(VPX_GEN)
+
+else
+
+LOCAL_SRC_FILES += vp8/decoder/idct_blk.c
 
 endif
 
