@@ -49,7 +49,6 @@ LOCAL_SRC_FILES = \
     vp8/decoder/generic/dsystemdependent.c \
     vp8/decoder/onyxd_if.c \
     vp8/decoder/threading.c \
-    vp8/vp8_dx_iface.c \
     vpx_config.c \
     vp8/decoder/arm/neon/idct_blk_neon.c
 
