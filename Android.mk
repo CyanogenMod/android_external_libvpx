@@ -12,6 +12,8 @@ LOCAL_SRC_FILES = \
     vpx_scale/generic/scalesystemdependant.c \
     vpx_scale/generic/gen_scalers.c \
     vp8/common/alloccommon.c \
+    vp8/common/arm/arm_systemdependent.c \
+    vp8/common/arm/reconintra_arm.c \
     vp8/common/blockd.c \
     vp8/common/debugmodes.c \
     vp8/common/entropy.c \
@@ -41,6 +43,7 @@ LOCAL_SRC_FILES = \
     vp8/common/postproc.c \
     vp8/vp8_cx_iface.c \
     vp8/vp8_dx_iface.c \
+    vp8/decoder/arm/arm_dsystemdependent.c \
     vp8/decoder/dboolhuff.c \
     vp8/decoder/decodemv.c \
     vp8/decoder/decodframe.c \
@@ -48,6 +51,7 @@ LOCAL_SRC_FILES = \
     vp8/decoder/detokenize.c \
     vp8/decoder/generic/dsystemdependent.c \
     vp8/decoder/onyxd_if.c \
+    vp8/decoder/reconintra_mt.c \
     vp8/decoder/threading.c \
     vpx_config.c \
     vp8/decoder/arm/neon/idct_blk_neon.c
@@ -78,16 +82,8 @@ ASM_FILES = \
     vp8/common/arm/neon/copymem8x4_neon.s \
     vp8/common/arm/neon/copymem8x8_neon.s \
     vp8/common/arm/neon/iwalsh_neon.s \
-    vp8/common/arm/neon/loopfilterhorizontaledge_uv_neon.s \
-    vp8/common/arm/neon/loopfilterhorizontaledge_y_neon.s \
     vp8/common/arm/neon/loopfiltersimplehorizontaledge_neon.s \
     vp8/common/arm/neon/loopfiltersimpleverticaledge_neon.s \
-    vp8/common/arm/neon/loopfilterverticaledge_uv_neon.s \
-    vp8/common/arm/neon/loopfilterverticaledge_y_neon.s \
-    vp8/common/arm/neon/mbloopfilterhorizontaledge_uv_neon.s \
-    vp8/common/arm/neon/mbloopfilterhorizontaledge_y_neon.s \
-    vp8/common/arm/neon/mbloopfilterverticaledge_uv_neon.s \
-    vp8/common/arm/neon/mbloopfilterverticaledge_y_neon.s \
     vp8/common/arm/neon/recon16x16mb_neon.s \
     vp8/common/arm/neon/recon2b_neon.s \
     vp8/common/arm/neon/recon4b_neon.s \
@@ -101,8 +97,13 @@ ASM_FILES = \
     vp8/common/arm/neon/sixtappredict8x8_neon.s \
     vp8/common/arm/neon/dc_only_idct_add_neon.s \
     vp8/decoder/arm/neon/dequantizeb_neon.s \
-    vp8/decoder/arm/neon/dequant_dc_idct_neon.s \
     vp8/decoder/arm/neon/dequant_idct_neon.s \
+    vp8/decoder/arm/neon/idct_dequant_0_2x_neon.s \
+    vp8/decoder/arm/neon/idct_dequant_dc_0_2x_neon.s \
+    vp8/decoder/arm/neon/idct_dequant_dc_full_2x_neon.s \
+    vp8/decoder/arm/neon/idct_dequant_full_2x_neon.s \
+    vp8/common/arm/neon/loopfilter_neon.s \
+    vp8/common/arm/neon/mbloopfilter_neon.s \
 
 # All the assembly sources must be converted from ADS to GAS compatible format
 VPX_GEN := $(addprefix $(intermediates)/, $(ASM_FILES))
