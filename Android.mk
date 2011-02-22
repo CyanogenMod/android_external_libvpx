@@ -2,6 +2,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES = \
+    mkvparser/mkvparser.cpp \
     vpx/src/vpx_codec.c \
     vpx/src/vpx_decoder.c \
     vpx/src/vpx_image.c \
