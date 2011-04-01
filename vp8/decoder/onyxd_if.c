@@ -9,25 +9,25 @@
  */
 
 
-#include "onyxc_int.h"
+#include "vp8/common/onyxc_int.h"
 #if CONFIG_POSTPROC
-#include "postproc.h"
+#include "vp8/common/postproc.h"
 #endif
-#include "onyxd.h"
+#include "vp8/common/onyxd.h"
 #include "onyxd_int.h"
 #include "vpx_mem/vpx_mem.h"
-#include "alloccommon.h"
+#include "vp8/common/alloccommon.h"
 #include "vpx_scale/yv12extend.h"
-#include "loopfilter.h"
-#include "swapyv12buffer.h"
-#include "g_common.h"
-#include "threading.h"
+#include "vp8/common/loopfilter.h"
+#include "vp8/common/swapyv12buffer.h"
+#include "vp8/common/g_common.h"
+#include "vp8/common/threading.h"
 #include "decoderthreading.h"
 #include <stdio.h>
 
-#include "quant_common.h"
+#include "vp8/common/quant_common.h"
 #include "vpx_scale/vpxscale.h"
-#include "systemdependent.h"
+#include "vp8/common/systemdependent.h"
 #include "vpx_ports/vpx_timer.h"
 #include "detokenize.h"
 #if ARCH_ARM
@@ -37,43 +37,6 @@
 extern void vp8_init_loop_filter(VP8_COMMON *cm);
 extern void vp8cx_init_de_quantizer(VP8D_COMP *pbi);
 
-#if CONFIG_DEBUG
-void vp8_recon_write_yuv_frame(unsigned char *name, YV12_BUFFER_CONFIG *s)
-{
-    FILE *yuv_file = fopen((char *)name, "ab");
-    unsigned char *src = s->y_buffer;
-    int h = s->y_height;
-
-    do
-    {
-        fwrite(src, s->y_width, 1,  yuv_file);
-        src += s->y_stride;
-    }
-    while (--h);
-
-    src = s->u_buffer;
-    h = s->uv_height;
-
-    do
-    {
-        fwrite(src, s->uv_width, 1,  yuv_file);
-        src += s->uv_stride;
-    }
-    while (--h);
-
-    src = s->v_buffer;
-    h = s->uv_height;
-
-    do
-    {
-        fwrite(src, s->uv_width, 1, yuv_file);
-        src += s->uv_stride;
-    }
-    while (--h);
-
-    fclose(yuv_file);
-}
-#endif
 
 void vp8dx_initialize()
 {
@@ -114,8 +77,10 @@ VP8D_PTR vp8dx_create_decompressor(VP8D_CONFIG *oxcf)
     pbi->ready_for_new_data = 1;
 
     pbi->CPUFreq = 0; /*vp8_get_processor_freq();*/
+#if CONFIG_MULTITHREAD
     pbi->max_threads = oxcf->max_threads;
     vp8_decoder_create_threads(pbi);
+#endif
 
     /* vp8cx_init_de_quantizer() is first called here. Add check in frame_init_dequantizer() to avoid
      *  unnecessary calling of vp8cx_init_de_quantizer() for every frame.
@@ -131,9 +96,6 @@ VP8D_PTR vp8dx_create_decompressor(VP8D_CONFIG *oxcf)
         cm->last_sharpness_level = cm->sharpness_level;
     }
 
-#if CONFIG_ARM_ASM_DETOK
-    vp8_init_detokenizer(pbi);
-#endif
     pbi->common.error.setjmp = 0;
     return (VP8D_PTR) pbi;
 }
@@ -149,41 +111,12 @@ void vp8dx_remove_decompressor(VP8D_PTR ptr)
 #if CONFIG_MULTITHREAD
     if (pbi->b_multithreaded_rd)
         vp8mt_de_alloc_temp_buffers(pbi, pbi->common.mb_rows);
-#endif
     vp8_decoder_remove_threads(pbi);
+#endif
     vp8_remove_common(&pbi->common);
     vpx_free(pbi);
 }
 
-
-void vp8dx_set_setting(VP8D_PTR comp, VP8D_SETTING oxst, int x)
-{
-    VP8D_COMP *pbi = (VP8D_COMP *) comp;
-
-    (void) pbi;
-    (void) x;
-
-    switch (oxst)
-    {
-    case VP8D_OK:
-        break;
-    }
-}
-
-int vp8dx_get_setting(VP8D_PTR comp, VP8D_SETTING oxst)
-{
-    VP8D_COMP *pbi = (VP8D_COMP *) comp;
-
-    (void) pbi;
-
-    switch (oxst)
-    {
-    case VP8D_OK:
-        break;
-    }
-
-    return -1;
-}
 
 int vp8dx_get_reference(VP8D_PTR ptr, VP8_REFFRAME ref_frame_flag, YV12_BUFFER_CONFIG *sd)
 {
@@ -204,6 +137,8 @@ int vp8dx_get_reference(VP8D_PTR ptr, VP8_REFFRAME ref_frame_flag, YV12_BUFFER_C
 
     return 0;
 }
+
+
 int vp8dx_set_reference(VP8D_PTR ptr, VP8_REFFRAME ref_frame_flag, YV12_BUFFER_CONFIG *sd)
 {
     VP8D_COMP *pbi = (VP8D_COMP *) ptr;
@@ -254,12 +189,7 @@ static void ref_cnt_fb (int *buf, int *idx, int new_idx)
 /* If any buffer copy / swapping is signalled it should be done here. */
 static int swap_frame_buffers (VP8_COMMON *cm)
 {
-    int fb_to_update_with, err = 0;
-
-    if (cm->refresh_last_frame)
-        fb_to_update_with = cm->lst_fb_idx;
-    else
-        fb_to_update_with = cm->new_fb_idx;
+    int err = 0;
 
     /* The alternate reference frame or golden frame can be updated
      *  using the new, last, or golden/alt ref frame.  If it
@@ -271,7 +201,7 @@ static int swap_frame_buffers (VP8_COMMON *cm)
         int new_fb = 0;
 
         if (cm->copy_buffer_to_arf == 1)
-            new_fb = fb_to_update_with;
+            new_fb = cm->lst_fb_idx;
         else if (cm->copy_buffer_to_arf == 2)
             new_fb = cm->gld_fb_idx;
         else
@@ -285,7 +215,7 @@ static int swap_frame_buffers (VP8_COMMON *cm)
         int new_fb = 0;
 
         if (cm->copy_buffer_to_gf == 1)
-            new_fb = fb_to_update_with;
+            new_fb = cm->lst_fb_idx;
         else if (cm->copy_buffer_to_gf == 2)
             new_fb = cm->alt_fb_idx;
         else
@@ -334,6 +264,23 @@ int vp8dx_receive_compressed_data(VP8D_PTR ptr, unsigned long size, const unsign
 
     pbi->common.error.error_code = VPX_CODEC_OK;
 
+    if (size == 0)
+    {
+       /* This is used to signal that we are missing frames.
+        * We do not know if the missing frame(s) was supposed to update
+        * any of the reference buffers, but we act conservative and
+        * mark only the last buffer as corrupted.
+        */
+        cm->yv12_fb[cm->lst_fb_idx].corrupted = 1;
+
+        /* Signal that we have no frame to show. */
+        cm->show_frame = 0;
+
+        /* Nothing more to do. */
+        return 0;
+    }
+
+
 #if HAVE_ARMV7
 #if CONFIG_RUNTIME_CPU_DETECT
     if (cm->rtcd.flags & HAS_NEON)
@@ -356,6 +303,13 @@ int vp8dx_receive_compressed_data(VP8D_PTR ptr, unsigned long size, const unsign
         }
 #endif
         pbi->common.error.setjmp = 0;
+
+       /* We do not know if the missing frame(s) was supposed to update
+        * any of the reference buffers, but we act conservative and
+        * mark only the last buffer as corrupted.
+        */
+        cm->yv12_fb[cm->lst_fb_idx].corrupted = 1;
+
         if (cm->fb_idx_ref_cnt[cm->new_fb_idx] > 0)
           cm->fb_idx_ref_cnt[cm->new_fb_idx]--;
         return -1;
@@ -388,6 +342,7 @@ int vp8dx_receive_compressed_data(VP8D_PTR ptr, unsigned long size, const unsign
         return retcode;
     }
 
+#if CONFIG_MULTITHREAD
     if (pbi->b_multithreaded_rd && cm->multi_token_partition != ONE_PARTITION)
     {
         if (swap_frame_buffers (cm))
@@ -405,6 +360,7 @@ int vp8dx_receive_compressed_data(VP8D_PTR ptr, unsigned long size, const unsign
             return -1;
         }
     } else
+#endif
     {
         if (swap_frame_buffers (cm))
         {
@@ -439,12 +395,6 @@ int vp8dx_receive_compressed_data(VP8D_PTR ptr, unsigned long size, const unsign
         vp8_yv12_extend_frame_borders_ptr(cm->frame_to_show);
     }
 
-#if 0
-    /* DEBUG code */
-    /*vp8_recon_write_yuv_frame("recon.yuv", cm->frame_to_show);*/
-    if (cm->current_video_frame <= 5)
-        write_dx_frame_to_file(cm->frame_to_show, cm->current_video_frame);
-#endif
 
     vp8_clear_system_state();
 
@@ -506,7 +456,7 @@ int vp8dx_receive_compressed_data(VP8D_PTR ptr, unsigned long size, const unsign
     pbi->common.error.setjmp = 0;
     return retcode;
 }
-int vp8dx_get_raw_frame(VP8D_PTR ptr, YV12_BUFFER_CONFIG *sd, INT64 *time_stamp, INT64 *time_end_stamp, int deblock_level,  int noise_level, int flags)
+int vp8dx_get_raw_frame(VP8D_PTR ptr, YV12_BUFFER_CONFIG *sd, INT64 *time_stamp, INT64 *time_end_stamp, vp8_ppflags_t *flags)
 {
     int ret = -1;
     VP8D_COMP *pbi = (VP8D_COMP *) ptr;
@@ -524,7 +474,7 @@ int vp8dx_get_raw_frame(VP8D_PTR ptr, YV12_BUFFER_CONFIG *sd, INT64 *time_stamp,
 
     sd->clrtype = pbi->common.clr_type;
 #if CONFIG_POSTPROC
-    ret = vp8_post_proc_frame(&pbi->common, sd, deblock_level, noise_level, flags);
+    ret = vp8_post_proc_frame(&pbi->common, sd, flags);
 #else
 
     if (pbi->common.frame_to_show)

@@ -12,7 +12,7 @@
 /* This is a simple program that encodes YV12 files and generates ivf
  * files using the new interface.
  */
-#if defined(_WIN32)
+#if defined(_WIN32) || !CONFIG_OS_SUPPORT
 #define USE_POSIX_MMAP 0
 #else
 #define USE_POSIX_MMAP 1
@@ -56,6 +56,14 @@ typedef __int64 off_t;
 #define LITERALU64(n) n
 #else
 #define LITERALU64(n) n##LLU
+#endif
+
+/* We should use 32-bit file operations in WebM file format
+ * when building ARM executable file (.axf) with RVCT */
+#if !CONFIG_OS_SUPPORT
+typedef long off_t;
+#define fseeko fseek
+#define ftello ftell
 #endif
 
 static const char *exec_name;
@@ -155,8 +163,8 @@ int stats_open_file(stats_io_t *stats, const char *fpf, int pass)
 
         if (!stats->buf.buf)
         {
-            fprintf(stderr, "Failed to allocate first-pass stats buffer (%d bytes)\n",
-                    stats->buf_alloc_sz);
+            fprintf(stderr, "Failed to allocate first-pass stats buffer (%lu bytes)\n",
+                    (unsigned long)stats->buf_alloc_sz);
             exit(EXIT_FAILURE);
         }
 
@@ -186,11 +194,11 @@ int stats_open_mem(stats_io_t *stats, int pass)
 }
 
 
-void stats_close(stats_io_t *stats)
+void stats_close(stats_io_t *stats, int last_pass)
 {
     if (stats->file)
     {
-        if (stats->pass == 1)
+        if (stats->pass == last_pass)
         {
 #if 0
 #elif USE_POSIX_MMAP
@@ -205,7 +213,7 @@ void stats_close(stats_io_t *stats)
     }
     else
     {
-        if (stats->pass == 1)
+        if (stats->pass == last_pass)
             free(stats->buf.buf);
     }
 }
@@ -228,7 +236,13 @@ void stats_write(stats_io_t *stats, const void *pkt, size_t len)
                 stats->buf_ptr = new_ptr + (stats->buf_ptr - (char *)stats->buf.buf);
                 stats->buf.buf = new_ptr;
                 stats->buf_alloc_sz = new_sz;
-            } /* else ... */
+            }
+            else
+            {
+                fprintf(stderr,
+                        "\nFailed to realloc firstpass stats buffer.\n");
+                exit(EXIT_FAILURE);
+            }
         }
 
         memcpy(stats->buf_ptr, pkt, len);
@@ -251,7 +265,8 @@ enum video_file_type
 
 struct detect_buffer {
     char buf[4];
-    int  valid;
+    size_t buf_read;
+    size_t position;
 };
 
 
@@ -305,14 +320,21 @@ static int read_frame(FILE *f, vpx_image_t *img, unsigned int file_type,
 
             for (r = 0; r < h; r++)
             {
-                if (detect->valid)
+                size_t needed = w;
+                size_t buf_position = 0;
+                const size_t left = detect->buf_read - detect->position;
+                if (left > 0)
                 {
-                    memcpy(ptr, detect->buf, 4);
-                    shortread |= fread(ptr+4, 1, w-4, f) < w-4;
-                    detect->valid = 0;
+                    const size_t more = (left < needed) ? left : needed;
+                    memcpy(ptr, detect->buf + detect->position, more);
+                    buf_position = more;
+                    needed -= more;
+                    detect->position += more;
                 }
-                else
-                    shortread |= fread(ptr, 1, w, f) < w;
+                if (needed > 0)
+                {
+                    shortread |= (fread(ptr + buf_position, 1, needed, f) < needed);
+                }
 
                 ptr += img->stride[plane];
             }
@@ -339,12 +361,12 @@ unsigned int file_is_ivf(FILE *infile,
                          unsigned int *fourcc,
                          unsigned int *width,
                          unsigned int *height,
-                         char          detect[4])
+                         struct detect_buffer *detect)
 {
     char raw_hdr[IVF_FILE_HDR_SZ];
     int is_ivf = 0;
 
-    if(memcmp(detect, "DKIF", 4) != 0)
+    if(memcmp(detect->buf, "DKIF", 4) != 0)
         return 0;
 
     /* See write_ivf_file_header() for more documentation on the file header
@@ -368,6 +390,7 @@ unsigned int file_is_ivf(FILE *infile,
     {
         *width = mem_get_le16(raw_hdr + 12);
         *height = mem_get_le16(raw_hdr + 14);
+        detect->position = 4;
     }
 
     return is_ivf;
@@ -435,7 +458,7 @@ struct EbmlGlobal
     int debug;
 
     FILE    *stream;
-    uint64_t last_pts_ms;
+    int64_t last_pts_ms;
     vpx_rational_t  framerate;
 
     /* These pointers are to the start of an element */
@@ -648,7 +671,7 @@ write_webm_block(EbmlGlobal                *glob,
     unsigned char  track_number;
     unsigned short block_timecode = 0;
     unsigned char  flags;
-    uint64_t       pts_ms;
+    int64_t        pts_ms;
     int            start_cluster = 0, is_keyframe;
 
     /* Calculate the PTS of this frame in milliseconds */
@@ -681,10 +704,18 @@ write_webm_block(EbmlGlobal                *glob,
         /* Save a cue point if this is a keyframe. */
         if(is_keyframe)
         {
-            struct cue_entry *cue;
+            struct cue_entry *cue, *new_cue_list;
 
-            glob->cue_list = realloc(glob->cue_list,
-                                     (glob->cues+1) * sizeof(struct cue_entry));
+            new_cue_list = realloc(glob->cue_list,
+                                   (glob->cues+1) * sizeof(struct cue_entry));
+            if(new_cue_list)
+                glob->cue_list = new_cue_list;
+            else
+            {
+                fprintf(stderr, "\nFailed to realloc cue list.\n");
+                exit(EXIT_FAILURE);
+            }
+
             cue = &glob->cue_list[glob->cues];
             cue->time = glob->cluster_timecode;
             cue->loc = glob->cluster_pos;
@@ -907,8 +938,14 @@ static const arg_def_t resize_up_thresh   = ARG_DEF(NULL, "resize-up", 1,
         "Upscale threshold (buf %)");
 static const arg_def_t resize_down_thresh = ARG_DEF(NULL, "resize-down", 1,
         "Downscale threshold (buf %)");
-static const arg_def_t end_usage          = ARG_DEF(NULL, "end-usage", 1,
-        "VBR=0 | CBR=1");
+static const struct arg_enum_list end_usage_enum[] = {
+    {"vbr", VPX_VBR},
+    {"cbr", VPX_CBR},
+    {"cq",  VPX_CQ},
+    {NULL, 0}
+};
+static const arg_def_t end_usage          = ARG_DEF_ENUM(NULL, "end-usage", 1,
+        "Rate control mode", end_usage_enum);
 static const arg_def_t target_bitrate     = ARG_DEF(NULL, "target-bitrate", 1,
         "Bitrate (kbps)");
 static const arg_def_t min_quantizer      = ARG_DEF(NULL, "min-q", 1,
@@ -984,18 +1021,29 @@ static const arg_def_t arnr_strength = ARG_DEF(NULL, "arnr-strength", 1,
                                        "AltRef Strength");
 static const arg_def_t arnr_type = ARG_DEF(NULL, "arnr-type", 1,
                                    "AltRef Type");
+static const struct arg_enum_list tuning_enum[] = {
+    {"psnr", VP8_TUNE_PSNR},
+    {"ssim", VP8_TUNE_SSIM},
+    {NULL, 0}
+};
+static const arg_def_t tune_ssim = ARG_DEF_ENUM(NULL, "tune", 1,
+                                   "Material to favor", tuning_enum);
+static const arg_def_t cq_level = ARG_DEF(NULL, "cq-level", 1,
+                                   "Constrained Quality Level");
 
 static const arg_def_t *vp8_args[] =
 {
     &cpu_used, &auto_altref, &noise_sens, &sharpness, &static_thresh,
-    &token_parts, &arnr_maxframes, &arnr_strength, &arnr_type, NULL
+    &token_parts, &arnr_maxframes, &arnr_strength, &arnr_type,
+    &tune_ssim, &cq_level, NULL
 };
 static const int vp8_arg_ctrl_map[] =
 {
     VP8E_SET_CPUUSED, VP8E_SET_ENABLEAUTOALTREF,
     VP8E_SET_NOISE_SENSITIVITY, VP8E_SET_SHARPNESS, VP8E_SET_STATIC_THRESHOLD,
     VP8E_SET_TOKEN_PARTITIONS,
-    VP8E_SET_ARNR_MAXFRAMES, VP8E_SET_ARNR_STRENGTH , VP8E_SET_ARNR_TYPE, 0
+    VP8E_SET_ARNR_MAXFRAMES, VP8E_SET_ARNR_STRENGTH , VP8E_SET_ARNR_TYPE,
+    VP8E_SET_TUNING, VP8E_SET_CQ_LEVEL, 0
 };
 #endif
 
@@ -1074,6 +1122,7 @@ int main(int argc, const char **argv_)
     int                      psnr_count = 0;
 
     exec_name = argv_[0];
+    ebml.last_pts_ms = -1;
 
     if (argc < 3)
         usage_exit();
@@ -1188,7 +1237,7 @@ int main(int argc, const char **argv_)
     /* Change the default timebase to a high enough value so that the encoder
      * will always create strictly increasing timestamps.
      */
-    cfg.g_timebase.den = 100000;
+    cfg.g_timebase.den = 1000;
 
     /* Never use the library's default resolution, require it be parsed
      * from the file or set on the command line.
@@ -1227,7 +1276,7 @@ int main(int argc, const char **argv_)
         else if (arg_match(&arg, &resize_down_thresh, argi))
             cfg.rc_resize_down_thresh = arg_parse_uint(&arg);
         else if (arg_match(&arg, &end_usage, argi))
-            cfg.rc_end_usage = arg_parse_uint(&arg);
+            cfg.rc_end_usage = arg_parse_enum_or_int(&arg);
         else if (arg_match(&arg, &target_bitrate, argi))
             cfg.rc_target_bitrate = arg_parse_uint(&arg);
         else if (arg_match(&arg, &min_quantizer, argi))
@@ -1307,7 +1356,7 @@ int main(int argc, const char **argv_)
                 if (arg_ctrl_cnt < ARG_CTRL_CNT_MAX)
                 {
                     arg_ctrls[arg_ctrl_cnt][0] = ctrl_args_map[i];
-                    arg_ctrls[arg_ctrl_cnt][1] = arg_parse_int(&arg);
+                    arg_ctrls[arg_ctrl_cnt][1] = arg_parse_enum_or_int(&arg);
                     arg_ctrl_cnt++;
                 }
             }
@@ -1337,7 +1386,6 @@ int main(int argc, const char **argv_)
     {
         int frames_in = 0, frames_out = 0;
         unsigned long nbytes = 0;
-        size_t detect_bytes;
         struct detect_buffer detect;
 
         /* Parse certain options from the input file, if possible */
@@ -1352,13 +1400,11 @@ int main(int argc, const char **argv_)
 
         /* For RAW input sources, these bytes will applied on the first frame
          *  in read_frame().
-         * We can always read 4 bytes because the minimum supported frame size
-         *  is 2x2.
          */
-        detect_bytes = fread(detect.buf, 1, 4, infile);
-        detect.valid = 0;
+        detect.buf_read = fread(detect.buf, 1, 4, infile);
+        detect.position = 0;
 
-        if (detect_bytes == 4 && file_is_y4m(infile, &y4m, detect.buf))
+        if (detect.buf_read == 4 && file_is_y4m(infile, &y4m, detect.buf))
         {
             if (y4m_input_open(&y4m, infile, detect.buf, 4) >= 0)
             {
@@ -1383,8 +1429,8 @@ int main(int argc, const char **argv_)
                 return EXIT_FAILURE;
             }
         }
-        else if (detect_bytes == 4 &&
-                 file_is_ivf(infile, &fourcc, &cfg.g_w, &cfg.g_h, detect.buf))
+        else if (detect.buf_read == 4 &&
+                 file_is_ivf(infile, &fourcc, &cfg.g_w, &cfg.g_h, &detect))
         {
             file_type = FILE_TYPE_IVF;
             switch (fourcc)
@@ -1403,7 +1449,6 @@ int main(int argc, const char **argv_)
         else
         {
             file_type = FILE_TYPE_RAW;
-            detect.valid = 1;
         }
 
         if(!cfg.g_w || !cfg.g_h)
@@ -1544,7 +1589,7 @@ int main(int argc, const char **argv_)
             vpx_codec_iter_t iter = NULL;
             const vpx_codec_cx_pkt_t *pkt;
             struct vpx_usec_timer timer;
-            int64_t frame_start;
+            int64_t frame_start, next_frame_start;
 
             if (!arg_limit || frames_in < arg_limit)
             {
@@ -1565,9 +1610,11 @@ int main(int argc, const char **argv_)
 
             frame_start = (cfg.g_timebase.den * (int64_t)(frames_in - 1)
                           * arg_framerate.den) / cfg.g_timebase.num / arg_framerate.num;
+            next_frame_start = (cfg.g_timebase.den * (int64_t)(frames_in)
+                                * arg_framerate.den)
+                                / cfg.g_timebase.num / arg_framerate.num;
             vpx_codec_encode(&encoder, frame_avail ? &raw : NULL, frame_start,
-                             cfg.g_timebase.den * arg_framerate.den
-                             / cfg.g_timebase.num / arg_framerate.num,
+                             next_frame_start - frame_start,
                              0, arg_deadline);
             vpx_usec_timer_mark(&timer);
             cx_time += vpx_usec_timer_elapsed(&timer);
@@ -1675,7 +1722,7 @@ int main(int argc, const char **argv_)
         }
 
         fclose(outfile);
-        stats_close(&stats);
+        stats_close(&stats, arg_passes-1);
         fprintf(stderr, "\n");
 
         if (one_pass_only)

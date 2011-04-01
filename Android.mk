@@ -10,8 +10,8 @@ LOCAL_SRC_FILES = \
     vpx_scale/generic/vpxscale.c \
     vpx_scale/generic/yv12config.c \
     vpx_scale/generic/yv12extend.c \
-    vpx_scale/generic/scalesystemdependant.c \
     vpx_scale/generic/gen_scalers.c \
+    vpx_scale/generic/scalesystemdependent.c \
     vp8/common/alloccommon.c \
     vp8/common/arm/arm_systemdependent.c \
     vp8/common/arm/reconintra_arm.c \
@@ -21,7 +21,7 @@ LOCAL_SRC_FILES = \
     vp8/common/entropymode.c \
     vp8/common/entropymv.c \
     vp8/common/extend.c \
-    vp8/common/filter_c.c \
+    vp8/common/filter.c \
     vp8/common/findnearmv.c \
     vp8/common/generic/systemdependent.c \
     vp8/common/idctllm.c \
@@ -31,7 +31,6 @@ LOCAL_SRC_FILES = \
     vp8/common/mbpitch.c \
     vp8/common/modecont.c \
     vp8/common/modecontext.c \
-    vp8/common/predictdc.c \
     vp8/common/quant_common.c \
     vp8/common/recon.c \
     vp8/common/reconinter.c \
@@ -74,6 +73,8 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 intermediates := $(call local-intermediates-dir)
 
 ASM_FILES = \
+    vp8/common/arm/armv6/loopfilter_v6.s \
+    vp8/common/arm/armv6/simpleloopfilter_v6.s \
     vp8/common/arm/neon/bilinearpredict16x16_neon.s \
     vp8/common/arm/neon/bilinearpredict4x4_neon.s \
     vp8/common/arm/neon/bilinearpredict8x4_neon.s \
@@ -97,6 +98,7 @@ ASM_FILES = \
     vp8/common/arm/neon/sixtappredict8x4_neon.s \
     vp8/common/arm/neon/sixtappredict8x8_neon.s \
     vp8/common/arm/neon/dc_only_idct_add_neon.s \
+    vp8/decoder/arm/armv6/dequantize_v6.s \
     vp8/decoder/arm/neon/dequantizeb_neon.s \
     vp8/decoder/arm/neon/dequant_idct_neon.s \
     vp8/decoder/arm/neon/idct_dequant_0_2x_neon.s \
