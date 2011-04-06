@@ -61,20 +61,20 @@ LOCAL_CFLAGS := \
 
 LOCAL_MODULE := libvpx
 
-ifeq ($(ARCH_ARM_HAVE_NEON),true)
+ifeq ($(TARGET_ARCH),arm)
+
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+intermediates := $(call local-intermediates-dir)
 
 LOCAL_SRC_FILES += \
     vp8/common/arm/loopfilter_arm.c \
     vp8/decoder/arm/dequantize_arm.c \
 
+ifeq ($(ARCH_ARM_HAVE_NEON),true)
+
 LOCAL_CFLAGS += -D__ARM_HAVE_NEON
 
-LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-intermediates := $(call local-intermediates-dir)
-
 ASM_FILES = \
-    vp8/common/arm/armv6/loopfilter_v6.s \
-    vp8/common/arm/armv6/simpleloopfilter_v6.s \
     vp8/common/arm/neon/bilinearpredict16x16_neon.s \
     vp8/common/arm/neon/bilinearpredict4x4_neon.s \
     vp8/common/arm/neon/bilinearpredict8x4_neon.s \
@@ -98,7 +98,6 @@ ASM_FILES = \
     vp8/common/arm/neon/sixtappredict8x4_neon.s \
     vp8/common/arm/neon/sixtappredict8x8_neon.s \
     vp8/common/arm/neon/dc_only_idct_add_neon.s \
-    vp8/decoder/arm/armv6/dequantize_v6.s \
     vp8/decoder/arm/neon/dequantizeb_neon.s \
     vp8/decoder/arm/neon/dequant_idct_neon.s \
     vp8/decoder/arm/neon/idct_dequant_0_2x_neon.s \
@@ -107,6 +106,31 @@ ASM_FILES = \
     vp8/decoder/arm/neon/idct_dequant_full_2x_neon.s \
     vp8/common/arm/neon/loopfilter_neon.s \
     vp8/common/arm/neon/mbloopfilter_neon.s \
+
+else # other ARMs are assumed to support V6
+
+ASM_FILES = \
+    vp8/common/arm/armv6/bilinearfilter_v6.s \
+    vp8/common/arm/armv6/copymem8x4_v6.s \
+    vp8/common/arm/armv6/copymem8x8_v6.s \
+    vp8/common/arm/armv6/copymem16x16_v6.s \
+    vp8/common/arm/armv6/dc_only_idct_add_v6.s \
+    vp8/common/arm/armv6/filter_v6.s \
+    vp8/common/arm/armv6/iwalsh_v6.s \
+    vp8/common/arm/armv6/loopfilter_v6.s \
+    vp8/common/arm/armv6/recon_v6.s \
+    vp8/common/arm/armv6/simpleloopfilter_v6.s \
+    vp8/common/arm/armv6/sixtappredict8x4_v6.s \
+    vp8/decoder/arm/armv6/dequant_dc_idct_v6.s \
+    vp8/decoder/arm/armv6/dequant_idct_v6.s \
+    vp8/decoder/arm/armv6/dequantize_v6.s \
+
+LOCAL_SRC_FILES += \
+    vp8/common/arm/bilinearfilter_arm.c \
+    vp8/common/arm/filter_arm.c \
+    vp8/decoder/arm/armv6/idct_blk_v6.c \
+
+endif
 
 # All the assembly sources must be converted from ADS to GAS compatible format
 VPX_GEN := $(addprefix $(intermediates)/, $(ASM_FILES))
@@ -117,7 +141,7 @@ $(VPX_GEN) : $(intermediates)/%.s : $(LOCAL_PATH)/%.asm
 
 LOCAL_GENERATED_SOURCES += $(VPX_GEN)
 
-else
+else # non-ARM
 
 LOCAL_SRC_FILES += vp8/decoder/idct_blk.c
 
