@@ -107,7 +107,12 @@ ASM_FILES = \
     vp8/common/arm/neon/loopfilter_neon.s \
     vp8/common/arm/neon/mbloopfilter_neon.s \
 
-else # other ARMs are assumed to support V6
+else ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
+
+# Really, we only need ARMV6 support but I could not find an environment
+# variable to query that...
+
+LOCAL_CFLAGS += -D__ARM_HAVE_ARMV6
 
 ASM_FILES = \
     vp8/common/arm/armv6/bilinearfilter_v6.s \

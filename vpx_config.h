@@ -12,11 +12,15 @@
 #endif
 
 #if defined(__ARM_HAVE_NEON)
-#define HAVE_ARMV6 0
 #define HAVE_ARMV7 1
 #else
-#define HAVE_ARMV6 1
 #define HAVE_ARMV7 0
+#endif
+
+#if defined(__ARM_HAVE_ARMV6)
+#define HAVE_ARMV6 1
+#else
+#define HAVE_ARMV6 0
 #endif
 
 #define ARCH_MIPS 0
