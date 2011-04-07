@@ -135,6 +135,10 @@ LOCAL_SRC_FILES += \
     vp8/common/arm/filter_arm.c \
     vp8/decoder/arm/armv6/idct_blk_v6.c \
 
+else
+
+LOCAL_SRC_FILES += vp8/decoder/idct_blk.c
+
 endif
 
 # All the assembly sources must be converted from ADS to GAS compatible format
