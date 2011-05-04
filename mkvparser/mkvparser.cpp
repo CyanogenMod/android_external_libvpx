@@ -6623,12 +6623,14 @@ long Cluster::ParseBlockGroup(
         const Tracks* const pTracks = m_pSegment->GetTracks();
         assert(pTracks);
 
+#if 0
         const long tn = static_cast<long>(track);
 
         const Track* const pTrack = pTracks->GetTrackByNumber(tn);
 
         if (pTrack == NULL)
             return E_FILE_FORMAT_INVALID;
+#endif
 
         pos += len;  //consume track number
 
