@@ -11,6 +11,7 @@
 
 #include <cstdlib>
 #include <cstdio>
+#include <cstddef>
 
 namespace mkvparser
 {
@@ -29,17 +30,26 @@ protected:
 
 long long GetUIntLength(IMkvReader*, long long, long&);
 long long ReadUInt(IMkvReader*, long long, long&);
-long long SyncReadUInt(IMkvReader*, long long pos, long long stop, long&);
 long long UnserializeUInt(IMkvReader*, long long pos, long long size);
-float Unserialize4Float(IMkvReader*, long long);
-double Unserialize8Double(IMkvReader*, long long);
-short Unserialize2SInt(IMkvReader*, long long);
-signed char Unserialize1SInt(IMkvReader*, long long);
+
+long UnserializeFloat(IMkvReader*, long long pos, long long size, double&);
+long UnserializeInt(IMkvReader*, long long pos, long len, long long& result);
+
+long UnserializeString(
+        IMkvReader*,
+        long long pos,
+        long long size,
+        char*& str);
+
+long ParseElementHeader(
+    IMkvReader* pReader,
+    long long& pos,  //consume id and size fields
+    long long stop,  //if you know size of element's parent
+    long long& id,
+    long long& size);
+
 bool Match(IMkvReader*, long long&, unsigned long, long long&);
-bool Match(IMkvReader*, long long&, unsigned long, char*&);
 bool Match(IMkvReader*, long long&, unsigned long, unsigned char*&, size_t&);
-bool Match(IMkvReader*, long long&, unsigned long, double&);
-bool Match(IMkvReader*, long long&, unsigned long, short&);
 
 void GetVersion(int& major, int& minor, int& build, int& revision);
 
@@ -73,8 +83,10 @@ public:
     const long long m_start;
     const long long m_size;
 
-    Block(long long start, long long size, IMkvReader*);
+    Block(long long start, long long size);
     ~Block();
+
+    long Parse(IMkvReader*);
 
     long long GetTrackNumber() const;
     long long GetTimeCode(const Cluster*) const;  //absolute, but not scaled
@@ -82,6 +94,9 @@ public:
     bool IsKey() const;
     void SetKey(bool);
     bool IsInvisible() const;
+
+    enum Lacing { kLacingNone, kLacingXiph, kLacingFixed, kLacingEbml };
+    Lacing GetLacing() const;
 
     int GetFrameCount() const;  //to index frames: [0, count)
 
@@ -111,16 +126,23 @@ class BlockEntry
     BlockEntry(const BlockEntry&);
     BlockEntry& operator=(const BlockEntry&);
 
+protected:
+    BlockEntry(Cluster*, long index);
+
 public:
     virtual ~BlockEntry();
-    virtual bool EOS() const = 0;
-    virtual const Cluster* GetCluster() const = 0;
-    virtual size_t GetIndex() const = 0;
+
+    bool EOS() const;
+    const Cluster* GetCluster() const;
+    long GetIndex() const;
     virtual const Block* GetBlock() const = 0;
-    //virtual bool IsBFrame() const = 0;
+
+    enum Kind { kBlockEOS, kBlockSimple, kBlockGroup };
+    virtual Kind GetKind() const = 0;
 
 protected:
-    BlockEntry();
+    Cluster* const m_pCluster;
+    const long m_index;
 
 };
 
@@ -131,17 +153,13 @@ class SimpleBlock : public BlockEntry
     SimpleBlock& operator=(const SimpleBlock&);
 
 public:
-    SimpleBlock(Cluster*, size_t, long long start, long long size);
+    SimpleBlock(Cluster*, long index, long long start, long long size);
+    long Parse();
 
-    bool EOS() const;
-    const Cluster* GetCluster() const;
-    size_t GetIndex() const;
+    Kind GetKind() const;
     const Block* GetBlock() const;
-    //bool IsBFrame() const;
 
 protected:
-    Cluster* const m_pCluster;
-    const size_t m_index;
     Block m_block;
 
 };
@@ -153,41 +171,120 @@ class BlockGroup : public BlockEntry
     BlockGroup& operator=(const BlockGroup&);
 
 public:
-    BlockGroup(Cluster*, size_t, long long, long long);
-    ~BlockGroup();
+    BlockGroup(
+        Cluster*,
+        long index,
+        long long block_start, //absolute pos of block's payload
+        long long block_size,  //size of block's payload
+        long long prev,
+        long long next,
+        long long duration);
 
-    bool EOS() const;
-    const Cluster* GetCluster() const;
-    size_t GetIndex() const;
+    long Parse();
+
+    Kind GetKind() const;
     const Block* GetBlock() const;
-    //bool IsBFrame() const;
 
-    short GetPrevTimeCode() const;  //relative to block's time
-    short GetNextTimeCode() const;  //as above
-
-protected:
-    Cluster* const m_pCluster;
-    const size_t m_index;
+    long long GetPrevTimeCode() const;  //relative to block's time
+    long long GetNextTimeCode() const;  //as above
+    long long GetDuration() const;
 
 private:
-    BlockGroup(Cluster*, size_t, unsigned long);
-    void ParseBlock(long long start, long long size);
-
-    short m_prevTimeCode;
-    short m_nextTimeCode;
-
-    //TODO: the Matroska spec says you can have multiple blocks within the
-    //same block group, with blocks ranked by priority (the flag bits).
-    //For now we just cache a single block.
-#if 0
-    typedef std::deque<Block*> blocks_t;
-    blocks_t m_blocks;  //In practice should contain only a single element.
-#else
-    Block* m_pBlock;
-#endif
+    Block m_block;
+    const long long m_prev;
+    const long long m_next;
+    const long long m_duration;
 
 };
 
+///////////////////////////////////////////////////////////////
+// ContentEncoding element
+// Elements used to describe if the track data has been encrypted or
+// compressed with zlib or header stripping.
+class ContentEncoding {
+public:
+    ContentEncoding();
+    ~ContentEncoding();
+
+    // ContentCompression element names
+    struct ContentCompression {
+        ContentCompression();
+        ~ContentCompression();
+
+        unsigned long long algo;
+        unsigned char* settings;
+    };
+
+    // ContentEncryption element names
+    struct ContentEncryption {
+        ContentEncryption();
+        ~ContentEncryption();
+
+        unsigned long long algo;
+        unsigned char* key_id;
+        long long key_id_len;
+        unsigned char* signature;
+        long long signature_len;
+        unsigned char* sig_key_id;
+        long long sig_key_id_len;
+        unsigned long long sig_algo;
+        unsigned long long sig_hash_algo;
+    };
+
+    // Returns ContentCompression represented by |idx|. Returns NULL if |idx|
+    // is out of bounds.
+    const ContentCompression* GetCompressionByIndex(unsigned long idx) const;
+
+    // Returns number of ContentCompression elements in this ContentEncoding
+    // element.
+    unsigned long GetCompressionCount() const;
+
+    // Returns ContentEncryption represented by |idx|. Returns NULL if |idx|
+    // is out of bounds.
+    const ContentEncryption* GetEncryptionByIndex(unsigned long idx) const;
+
+    // Returns number of ContentEncryption elements in this ContentEncoding
+    // element.
+    unsigned long GetEncryptionCount() const;
+
+    // Parses the ContentEncoding element from |pReader|. |start| is the
+    // starting offset of the ContentEncoding payload. |size| is the size in
+    // bytes of the ContentEncoding payload. Returns true on success.
+    bool ParseContentEncodingEntry(long long start,
+                                   long long size,
+                                   IMkvReader* const pReader);
+
+    // Parses the ContentEncryption element from |pReader|. |start| is the
+    // starting offset of the ContentEncryption payload. |size| is the size in
+    // bytes of the ContentEncryption payload. |encryption| is where the parsed
+    // values will be stored.
+    void ParseEncryptionEntry(long long start,
+                              long long size,
+                              IMkvReader* const pReader,
+                              ContentEncryption* const encryption);
+
+    unsigned long long encoding_order() const { return encoding_order_; }
+    unsigned long long encoding_scope() const { return encoding_scope_; }
+    unsigned long long encoding_type() const { return encoding_type_; }
+
+private:
+    // Member variables for list of ContentCompression elements.
+    ContentCompression** compression_entries_;
+    ContentCompression** compression_entries_end_;
+
+    // Member variables for list of ContentEncryption elements.
+    ContentEncryption** encryption_entries_;
+    ContentEncryption** encryption_entries_end_;
+
+    // ContentEncoding element names
+    unsigned long long encoding_order_;
+    unsigned long long encoding_scope_;
+    unsigned long long encoding_type_;
+
+    // LIBWEBM_DISALLOW_COPY_AND_ASSIGN(ContentEncoding);
+    ContentEncoding(const ContentEncoding&);
+    ContentEncoding& operator=(const ContentEncoding&);
+};
 
 class Track
 {
@@ -195,13 +292,15 @@ class Track
     Track& operator=(const Track&);
 
 public:
+    enum Type { kVideo = 1, kAudio = 2 };
+
     Segment* const m_pSegment;
     const long long m_element_start;
     const long long m_element_size;
     virtual ~Track();
 
-    long long GetType() const;
-    long long GetNumber() const;
+    long GetType() const;
+    long GetNumber() const;
     unsigned long long GetUid() const;
     const char* GetNameAsUTF8() const;
     const char* GetCodecNameAsUTF8() const;
@@ -217,21 +316,29 @@ public:
         long long size;
     };
 
-    struct Info
+    class Info
     {
-        long long type;
-        long long number;
+    public:
+        Info();
+        ~Info();
+        int Copy(Info&) const;
+        void Clear();
+    private:
+        Info(const Info&);
+        Info& operator=(const Info&);
+    public:
+        long type;
+        long number;
         unsigned long long uid;
         char* nameAsUTF8;
         char* codecId;
+        char* codecNameAsUTF8;
         unsigned char* codecPrivate;
         size_t codecPrivateSize;
-        char* codecNameAsUTF8;
         bool lacing;
         Settings settings;
-
-        Info();
-        void Clear();
+    private:
+        int CopyStr(char* Info::*str, Info&) const;
     };
 
     long GetFirst(const BlockEntry*&) const;
@@ -239,28 +346,33 @@ public:
     virtual bool VetEntry(const BlockEntry*) const = 0;
     virtual long Seek(long long time_ns, const BlockEntry*&) const = 0;
 
+    const ContentEncoding* GetContentEncodingByIndex(unsigned long idx) const;
+    unsigned long GetContentEncodingCount() const;
+
+    void ParseContentEncodingsEntry(long long start, long long size);
+
 protected:
     Track(
         Segment*,
-        const Info&,
         long long element_start,
         long long element_size);
-    const Info m_info;
+
+    Info m_info;
 
     class EOSBlock : public BlockEntry
     {
     public:
         EOSBlock();
 
-        bool EOS() const;
-        const Cluster* GetCluster() const;
-        size_t GetIndex() const;
+        Kind GetKind() const;
         const Block* GetBlock() const;
-        bool IsBFrame() const;
     };
 
     EOSBlock m_eos;
 
+private:
+    ContentEncoding** content_encoding_entries_;
+    ContentEncoding** content_encoding_entries_end_;
 };
 
 
@@ -269,12 +381,19 @@ class VideoTrack : public Track
     VideoTrack(const VideoTrack&);
     VideoTrack& operator=(const VideoTrack&);
 
-public:
     VideoTrack(
+        Segment*,
+        long long element_start,
+        long long element_size);
+
+public:
+    static long Parse(
         Segment*,
         const Info&,
         long long element_start,
-        long long element_size);
+        long long element_size,
+        VideoTrack*&);
+
     long long GetWidth() const;
     long long GetHeight() const;
     double GetFrameRate() const;
@@ -295,12 +414,18 @@ class AudioTrack : public Track
     AudioTrack(const AudioTrack&);
     AudioTrack& operator=(const AudioTrack&);
 
-public:
     AudioTrack(
+        Segment*,
+        long long element_start,
+        long long element_size);
+public:
+    static long Parse(
         Segment*,
         const Info&,
         long long element_start,
-        long long element_size);
+        long long element_size,
+        AudioTrack*&);
+
     double GetSamplingRate() const;
     long long GetChannels() const;
     long long GetBitDepth() const;
@@ -332,24 +457,27 @@ public:
         long long size,
         long long element_start,
         long long element_size);
-    virtual ~Tracks();
 
-    const Track* GetTrackByNumber(unsigned long tn) const;
+    ~Tracks();
+
+    long Parse();
+
+    unsigned long GetTracksCount() const;
+
+    const Track* GetTrackByNumber(long tn) const;
     const Track* GetTrackByIndex(unsigned long idx) const;
 
 private:
     Track** m_trackEntries;
     Track** m_trackEntriesEnd;
 
-    void ParseTrackEntry(
-        long long,
-        long long,
-        Track*&,
+    long ParseTrackEntry(
+        long long payload_start,
+        long long payload_size,
         long long element_start,
-        long long element_size);
+        long long element_size,
+        Track*&) const;
 
-public:
-    unsigned long GetTracksCount() const;
 };
 
 
@@ -373,6 +501,8 @@ public:
         long long element_size);
 
     ~SegmentInfo();
+
+    long Parse();
 
     long long GetTimeCodeScale() const;
     long long GetDuration() const;  //scaled
@@ -410,24 +540,48 @@ public:
 
     ~SeekHead();
 
+    long Parse();
+
     struct Entry
     {
+        //the SeekHead entry payload
         long long id;
         long long pos;
+
+        //absolute pos of SeekEntry ID
+        long long element_start;
+
+        //SeekEntry ID size + size size + payload
+        long long element_size;
     };
 
     int GetCount() const;
     const Entry* GetEntry(int idx) const;
 
+    struct VoidElement
+    {
+        //absolute pos of Void ID
+        long long element_start;
+
+        //ID size + size size + payload size
+        long long element_size;
+    };
+
+    int GetVoidElementCount() const;
+    const VoidElement* GetVoidElement(int idx) const;
+
 private:
     Entry* m_entries;
-    int m_count;
+    int m_entry_count;
 
-    static void ParseEntry(
+    VoidElement* m_void_elements;
+    int m_void_element_count;
+
+    static bool ParseEntry(
         IMkvReader*,
-        long long pos,
+        long long pos,  //payload
         long long size,
-        Entry*&);
+        Entry*);
 
 };
 
@@ -562,14 +716,15 @@ public:
     long long GetFirstTime() const;  //time (ns) of first (earliest) block
     long long GetLastTime() const;   //time (ns) of last (latest) block
 
-    const BlockEntry* GetFirst() const;
-    const BlockEntry* GetLast() const;
-    const BlockEntry* GetNext(const BlockEntry*) const;
+    long GetFirst(const BlockEntry*&) const;
+    long GetLast(const BlockEntry*&) const;
+    long GetNext(const BlockEntry* curr, const BlockEntry*& next) const;
+
     const BlockEntry* GetEntry(const Track*, long long ns = -1) const;
     const BlockEntry* GetEntry(
         const CuePoint&,
         const CuePoint::TrackPosition&) const;
-    const BlockEntry* GetMaxKey(const VideoTrack*) const;
+    //const BlockEntry* GetMaxKey(const VideoTrack*) const;
 
 //    static bool HasBlockEntries(const Segment*, long long);
 
@@ -581,10 +736,7 @@ public:
 
     long GetEntryCount() const;
 
-    void Load() const;
     long Load(long long& pos, long& size) const;
-
-    void LoadBlockEntries() const;
 
     long Parse(long long& pos, long& size) const;
     long GetEntry(long index, const mkvparser::BlockEntry*&) const;
@@ -616,12 +768,12 @@ private:
     mutable long m_entries_size;
     mutable long m_entries_count;
 
-    long ParseSimpleBlock(long long, long long&, long&) const;
-    long ParseBlockGroup(long long, long long&, long&) const;
+    long ParseSimpleBlock(long long, long long&, long&);
+    long ParseBlockGroup(long long, long long&, long&);
 
-    void CreateBlock(long long id, long long pos, long long size) const;
-    void CreateBlockGroup(long long, long long, BlockEntry**&) const;
-    void CreateSimpleBlock(long long, long long, BlockEntry**&) const;
+    long CreateBlock(long long id, long long pos, long long size);
+    long CreateBlockGroup(long long, long long);
+    long CreateSimpleBlock(long long, long long);
 
 };
 
@@ -636,10 +788,17 @@ class Segment
     Segment& operator=(const Segment&);
 
 private:
-    Segment(IMkvReader*, long long pos, long long size);
+    Segment(
+        IMkvReader*,
+        long long elem_start,
+        //long long elem_size,
+        long long pos,
+        long long size);
 
 public:
     IMkvReader* const m_pReader;
+    const long long m_element_start;
+    //const long long m_element_size;
     const long long m_start;  //posn of segment payload
     const long long m_size;   //size of segment payload
     Cluster m_eos;  //TODO: make private?
@@ -650,7 +809,8 @@ public:
     long Load();  //loads headers and all clusters
 
     //for incremental loading
-    long long Unparsed() const;
+    //long long Unparsed() const;
+    bool DoneParsing() const;
     long long ParseHeaders();  //stops when first cluster is found
     //long FindNextCluster(long long& pos, long& size) const;
     long LoadCluster(long long& pos, long& size);  //load one cluster
