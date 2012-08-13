@@ -25,7 +25,7 @@
 |vp8_sixtap_predict8x8_neon| PROC
     push            {r4-r5, lr}
 
-    ldr             r12, _filter8_coeff_
+    adrl            r12, filter8_coeff
 
     ldr             r4, [sp, #12]           ;load parameters from stack
     ldr             r5, [sp, #16]           ;load parameters from stack
@@ -510,8 +510,6 @@ filt_blk2d_spo8x8_loop_neon
 
 ;-----------------
 
-_filter8_coeff_
-    DCD     filter8_coeff
 filter8_coeff
     DCD     0,  0,  128,    0,   0,  0,   0,  0
     DCD     0, -6,  123,   12,  -1,  0,   0,  0
