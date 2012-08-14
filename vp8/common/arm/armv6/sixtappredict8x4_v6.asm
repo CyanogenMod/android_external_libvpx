@@ -12,6 +12,29 @@
     EXPORT  |vp8_sixtap_predict8x4_armv6|
 
     AREA    |.text|, CODE, READONLY  ; name this block of code
+
+;-----------------
+;One word each is reserved. Label filter_coeff can be used to access the data.
+;Data address: filter_coeff, filter_coeff+4, filter_coeff+8 ...
+filter8_coeff
+    DCD     0x00000000,     0x00000080,     0x00000000,     0x00000000
+    DCD     0xfffa0000,     0x000c007b,     0x0000ffff,     0x00000000
+    DCD     0xfff50002,     0x0024006c,     0x0001fff8,     0x00000000
+    DCD     0xfff70000,     0x0032005d,     0x0000fffa,     0x00000000
+    DCD     0xfff00003,     0x004d004d,     0x0003fff0,     0x00000000
+    DCD     0xfffa0000,     0x005d0032,     0x0000fff7,     0x00000000
+    DCD     0xfff80001,     0x006c0024,     0x0002fff5,     0x00000000
+    DCD     0xffff0000,     0x007b000c,     0x0000fffa,     0x00000000
+
+    ;DCD        0,  0,  128,    0,   0,  0
+    ;DCD        0, -6,  123,   12,  -1,  0
+    ;DCD        2, -11, 108,   36,  -8,  1
+    ;DCD        0, -9,   93,   50,  -6,  0
+    ;DCD        3, -16,  77,   77, -16,  3
+    ;DCD        0, -6,   50,   93,  -9,  0
+    ;DCD        1, -8,   36,  108, -11,  2
+    ;DCD        0, -1,   12,  123,  -6,  0
+
 ;-------------------------------------
 ; r0    unsigned char *src_ptr,
 ; r1    int  src_pixels_per_line,
@@ -32,7 +55,7 @@
     beq         skip_firstpass_filter
 
 ;first-pass filter
-    ldr         r12, _filter8_coeff_
+    adr         r12, filter8_coeff
     sub         r0, r0, r1, lsl #1
 
     add         r2, r12, r2, lsl #4         ;calculate filter location
@@ -121,7 +144,7 @@ secondpass_filter
     cmp         r3, #0
     beq         skip_secondpass_filter
 
-    ldr         r12, _filter8_coeff_
+    adr         r12, filter8_coeff
     add         lr, r12, r3, lsl #4         ;calculate filter location
 
     mov         r2, #0x00080000
@@ -241,29 +264,5 @@ skip_secondpass_hloop
     ldmia       sp!, {r4 - r11, pc}
 
     ENDP
-
-;-----------------
-;One word each is reserved. Label filter_coeff can be used to access the data.
-;Data address: filter_coeff, filter_coeff+4, filter_coeff+8 ...
-_filter8_coeff_
-    DCD     filter8_coeff
-filter8_coeff
-    DCD     0x00000000,     0x00000080,     0x00000000,     0x00000000
-    DCD     0xfffa0000,     0x000c007b,     0x0000ffff,     0x00000000
-    DCD     0xfff50002,     0x0024006c,     0x0001fff8,     0x00000000
-    DCD     0xfff70000,     0x0032005d,     0x0000fffa,     0x00000000
-    DCD     0xfff00003,     0x004d004d,     0x0003fff0,     0x00000000
-    DCD     0xfffa0000,     0x005d0032,     0x0000fff7,     0x00000000
-    DCD     0xfff80001,     0x006c0024,     0x0002fff5,     0x00000000
-    DCD     0xffff0000,     0x007b000c,     0x0000fffa,     0x00000000
-
-    ;DCD        0,  0,  128,    0,   0,  0
-    ;DCD        0, -6,  123,   12,  -1,  0
-    ;DCD        2, -11, 108,   36,  -8,  1
-    ;DCD        0, -9,   93,   50,  -6,  0
-    ;DCD        3, -16,  77,   77, -16,  3
-    ;DCD        0, -6,   50,   93,  -9,  0
-    ;DCD        1, -8,   36,  108, -11,  2
-    ;DCD        0, -1,   12,  123,  -6,  0
 
     END

@@ -29,7 +29,7 @@
 
 |vp8_fast_fdct8x4_neon| PROC
     vld1.16         {q1}, [r0], r2              ;load input
-    ldr             r12, _ffdct8_coeff_
+    adr             r12, ffdct8_coeff
     vld1.16         {q2}, [r0], r2
     vld1.16         {q3}, [r0], r2
     vld1.16         {d0}, [r12]
@@ -166,8 +166,6 @@
 
 ;-----------------
 
-_ffdct8_coeff_
-    DCD     ffdct8_coeff
 ffdct8_coeff
 ; 60547 =  0xEC83
 ; 46341 =  0xB505
