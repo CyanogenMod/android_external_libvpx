@@ -50,6 +50,12 @@
 #include "arm/dequantize_arm.h"
 #endif
 
+#if ARCH_MIPS
+#if defined(MIPS_DSP_REV) && MIPS_DSP_REV>=2
+#include "mips/dequantize_mips.h"
+#endif
+#endif
+
 #ifndef vp8_dequant_block
 #define vp8_dequant_block vp8_dequantize_b_c
 #endif

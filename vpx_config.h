@@ -23,7 +23,12 @@
 #define HAVE_ARMV6 0
 #endif
 
+#if defined(__mips__)
+#define ARCH_MIPS 1
+#else
 #define ARCH_MIPS 0
+#endif
+
 #define ARCH_X86 0
 #define ARCH_X86_64 0
 #define ARCH_PPC32 0
@@ -31,7 +36,6 @@
 
 #define HAVE_IWMMXT 0
 #define HAVE_IWMMXT2 0
-#define HAVE_MIPS32 0
 #define HAVE_MMX 0
 #define HAVE_SSE 0
 #define HAVE_SSE2 0
