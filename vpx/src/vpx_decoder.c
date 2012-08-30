@@ -26,6 +26,12 @@ vpx_codec_err_t vpx_codec_dec_init_ver(vpx_codec_ctx_t      *ctx,
 {
     vpx_codec_err_t res;
 
+#ifdef MIPS_DSP_REV
+#if (MIPS_DSP_REV>=2)
+    dsputil_static_init();
+#endif
+#endif
+
     if (ver != VPX_DECODER_ABI_VERSION)
         res = VPX_CODEC_ABI_MISMATCH;
     else if (!ctx || !iface)
