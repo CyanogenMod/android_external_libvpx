@@ -12,6 +12,8 @@
 #ifndef SUBPIXEL_H
 #define SUBPIXEL_H
 
+#include "vpx_config.h"
+
 #define prototype_subpixel_predict(sym) \
     void sym(unsigned char *src, int src_pitch, int xofst, int yofst, \
              unsigned char *dst, int dst_pitch)

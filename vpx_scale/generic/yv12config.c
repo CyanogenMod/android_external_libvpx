@@ -24,10 +24,7 @@ vp8_yv12_de_alloc_frame_buffer(YV12_BUFFER_CONFIG *ybf)
 {
     if (ybf)
     {
-        if (ybf->buffer_alloc)
-        {
             duck_free(ybf->buffer_alloc);
-        }
 
         ybf->buffer_alloc = 0;
     }
@@ -81,6 +78,8 @@ vp8_yv12_alloc_frame_buffer(YV12_BUFFER_CONFIG *ybf, int width, int height, int 
 
         ybf->u_buffer = ybf->buffer_alloc + yplane_size + (border / 2  * ybf->uv_stride) + border / 2;
         ybf->v_buffer = ybf->buffer_alloc + yplane_size + uvplane_size + (border / 2  * ybf->uv_stride) + border / 2;
+
+        ybf->corrupted = 0; /* assume not currupted by errors */
     }
     else
     {
@@ -88,25 +87,4 @@ vp8_yv12_alloc_frame_buffer(YV12_BUFFER_CONFIG *ybf, int width, int height, int 
     }
 
     return 0;
-}
-
-/****************************************************************************
- *
- ****************************************************************************/
-int
-vp8_yv12_black_frame_buffer(YV12_BUFFER_CONFIG *ybf)
-{
-    if (ybf)
-    {
-        if (ybf->buffer_alloc)
-        {
-            duck_memset(ybf->y_buffer, 0x0, ybf->y_stride * ybf->y_height);
-            duck_memset(ybf->u_buffer, 0x80, ybf->uv_stride * ybf->uv_height);
-            duck_memset(ybf->v_buffer, 0x80, ybf->uv_stride * ybf->uv_height);
-        }
-
-        return 0;
-    }
-
-    return -1;
 }

@@ -2,6 +2,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES = \
+    mkvparser/mkvparser.cpp \
     vpx/src/vpx_codec.c \
     vpx/src/vpx_decoder.c \
     vpx/src/vpx_image.c \
@@ -9,8 +10,8 @@ LOCAL_SRC_FILES = \
     vpx_scale/generic/vpxscale.c \
     vpx_scale/generic/yv12config.c \
     vpx_scale/generic/yv12extend.c \
-    vpx_scale/generic/scalesystemdependant.c \
     vpx_scale/generic/gen_scalers.c \
+    vpx_scale/generic/scalesystemdependent.c \
     vp8/common/alloccommon.c \
     vp8/common/arm/arm_systemdependent.c \
     vp8/common/arm/reconintra_arm.c \
@@ -20,7 +21,7 @@ LOCAL_SRC_FILES = \
     vp8/common/entropymode.c \
     vp8/common/entropymv.c \
     vp8/common/extend.c \
-    vp8/common/filter_c.c \
+    vp8/common/filter.c \
     vp8/common/findnearmv.c \
     vp8/common/generic/systemdependent.c \
     vp8/common/idctllm.c \
@@ -30,7 +31,6 @@ LOCAL_SRC_FILES = \
     vp8/common/mbpitch.c \
     vp8/common/modecont.c \
     vp8/common/modecontext.c \
-    vp8/common/predictdc.c \
     vp8/common/quant_common.c \
     vp8/common/recon.c \
     vp8/common/reconinter.c \
@@ -61,16 +61,18 @@ LOCAL_CFLAGS := \
 
 LOCAL_MODULE := libvpx
 
-ifeq ($(ARCH_ARM_HAVE_NEON),true)
+ifeq ($(TARGET_ARCH),arm)
+
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+intermediates := $(call local-intermediates-dir)
 
 LOCAL_SRC_FILES += \
     vp8/common/arm/loopfilter_arm.c \
     vp8/decoder/arm/dequantize_arm.c \
 
-LOCAL_CFLAGS += -D__ARM_HAVE_NEON
+ifeq ($(ARCH_ARM_HAVE_NEON),true)
 
-LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-intermediates := $(call local-intermediates-dir)
+LOCAL_CFLAGS += -D__ARM_HAVE_NEON
 
 ASM_FILES = \
     vp8/common/arm/neon/bilinearpredict16x16_neon.s \
@@ -105,6 +107,40 @@ ASM_FILES = \
     vp8/common/arm/neon/loopfilter_neon.s \
     vp8/common/arm/neon/mbloopfilter_neon.s \
 
+else ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
+
+# Really, we only need ARMV6 support but I could not find an environment
+# variable to query that...
+
+LOCAL_CFLAGS += -D__ARM_HAVE_ARMV6
+
+ASM_FILES = \
+    vp8/common/arm/armv6/bilinearfilter_v6.s \
+    vp8/common/arm/armv6/copymem8x4_v6.s \
+    vp8/common/arm/armv6/copymem8x8_v6.s \
+    vp8/common/arm/armv6/copymem16x16_v6.s \
+    vp8/common/arm/armv6/dc_only_idct_add_v6.s \
+    vp8/common/arm/armv6/filter_v6.s \
+    vp8/common/arm/armv6/iwalsh_v6.s \
+    vp8/common/arm/armv6/loopfilter_v6.s \
+    vp8/common/arm/armv6/recon_v6.s \
+    vp8/common/arm/armv6/simpleloopfilter_v6.s \
+    vp8/common/arm/armv6/sixtappredict8x4_v6.s \
+    vp8/decoder/arm/armv6/dequant_dc_idct_v6.s \
+    vp8/decoder/arm/armv6/dequant_idct_v6.s \
+    vp8/decoder/arm/armv6/dequantize_v6.s \
+
+LOCAL_SRC_FILES += \
+    vp8/common/arm/bilinearfilter_arm.c \
+    vp8/common/arm/filter_arm.c \
+    vp8/decoder/arm/armv6/idct_blk_v6.c \
+
+else
+
+LOCAL_SRC_FILES += vp8/decoder/idct_blk.c
+
+endif
+
 # All the assembly sources must be converted from ADS to GAS compatible format
 VPX_GEN := $(addprefix $(intermediates)/, $(ASM_FILES))
 $(VPX_GEN) : PRIVATE_PATH := $(LOCAL_PATH)
@@ -114,7 +150,7 @@ $(VPX_GEN) : $(intermediates)/%.s : $(LOCAL_PATH)/%.asm
 
 LOCAL_GENERATED_SOURCES += $(VPX_GEN)
 
-else
+else # non-ARM
 
 LOCAL_SRC_FILES += vp8/decoder/idct_blk.c
 

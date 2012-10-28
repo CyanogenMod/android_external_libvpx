@@ -4,9 +4,23 @@
 #define RESTRICT    
 
 #if defined(__arm__)
+
 #define ARCH_ARM 1
+#define HAVE_ARMV5TE 0
 #else
 #define ARCH_ARM 0
+#endif
+
+#if defined(__ARM_HAVE_NEON)
+#define HAVE_ARMV7 1
+#else
+#define HAVE_ARMV7 0
+#endif
+
+#if defined(__ARM_HAVE_ARMV6)
+#define HAVE_ARMV6 1
+#else
+#define HAVE_ARMV6 0
 #endif
 
 #define ARCH_MIPS 0
@@ -14,14 +28,6 @@
 #define ARCH_X86_64 0
 #define ARCH_PPC32 0
 #define ARCH_PPC64 0
-#define HAVE_ARMV5TE 0
-#define HAVE_ARMV6 0
-
-#if defined(__ARM_HAVE_NEON)
-#define HAVE_ARMV7 1
-#else
-#define HAVE_ARMV7 0
-#endif
 
 #define HAVE_IWMMXT 0
 #define HAVE_IWMMXT2 0
@@ -64,6 +70,7 @@
 #define CONFIG_RUNTIME_CPU_DETECT 0
 #define CONFIG_POSTPROC 0
 #define CONFIG_POSTPROC_GENERIC 0
+#define CONFIG_OS_SUPPORT 1
 #define CONFIG_MULTITHREAD 1
 #define CONFIG_PSNR 0
 #define CONFIG_VP8_ENCODER 1

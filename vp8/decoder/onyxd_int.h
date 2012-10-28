@@ -12,10 +12,10 @@
 #ifndef __INC_VP8D_INT_H
 #define __INC_VP8D_INT_H
 #include "vpx_ports/config.h"
-#include "onyxd.h"
+#include "vp8/common/onyxd.h"
 #include "treereader.h"
-#include "onyxc_int.h"
-#include "threading.h"
+#include "vp8/common/onyxc_int.h"
+#include "vp8/common/threading.h"
 #include "dequantize.h"
 
 typedef struct
@@ -87,14 +87,15 @@ typedef struct VP8Decompressor
     unsigned int time_decoding;
     unsigned int time_loop_filtering;
 
+#if CONFIG_MULTITHREAD
+    /* variable for threading */
+
     volatile int b_multithreaded_rd;
     int max_threads;
     int current_mb_col_main;
     int decoding_thread_count;
     int allocated_decoding_thread_count;
 
-    /* variable for threading */
-#if CONFIG_MULTITHREAD
     int mt_baseline_filter_level[MAX_MB_SEGMENTS];
     int sync_range;
     int *mt_current_mb_col;                  /* Each row remembers its already decoded column. */
@@ -125,7 +126,6 @@ typedef struct VP8Decompressor
 
 #if CONFIG_RUNTIME_CPU_DETECT
     vp8_dequant_rtcd_vtable_t        dequant;
-    struct vp8_dboolhuff_rtcd_vtable dboolhuff;
 #endif
 
 
