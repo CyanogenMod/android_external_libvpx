@@ -21,8 +21,8 @@ Functional:
 --sdk-path=$SDK_PATH
   For configuration we do some compiler tests. It is much easier to accept them
   than to work around them. This uses the compilers included in the NDK.
---disable-vp8-encoder
-  Build only the decoder.
+--enable-realtime-only
+  Reduce binary size when building the encoder.
 
 Aesthetic:
 --disable-examples

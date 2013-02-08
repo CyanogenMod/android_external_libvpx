@@ -284,6 +284,103 @@ void vp8_sad16x8x4d_c(const unsigned char *src_ptr, int src_stride, const unsign
 void vp8_sad16x16x4d_c(const unsigned char *src_ptr, int src_stride, const unsigned char * const ref_ptr[], int  ref_stride, unsigned int *sad_array);
 #define vp8_sad16x16x4d vp8_sad16x16x4d_c
 
+unsigned int vp8_get_mb_ss_c(const short *);
+#define vp8_get_mb_ss vp8_get_mb_ss_c
+
+unsigned int vp8_sub_pixel_mse16x16_c(const unsigned char  *src_ptr, int  source_stride, int  xoffset, int  yoffset, const unsigned char *ref_ptr, int Refstride, unsigned int *sse);
+#define vp8_sub_pixel_mse16x16 vp8_sub_pixel_mse16x16_c
+
+unsigned int vp8_mse16x16_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
+unsigned int vp8_mse16x16_armv6(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
+unsigned int vp8_mse16x16_neon(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
+#define vp8_mse16x16 vp8_mse16x16_neon
+
+unsigned int vp8_get4x4sse_cs_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride);
+unsigned int vp8_get4x4sse_cs_neon(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride);
+#define vp8_get4x4sse_cs vp8_get4x4sse_cs_neon
+
+void vp8_short_fdct4x4_c(short *input, short *output, int pitch);
+void vp8_short_fdct4x4_armv6(short *input, short *output, int pitch);
+void vp8_short_fdct4x4_neon(short *input, short *output, int pitch);
+#define vp8_short_fdct4x4 vp8_short_fdct4x4_neon
+
+void vp8_short_fdct8x4_c(short *input, short *output, int pitch);
+void vp8_short_fdct8x4_armv6(short *input, short *output, int pitch);
+void vp8_short_fdct8x4_neon(short *input, short *output, int pitch);
+#define vp8_short_fdct8x4 vp8_short_fdct8x4_neon
+
+void vp8_short_walsh4x4_c(short *input, short *output, int pitch);
+void vp8_short_walsh4x4_armv6(short *input, short *output, int pitch);
+void vp8_short_walsh4x4_neon(short *input, short *output, int pitch);
+#define vp8_short_walsh4x4 vp8_short_walsh4x4_neon
+
+void vp8_regular_quantize_b_c(struct block *, struct blockd *);
+#define vp8_regular_quantize_b vp8_regular_quantize_b_c
+
+void vp8_fast_quantize_b_c(struct block *, struct blockd *);
+void vp8_fast_quantize_b_armv6(struct block *, struct blockd *);
+void vp8_fast_quantize_b_neon(struct block *, struct blockd *);
+#define vp8_fast_quantize_b vp8_fast_quantize_b_neon
+
+void vp8_regular_quantize_b_pair_c(struct block *b1, struct block *b2, struct blockd *d1, struct blockd *d2);
+#define vp8_regular_quantize_b_pair vp8_regular_quantize_b_pair_c
+
+void vp8_fast_quantize_b_pair_c(struct block *b1, struct block *b2, struct blockd *d1, struct blockd *d2);
+void vp8_fast_quantize_b_pair_neon(struct block *b1, struct block *b2, struct blockd *d1, struct blockd *d2);
+#define vp8_fast_quantize_b_pair vp8_fast_quantize_b_pair_neon
+
+void vp8_quantize_mb_c(struct macroblock *);
+void vp8_quantize_mb_neon(struct macroblock *);
+#define vp8_quantize_mb vp8_quantize_mb_neon
+
+void vp8_quantize_mby_c(struct macroblock *);
+void vp8_quantize_mby_neon(struct macroblock *);
+#define vp8_quantize_mby vp8_quantize_mby_neon
+
+void vp8_quantize_mbuv_c(struct macroblock *);
+void vp8_quantize_mbuv_neon(struct macroblock *);
+#define vp8_quantize_mbuv vp8_quantize_mbuv_neon
+
+int vp8_block_error_c(short *coeff, short *dqcoeff);
+#define vp8_block_error vp8_block_error_c
+
+int vp8_mbblock_error_c(struct macroblock *mb, int dc);
+#define vp8_mbblock_error vp8_mbblock_error_c
+
+int vp8_mbuverror_c(struct macroblock *mb);
+#define vp8_mbuverror vp8_mbuverror_c
+
+void vp8_subtract_b_c(struct block *be, struct blockd *bd, int pitch);
+void vp8_subtract_b_armv6(struct block *be, struct blockd *bd, int pitch);
+void vp8_subtract_b_neon(struct block *be, struct blockd *bd, int pitch);
+#define vp8_subtract_b vp8_subtract_b_neon
+
+void vp8_subtract_mby_c(short *diff, unsigned char *src, int src_stride, unsigned char *pred, int pred_stride);
+void vp8_subtract_mby_armv6(short *diff, unsigned char *src, int src_stride, unsigned char *pred, int pred_stride);
+void vp8_subtract_mby_neon(short *diff, unsigned char *src, int src_stride, unsigned char *pred, int pred_stride);
+#define vp8_subtract_mby vp8_subtract_mby_neon
+
+void vp8_subtract_mbuv_c(short *diff, unsigned char *usrc, unsigned char *vsrc, int src_stride, unsigned char *upred, unsigned char *vpred, int pred_stride);
+void vp8_subtract_mbuv_armv6(short *diff, unsigned char *usrc, unsigned char *vsrc, int src_stride, unsigned char *upred, unsigned char *vpred, int pred_stride);
+void vp8_subtract_mbuv_neon(short *diff, unsigned char *usrc, unsigned char *vsrc, int src_stride, unsigned char *upred, unsigned char *vpred, int pred_stride);
+#define vp8_subtract_mbuv vp8_subtract_mbuv_neon
+
+int vp8_full_search_sad_c(struct macroblock *x, struct block *b, struct blockd *d, union int_mv *ref_mv, int sad_per_bit, int distance, struct variance_vtable *fn_ptr, int *mvcost[2], union int_mv *center_mv);
+#define vp8_full_search_sad vp8_full_search_sad_c
+
+int vp8_refining_search_sad_c(struct macroblock *x, struct block *b, struct blockd *d, union int_mv *ref_mv, int sad_per_bit, int distance, struct variance_vtable *fn_ptr, int *mvcost[2], union int_mv *center_mv);
+#define vp8_refining_search_sad vp8_refining_search_sad_c
+
+int vp8_diamond_search_sad_c(struct macroblock *x, struct block *b, struct blockd *d, union int_mv *ref_mv, union int_mv *best_mv, int search_param, int sad_per_bit, int *num00, struct variance_vtable *fn_ptr, int *mvcost[2], union int_mv *center_mv);
+#define vp8_diamond_search_sad vp8_diamond_search_sad_c
+
+void vp8_yv12_copy_partial_frame_c(struct yv12_buffer_config *src_ybc, struct yv12_buffer_config *dst_ybc);
+void vp8_yv12_copy_partial_frame_neon(struct yv12_buffer_config *src_ybc, struct yv12_buffer_config *dst_ybc);
+#define vp8_yv12_copy_partial_frame vp8_yv12_copy_partial_frame_neon
+
+int vp8_denoiser_filter_c(struct yv12_buffer_config* mc_running_avg, struct yv12_buffer_config* running_avg, struct macroblock* signal, unsigned int motion_magnitude2, int y_offset, int uv_offset);
+#define vp8_denoiser_filter vp8_denoiser_filter_c
+
 void vp8_horizontal_line_4_5_scale_c(const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width);
 #define vp8_horizontal_line_4_5_scale vp8_horizontal_line_4_5_scale_c
 
