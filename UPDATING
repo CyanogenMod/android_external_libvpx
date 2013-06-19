@@ -32,7 +32,7 @@ Aesthetic:
 Example:
 $ cd external/libvpx/armv7a
 $ ../libvpx/configure --target=armv7-android-gcc --disable-runtime-cpu-detect \
-  --disable-neon --sdk-path=$ANDROID_NDK_ROOT --disable-vp8-encoder \
+  --disable-neon --sdk-path=$ANDROID_NDK_ROOT --disable-vp9-encoder \
   --disable-examples --disable-docs
 
 Run 'make libvpx_srcs.txt'
@@ -43,5 +43,7 @@ Remove the unused files leaving only:
 libvpx_srcs.txt
 vpx_config.c
 vpx_config.h
-vpx_rtcd.h
+vpx_scale_rtcd.h
+vp8_rtcd.h
+vp9_rtcd.h
 vpx_version.h

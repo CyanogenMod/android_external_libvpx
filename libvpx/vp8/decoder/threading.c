@@ -10,7 +10,7 @@
 
 
 #include "vpx_config.h"
-#include "vpx_rtcd.h"
+#include "vp8_rtcd.h"
 #if !defined(WIN32) && CONFIG_OS_SUPPORT == 1
 # include <unistd.h>
 #endif
@@ -36,7 +36,7 @@
 } while (0)
 
 
-extern void vp8_mb_init_dequantizer(VP8D_COMP *pbi, MACROBLOCKD *xd);
+void vp8_mb_init_dequantizer(VP8D_COMP *pbi, MACROBLOCKD *xd);
 
 static void setup_decoding_thread_data(VP8D_COMP *pbi, MACROBLOCKD *xd, MB_ROW_DEC *mbrd, int count)
 {
@@ -343,7 +343,6 @@ static void mt_decode_mb_rows(VP8D_COMP *pbi, MACROBLOCKD *xd, int start_mb_row)
 
     for (mb_row = start_mb_row; mb_row < pc->mb_rows; mb_row += (pbi->decoding_thread_count + 1))
     {
-       int i;
        int recon_yoffset, recon_uvoffset;
        int mb_col;
        int filter_level;

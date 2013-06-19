@@ -88,6 +88,7 @@ Build options:
   ${toggle_debug}             enable/disable debug mode
   ${toggle_gprof}             enable/disable gprof profiling instrumentation
   ${toggle_gcov}              enable/disable gcov coverage instrumentation
+  ${toggle_thumb}             enable/disable building arm assembly in thumb mode
 
 Install options:
   ${toggle_install_docs}      control whether docs are installed
@@ -265,18 +266,20 @@ else
 fi
 TMP_H="${TMPDIRx}/vpx-conf-$$-${RANDOM}.h"
 TMP_C="${TMPDIRx}/vpx-conf-$$-${RANDOM}.c"
+TMP_CC="${TMPDIRx}/vpx-conf-$$-${RANDOM}.cc"
 TMP_O="${TMPDIRx}/vpx-conf-$$-${RANDOM}.o"
 TMP_X="${TMPDIRx}/vpx-conf-$$-${RANDOM}.x"
 TMP_ASM="${TMPDIRx}/vpx-conf-$$-${RANDOM}.asm"
 
 clean_temp_files() {
-    rm -f ${TMP_C} ${TMP_H} ${TMP_O} ${TMP_X} ${TMP_ASM}
+    rm -f ${TMP_C} ${TMP_CC} ${TMP_H} ${TMP_O} ${TMP_X} ${TMP_ASM}
 }
 
 #
 # Toolchain Check Functions
 #
 check_cmd() {
+    enabled external_build && return
     log "$@"
     "$@" >>${logfile} 2>&1
 }
@@ -290,9 +293,9 @@ check_cc() {
 
 check_cxx() {
     log check_cxx "$@"
-    cat >${TMP_C}
-    log_file ${TMP_C}
-    check_cmd ${CXX} ${CXXFLAGS} "$@" -c -o ${TMP_O} ${TMP_C}
+    cat >${TMP_CC}
+    log_file ${TMP_CC}
+    check_cmd ${CXX} ${CXXFLAGS} "$@" -c -o ${TMP_O} ${TMP_CC}
 }
 
 check_cpp() {
@@ -414,6 +417,8 @@ SRC_PATH_BARE=$source_path
 BUILD_PFX=${BUILD_PFX}
 TOOLCHAIN=${toolchain}
 ASM_CONVERSION=${asm_conversion_cmd:-${source_path}/build/make/ads2gas.pl}
+GEN_VCPROJ=${gen_vcproj_cmd}
+MSVS_ARCH_DIR=${msvs_arch_dir}
 
 CC=${CC}
 CXX=${CXX}
@@ -431,14 +436,15 @@ ASFLAGS = ${ASFLAGS}
 extralibs = ${extralibs}
 AS_SFX    = ${AS_SFX:-.asm}
 EXE_SFX   = ${EXE_SFX}
+VCPROJ_SFX = ${VCPROJ_SFX}
 RTCD_OPTIONS = ${RTCD_OPTIONS}
 EOF
 
     if enabled rvct; then cat >> $1 << EOF
-fmt_deps = sed -e 's;^__image.axf;\$(dir \$@)\$(notdir \$<).o \$@;' #hide
+fmt_deps = sed -e 's;^__image.axf;\${@:.d=.o} \$@;' #hide
 EOF
     else cat >> $1 << EOF
-fmt_deps = sed -e 's;^\([a-zA-Z0-9_]*\)\.o;\$(dir \$@)\1\$(suffix \$<).o \$@;'
+fmt_deps = sed -e 's;^\([a-zA-Z0-9_]*\)\.o;\${@:.d=.o} \$@;'
 EOF
     fi
 
@@ -459,6 +465,7 @@ write_common_target_config_h() {
 #ifndef VPX_CONFIG_H
 #define VPX_CONFIG_H
 #define RESTRICT    ${RESTRICT}
+#define INLINE      ${INLINE}
 EOF
     print_config_h ARCH   "${TMP_H}" ${ARCH_LIST}
     print_config_h HAVE   "${TMP_H}" ${HAVE_LIST}
@@ -596,8 +603,13 @@ process_common_toolchain() {
             armv6*)
                 tgt_isa=armv6
                 ;;
+            armv7*-hardfloat*)
+                tgt_isa=armv7
+                float_abi=hard
+                ;;
             armv7*)
                 tgt_isa=armv7
+                float_abi=softfp
                 ;;
             armv5te*)
                 tgt_isa=armv5te
@@ -640,6 +652,9 @@ process_common_toolchain() {
             *darwin12*)
                 tgt_isa=x86_64
                 tgt_os=darwin12
+                ;;
+            x86_64*mingw32*)
+                tgt_os=win64
                 ;;
             *mingw32*|*cygwin*)
                 [ -z "$tgt_isa" ] && tgt_isa=x86
@@ -767,6 +782,7 @@ process_common_toolchain() {
             ;;
         armv5te)
             soft_enable edsp
+            disable fast_unaligned
             ;;
         esac
 
@@ -782,8 +798,15 @@ process_common_toolchain() {
             check_add_asflags --defsym ARCHITECTURE=${arch_int}
             tune_cflags="-mtune="
             if [ ${tgt_isa} == "armv7" ]; then
-                check_add_cflags  -march=armv7-a -mfloat-abi=softfp
-                check_add_asflags -march=armv7-a -mfloat-abi=softfp
+                if [ -z "${float_abi}" ]; then
+                    check_cpp <<EOF && float_abi=hard || float_abi=softfp
+#ifndef __ARM_PCS_VFP
+#error "not hardfp"
+#endif
+EOF
+                fi
+                check_add_cflags  -march=armv7-a -mfloat-abi=${float_abi}
+                check_add_asflags -march=armv7-a -mfloat-abi=${float_abi}
 
                 if enabled neon
                 then
@@ -801,6 +824,18 @@ process_common_toolchain() {
 
             enabled debug && add_asflags -g
             asm_conversion_cmd="${source_path}/build/make/ads2gas.pl"
+            if enabled thumb; then
+                asm_conversion_cmd="$asm_conversion_cmd -thumb"
+                check_add_cflags -mthumb
+                check_add_asflags -mthumb -mimplicit-it=always
+            fi
+            ;;
+        vs*)
+            asm_conversion_cmd="${source_path}/build/make/ads2armasm_ms.pl"
+            AS_SFX=.s
+            msvs_arch_dir=arm-msvs
+            disable multithread
+            disable unit_tests
             ;;
         rvct)
             CC=armcc
@@ -906,7 +941,7 @@ process_common_toolchain() {
             add_ldflags -arch_only ${tgt_isa}
 
             if [ -z "${alt_libc}" ]; then
-                alt_libc=${SDK_PATH}/SDKs/iPhoneOS5.1.sdk
+                alt_libc=${SDK_PATH}/SDKs/iPhoneOS6.0.sdk
             fi
 
             add_cflags  "-isysroot ${alt_libc}"
@@ -994,13 +1029,6 @@ process_common_toolchain() {
 #error "not x32"
 #endif
 EOF
-        soft_enable runtime_cpu_detect
-        soft_enable mmx
-        soft_enable sse
-        soft_enable sse2
-        soft_enable sse3
-        soft_enable ssse3
-        soft_enable sse4_1
 
         case  ${tgt_os} in
             win*)
@@ -1042,17 +1070,32 @@ EOF
                 add_ldflags -m${bits}
                 link_with_cc=gcc
                 tune_cflags="-march="
-            setup_gnu_toolchain
+                setup_gnu_toolchain
                 #for 32 bit x86 builds, -O3 did not turn on this flag
-                enabled optimizations && check_add_cflags -fomit-frame-pointer
+                enabled optimizations && disabled gprof && check_add_cflags -fomit-frame-pointer
             ;;
             vs*)
                 # When building with Microsoft Visual Studio the assembler is
                 # invoked directly. Checking at configure time is unnecessary.
                 # Skip the check by setting AS arbitrarily
                 AS=msvs
+                msvs_arch_dir=x86-msvs
             ;;
         esac
+
+        soft_enable runtime_cpu_detect
+        soft_enable mmx
+        soft_enable sse
+        soft_enable sse2
+        soft_enable sse3
+        soft_enable ssse3
+        # We can't use 'check_cflags' until the compiler is configured and CC is
+        # populated.
+        if enabled gcc && ! disabled sse4_1 && ! check_cflags -msse4; then
+            RTCD_OPTIONS="${RTCD_OPTIONS}--disable-sse4_1 "
+        else
+            soft_enable sse4_1
+        fi
 
         case "${AS}" in
             auto|"")
@@ -1069,12 +1112,14 @@ EOF
             win32)
                 add_asflags -f win32
                 enabled debug && add_asflags -g cv8
+                EXE_SFX=.exe
             ;;
             win64)
                 add_asflags -f x64
                 enabled debug && add_asflags -g cv8
+                EXE_SFX=.exe
             ;;
-            linux*|solaris*)
+            linux*|solaris*|android*)
                 add_asflags -f elf${bits}
                 enabled debug && [ "${AS}" = yasm ] && add_asflags -g dwarf2
                 enabled debug && [ "${AS}" = nasm ] && add_asflags -g
@@ -1154,6 +1199,14 @@ EOF
     [ -f "${TMP_O}" ] && od -A n -t x1 "${TMP_O}" | tr -d '\n' |
         grep '4f *32 *42 *45' >/dev/null 2>&1 && enable big_endian
 
+    # Try to find which inline keywords are supported
+    check_cc <<EOF && INLINE="inline"
+    static inline function() {}
+EOF
+    check_cc <<EOF && INLINE="__inline__ __attribute__((always_inline))"
+    static __attribute__((always_inline)) function() {}
+EOF
+
     # Almost every platform uses pthreads.
     if enabled multithread; then
         case ${toolchain} in
@@ -1174,9 +1227,6 @@ EOF
             fi
         ;;
     esac
-
-    # for sysconf(3) and friends.
-    check_header unistd.h
 
     # glibc needs these
     if enabled linux; then

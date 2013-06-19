@@ -43,7 +43,7 @@
 #define AF_THRESH   25
 #define AF_THRESH2  100
 #define ARF_DECAY_THRESH 12
-#define MAX_MODES 20
+
 
 #define MIN_THRESHMULT  32
 #define MAX_THRESHMULT  512
@@ -282,17 +282,17 @@ typedef struct VP8_COMP
 {
 
     DECLARE_ALIGNED(16, short, Y1quant[QINDEX_RANGE][16]);
-    DECLARE_ALIGNED(16, unsigned char, Y1quant_shift[QINDEX_RANGE][16]);
+    DECLARE_ALIGNED(16, short, Y1quant_shift[QINDEX_RANGE][16]);
     DECLARE_ALIGNED(16, short, Y1zbin[QINDEX_RANGE][16]);
     DECLARE_ALIGNED(16, short, Y1round[QINDEX_RANGE][16]);
 
     DECLARE_ALIGNED(16, short, Y2quant[QINDEX_RANGE][16]);
-    DECLARE_ALIGNED(16, unsigned char, Y2quant_shift[QINDEX_RANGE][16]);
+    DECLARE_ALIGNED(16, short, Y2quant_shift[QINDEX_RANGE][16]);
     DECLARE_ALIGNED(16, short, Y2zbin[QINDEX_RANGE][16]);
     DECLARE_ALIGNED(16, short, Y2round[QINDEX_RANGE][16]);
 
     DECLARE_ALIGNED(16, short, UVquant[QINDEX_RANGE][16]);
-    DECLARE_ALIGNED(16, unsigned char, UVquant_shift[QINDEX_RANGE][16]);
+    DECLARE_ALIGNED(16, short, UVquant_shift[QINDEX_RANGE][16]);
     DECLARE_ALIGNED(16, short, UVzbin[QINDEX_RANGE][16]);
     DECLARE_ALIGNED(16, short, UVround[QINDEX_RANGE][16]);
 
@@ -349,13 +349,8 @@ typedef struct VP8_COMP
     int ambient_err;
 
     unsigned int mode_check_freq[MAX_MODES];
-    unsigned int mode_test_hit_counts[MAX_MODES];
-    unsigned int mode_chosen_counts[MAX_MODES];
-    unsigned int mbs_tested_so_far;
 
-    int rd_thresh_mult[MAX_MODES];
     int rd_baseline_thresh[MAX_MODES];
-    int rd_threshes[MAX_MODES];
 
     int RDMULT;
     int RDDIV ;
@@ -416,12 +411,6 @@ typedef struct VP8_COMP
     int ni_frames;
     int avg_frame_qindex;
 
-    int zbin_over_quant;
-    int zbin_mode_boost;
-    int zbin_mode_boost_enabled;
-    int last_zbin_over_quant;
-    int last_zbin_mode_boost;
-
     int64_t total_byte_count;
 
     int buffered_mode;
@@ -477,7 +466,6 @@ typedef struct VP8_COMP
     int Speed;
     int compressor_speed;
 
-    int interquantizer;
     int auto_gold;
     int auto_adjust_gold_quantizer;
     int auto_worst_q;
@@ -493,24 +481,16 @@ typedef struct VP8_COMP
     int last_skip_probs_q[3];
     int recent_ref_frame_usage[MAX_REF_FRAMES];
 
-    int count_mb_ref_frame_usage[MAX_REF_FRAMES];
     int this_frame_percent_intra;
     int last_frame_percent_intra;
 
     int ref_frame_flags;
 
     SPEED_FEATURES sf;
-    int error_bins[1024];
 
-    /* Data used for real time conferencing mode to help determine if it
-     * would be good to update the gf
-     */
-    int inter_zz_count;
     /* Count ZEROMV on all reference frames. */
     int zeromv_count;
     int lf_zeromv_pct;
-    int gf_bad_count;
-    int gf_update_recommended;
 
     unsigned char *segmentation_map;
     signed char segment_feature_data[MB_LVL_MAX][MAX_MB_SEGMENTS];
@@ -528,6 +508,10 @@ typedef struct VP8_COMP
     int cyclic_refresh_mode_index;
     int cyclic_refresh_q;
     signed char *cyclic_refresh_map;
+
+    // Frame counter for the temporal pattern. Counter is rest when the temporal
+    // layers are changed dynamically (run-time change).
+    unsigned int temporal_pattern_counter;
 
 #if CONFIG_MULTITHREAD
     /* multithread data */
@@ -606,7 +590,7 @@ typedef struct VP8_COMP
         /* Error score of frames still to be coded in kf group */
         int64_t kf_group_error_left;
         /* Projected Bits available for a group including 1 GF or ARF */
-        int gf_group_bits;
+        int64_t gf_group_bits;
         /* Bits for the golden frame or ARF */
         int gf_bits;
         int alt_extra_bits;
@@ -712,11 +696,8 @@ typedef struct VP8_COMP
     } rd_costs;
 } VP8_COMP;
 
-void control_data_rate(VP8_COMP *cpi);
-
-void vp8_pack_bitstream(VP8_COMP *cpi, unsigned char *dest, unsigned char *dest_end, unsigned long *size);
-
-int rd_cost_intra_mb(MACROBLOCKD *x);
+void vp8_pack_bitstream(VP8_COMP *cpi, unsigned char *dest,
+                        unsigned char *dest_end, unsigned long *size);
 
 void vp8_tokenize_mb(VP8_COMP *, MACROBLOCK *, TOKENEXTRA **);
 

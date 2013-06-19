@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <stdio.h>
 
+#include "./vpx_scale_rtcd.h"
 #include "block.h"
 #include "onyx_int.h"
 #include "vp8/common/variance.h"
@@ -20,7 +21,7 @@
 #include "vp8/common/systemdependent.h"
 #include "mcomp.h"
 #include "firstpass.h"
-#include "vpx_scale/vpxscale.h"
+#include "vpx_scale/vpx_scale.h"
 #include "encodemb.h"
 #include "vp8/common/extend.h"
 #include "vpx_mem/vpx_mem.h"
@@ -569,7 +570,7 @@ void vp8_first_pass(VP8_COMP *cpi)
     /* Initialise the MV cost table to the defaults */
     {
         int flag[2] = {1, 1};
-        vp8_initialize_rd_consts(cpi, vp8_dc_quant(cm->base_qindex, cm->y1dc_delta_q));
+        vp8_initialize_rd_consts(cpi, x, vp8_dc_quant(cm->base_qindex, cm->y1dc_delta_q));
         vpx_memcpy(cm->fc.mvc, vp8_default_mv_context, sizeof(vp8_default_mv_context));
         vp8_build_component_cost_table(cpi->mb.mvcost, (const MV_CONTEXT *) cm->fc.mvc, flag);
     }
@@ -857,7 +858,9 @@ skip_motion_search:
      */
     if ((cm->current_video_frame > 0) &&
         (cpi->twopass.this_frame_stats.pcnt_inter > 0.20) &&
-        ((cpi->twopass.this_frame_stats.intra_error / cpi->twopass.this_frame_stats.coded_error) > 2.0))
+        ((cpi->twopass.this_frame_stats.intra_error /
+          DOUBLE_DIVIDE_CHECK(cpi->twopass.this_frame_stats.coded_error)) >
+         2.0))
     {
         vp8_yv12_copy_frame(lst_yv12, gld_yv12);
     }
@@ -2115,23 +2118,25 @@ static void define_gf_group(VP8_COMP *cpi, FIRSTPASS_STATS *this_frame)
         (cpi->twopass.kf_group_error_left > 0))
     {
         cpi->twopass.gf_group_bits =
-            (int)((double)cpi->twopass.kf_group_bits *
-                  (gf_group_err / (double)cpi->twopass.kf_group_error_left));
+            (int64_t)(cpi->twopass.kf_group_bits *
+                      (gf_group_err / cpi->twopass.kf_group_error_left));
     }
     else
         cpi->twopass.gf_group_bits = 0;
 
-    cpi->twopass.gf_group_bits = (int)(
+    cpi->twopass.gf_group_bits =
         (cpi->twopass.gf_group_bits < 0)
             ? 0
             : (cpi->twopass.gf_group_bits > cpi->twopass.kf_group_bits)
-                ? cpi->twopass.kf_group_bits : cpi->twopass.gf_group_bits);
+                ? cpi->twopass.kf_group_bits : cpi->twopass.gf_group_bits;
 
     /* Clip cpi->twopass.gf_group_bits based on user supplied data rate
      * variability limit (cpi->oxcf.two_pass_vbrmax_section)
      */
-    if (cpi->twopass.gf_group_bits > max_bits * cpi->baseline_gf_interval)
-        cpi->twopass.gf_group_bits = max_bits * cpi->baseline_gf_interval;
+    if (cpi->twopass.gf_group_bits >
+        (int64_t)max_bits * cpi->baseline_gf_interval)
+        cpi->twopass.gf_group_bits =
+            (int64_t)max_bits * cpi->baseline_gf_interval;
 
     /* Reset the file position */
     reset_fpf_position(cpi, start_pos);
@@ -2445,7 +2450,7 @@ void vp8_second_pass(VP8_COMP *cpi)
          */
         if (cpi->oxcf.error_resilient_mode)
         {
-            cpi->twopass.gf_group_bits = (int)cpi->twopass.kf_group_bits;
+            cpi->twopass.gf_group_bits = cpi->twopass.kf_group_bits;
             cpi->twopass.gf_group_error_left =
                                   (int)cpi->twopass.kf_group_error_left;
             cpi->baseline_gf_interval = cpi->twopass.frames_to_key;

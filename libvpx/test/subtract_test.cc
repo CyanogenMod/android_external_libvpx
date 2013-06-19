@@ -10,9 +10,11 @@
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
 #include "test/acm_random.h"
+#include "test/clear_system_state.h"
+#include "test/register_state_check.h"
 extern "C" {
 #include "vpx_config.h"
-#include "vpx_rtcd.h"
+#include "vp8_rtcd.h"
 #include "vp8/common/blockd.h"
 #include "vp8/encoder/block.h"
 #include "vpx_mem/vpx_mem.h"
@@ -22,7 +24,12 @@ typedef void (*subtract_b_fn_t)(BLOCK *be, BLOCKD *bd, int pitch);
 
 namespace {
 
-class SubtractBlockTest : public ::testing::TestWithParam<subtract_b_fn_t> {};
+class SubtractBlockTest : public ::testing::TestWithParam<subtract_b_fn_t> {
+ public:
+  virtual void TearDown() {
+    libvpx_test::ClearSystemState();
+  }
+};
 
 using libvpx_test::ACMRandom;
 
@@ -77,7 +84,7 @@ TEST_P(SubtractBlockTest, SimpleSubtract) {
       predictor += kDiffPredStride;
     }
 
-    GetParam()(&be, &bd, kDiffPredStride);
+    REGISTER_STATE_CHECK(GetParam()(&be, &bd, kDiffPredStride));
 
     base_src = *be.base_src;
     src_diff = be.src_diff;

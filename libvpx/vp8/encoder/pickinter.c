@@ -389,7 +389,7 @@ static void pick_intra_mbuv_mode(MACROBLOCK *mb)
 
 }
 
-static void update_mvcount(VP8_COMP *cpi, MACROBLOCK *x, int_mv *best_ref_mv)
+static void update_mvcount(MACROBLOCK *x, int_mv *best_ref_mv)
 {
     MACROBLOCKD *xd = &x->e_mbd;
     /* Split MV modes currently not supported when RD is nopt enabled,
@@ -594,6 +594,7 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
     unsigned int zero_mv_sse = INT_MAX, best_sse = INT_MAX;
 #endif
 
+    int sf_improved_mv_pred = cpi->sf.improved_mv_pred;
     int_mv mvp;
 
     int near_sadidx[8] = {0, 1, 2, 3, 4, 5, 6, 7};
@@ -680,7 +681,7 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
     get_predictor_pointers(cpi, plane, recon_yoffset, recon_uvoffset);
 
     /* Count of the number of MBs tested so far this frame */
-    cpi->mbs_tested_so_far++;
+    x->mbs_tested_so_far++;
 
     *returnintra = INT_MAX;
     x->skip = 0;
@@ -701,7 +702,7 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
         int this_rd = INT_MAX;
         int this_ref_frame = ref_frame_map[vp8_ref_frame_order[mode_index]];
 
-        if (best_rd <= cpi->rd_threshes[mode_index])
+        if (best_rd <= x->rd_threshes[mode_index])
             continue;
 
         if (this_ref_frame < 0)
@@ -746,22 +747,22 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
         /* Check to see if the testing frequency for this mode is at its max
          * If so then prevent it from being tested and increase the threshold
          * for its testing */
-        if (cpi->mode_test_hit_counts[mode_index] &&
+        if (x->mode_test_hit_counts[mode_index] &&
                                          (cpi->mode_check_freq[mode_index] > 1))
         {
-            if (cpi->mbs_tested_so_far <= (cpi->mode_check_freq[mode_index] *
-                                         cpi->mode_test_hit_counts[mode_index]))
+            if (x->mbs_tested_so_far <= (cpi->mode_check_freq[mode_index] *
+                                         x->mode_test_hit_counts[mode_index]))
             {
                 /* Increase the threshold for coding this mode to make it less
                  * likely to be chosen */
-                cpi->rd_thresh_mult[mode_index] += 4;
+                x->rd_thresh_mult[mode_index] += 4;
 
-                if (cpi->rd_thresh_mult[mode_index] > MAX_THRESHMULT)
-                    cpi->rd_thresh_mult[mode_index] = MAX_THRESHMULT;
+                if (x->rd_thresh_mult[mode_index] > MAX_THRESHMULT)
+                    x->rd_thresh_mult[mode_index] = MAX_THRESHMULT;
 
-                cpi->rd_threshes[mode_index] =
+                x->rd_threshes[mode_index] =
                                  (cpi->rd_baseline_thresh[mode_index] >> 7) *
-                                 cpi->rd_thresh_mult[mode_index];
+                                 x->rd_thresh_mult[mode_index];
                 continue;
             }
         }
@@ -769,7 +770,7 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
         /* We have now reached the point where we are going to test the current
          * mode so increment the counter for the number of times it has been
          * tested */
-        cpi->mode_test_hit_counts[mode_index] ++;
+        x->mode_test_hit_counts[mode_index] ++;
 
         rate2 = 0;
         distortion2 = 0;
@@ -882,7 +883,7 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
                last frame motion info is not stored, then we can not
                use improved_mv_pred. */
             if (cpi->oxcf.mr_encoder_id && !parent_ref_valid)
-                cpi->sf.improved_mv_pred = 0;
+                sf_improved_mv_pred = 0;
 
             if (parent_ref_valid && parent_ref_frame)
             {
@@ -899,7 +900,7 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
             }else
 #endif
             {
-                if(cpi->sf.improved_mv_pred)
+                if(sf_improved_mv_pred)
                 {
                     if(!saddone)
                     {
@@ -1109,12 +1110,12 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
             /* Testing this mode gave rise to an improvement in best error
              * score. Lower threshold a bit for next time
              */
-            cpi->rd_thresh_mult[mode_index] =
-                     (cpi->rd_thresh_mult[mode_index] >= (MIN_THRESHMULT + 2)) ?
-                     cpi->rd_thresh_mult[mode_index] - 2 : MIN_THRESHMULT;
-            cpi->rd_threshes[mode_index] =
+            x->rd_thresh_mult[mode_index] =
+                     (x->rd_thresh_mult[mode_index] >= (MIN_THRESHMULT + 2)) ?
+                     x->rd_thresh_mult[mode_index] - 2 : MIN_THRESHMULT;
+            x->rd_threshes[mode_index] =
                                    (cpi->rd_baseline_thresh[mode_index] >> 7) *
-                                   cpi->rd_thresh_mult[mode_index];
+                                   x->rd_thresh_mult[mode_index];
         }
 
         /* If the mode did not help improve the best error case then raise the
@@ -1122,14 +1123,14 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
          */
         else
         {
-            cpi->rd_thresh_mult[mode_index] += 4;
+            x->rd_thresh_mult[mode_index] += 4;
 
-            if (cpi->rd_thresh_mult[mode_index] > MAX_THRESHMULT)
-                cpi->rd_thresh_mult[mode_index] = MAX_THRESHMULT;
+            if (x->rd_thresh_mult[mode_index] > MAX_THRESHMULT)
+                x->rd_thresh_mult[mode_index] = MAX_THRESHMULT;
 
-            cpi->rd_threshes[mode_index] =
+            x->rd_threshes[mode_index] =
                          (cpi->rd_baseline_thresh[mode_index] >> 7) *
-                         cpi->rd_thresh_mult[mode_index];
+                         x->rd_thresh_mult[mode_index];
         }
 
         if (x->skip)
@@ -1139,16 +1140,16 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
     /* Reduce the activation RD thresholds for the best choice mode */
     if ((cpi->rd_baseline_thresh[best_mode_index] > 0) && (cpi->rd_baseline_thresh[best_mode_index] < (INT_MAX >> 2)))
     {
-        int best_adjustment = (cpi->rd_thresh_mult[best_mode_index] >> 3);
+        int best_adjustment = (x->rd_thresh_mult[best_mode_index] >> 3);
 
-        cpi->rd_thresh_mult[best_mode_index] =
-                        (cpi->rd_thresh_mult[best_mode_index]
+        x->rd_thresh_mult[best_mode_index] =
+                        (x->rd_thresh_mult[best_mode_index]
                         >= (MIN_THRESHMULT + best_adjustment)) ?
-                        cpi->rd_thresh_mult[best_mode_index] - best_adjustment :
+                        x->rd_thresh_mult[best_mode_index] - best_adjustment :
                         MIN_THRESHMULT;
-        cpi->rd_threshes[best_mode_index] =
+        x->rd_threshes[best_mode_index] =
                         (cpi->rd_baseline_thresh[best_mode_index] >> 7) *
-                        cpi->rd_thresh_mult[best_mode_index];
+                        x->rd_thresh_mult[best_mode_index];
     }
 
 
@@ -1160,7 +1161,7 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
             this_rdbin = 1023;
         }
 
-        cpi->error_bins[this_rdbin] ++;
+        x->error_bins[this_rdbin] ++;
     }
 
 #if CONFIG_TEMPORAL_DENOISING
@@ -1241,7 +1242,7 @@ void vp8_pick_inter_mode(VP8_COMP *cpi, MACROBLOCK *x, int recon_yoffset,
       != cpi->common.ref_frame_sign_bias[xd->mode_info_context->mbmi.ref_frame])
         best_ref_mv.as_int = best_ref_mv_sb[!sign_bias].as_int;
 
-    update_mvcount(cpi, x, &best_ref_mv);
+    update_mvcount(x, &best_ref_mv);
 }
 
 

@@ -9,7 +9,7 @@
  */
 
 
-#include "vpx_rtcd.h"
+#include "vp8_rtcd.h"
 #include "vpx/vpx_codec.h"
 #include "vpx/internal/vpx_codec_internal.h"
 #include "vpx_version.h"
@@ -582,7 +582,7 @@ static vpx_codec_err_t vp8e_init(vpx_codec_ctx_t *ctx,
 
     struct VP8_COMP *optr;
 
-    vpx_rtcd();
+    vp8_rtcd();
 
     if (!ctx->priv)
     {
@@ -684,6 +684,8 @@ static vpx_codec_err_t image2yuvconfig(const vpx_image_t   *img,
     yv12->u_buffer = img->planes[VPX_PLANE_U];
     yv12->v_buffer = img->planes[VPX_PLANE_V];
 
+    yv12->y_crop_width  = img->d_w;
+    yv12->y_crop_height = img->d_h;
     yv12->y_width  = img->d_w;
     yv12->y_height = img->d_h;
     yv12->uv_width = (1 + yv12->y_width) / 2;
@@ -1178,7 +1180,9 @@ static vpx_codec_err_t vp8e_set_scalemode(vpx_codec_alg_priv_t *ctx,
     {
         int res;
         vpx_scaling_mode_t scalemode = *(vpx_scaling_mode_t *)data ;
-        res = vp8_set_internal_size(ctx->cpi, scalemode.h_scaling_mode, scalemode.v_scaling_mode);
+        res = vp8_set_internal_size(ctx->cpi,
+                                    (VPX_SCALING)scalemode.h_scaling_mode,
+                                    (VPX_SCALING)scalemode.v_scaling_mode);
 
         if (!res)
         {

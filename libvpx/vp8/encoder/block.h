@@ -18,6 +18,9 @@
 #include "vp8/common/entropy.h"
 #include "vpx_ports/mem.h"
 
+#define MAX_MODES 20
+#define MAX_ERROR_BINS 1024
+
 /* motion search site */
 typedef struct
 {
@@ -34,7 +37,7 @@ typedef struct block
     /* 16 Y blocks, 4 U blocks, 4 V blocks each with 16 entries */
     short *quant;
     short *quant_fast;
-    unsigned char *quant_shift;
+    short *quant_shift;
     short *zbin;
     short *zrun_zbin_boost;
     short *round;
@@ -134,7 +137,19 @@ typedef struct macroblock
     int uv_mode_count[VP8_UV_MODES];     /* intra MB type cts this frame */
     int64_t prediction_error;
     int64_t intra_error;
+    int count_mb_ref_frame_usage[MAX_REF_FRAMES];
 
+    int rd_thresh_mult[MAX_MODES];
+    int rd_threshes[MAX_MODES];
+    unsigned int mbs_tested_so_far;
+    unsigned int mode_test_hit_counts[MAX_MODES];
+    int zbin_mode_boost_enabled;
+    int zbin_mode_boost;
+    int last_zbin_mode_boost;
+
+    int last_zbin_over_quant;
+    int zbin_over_quant;
+    int error_bins[MAX_ERROR_BINS];
 
     void (*short_fdct4x4)(short *input, short *output, int pitch);
     void (*short_fdct8x4)(short *input, short *output, int pitch);

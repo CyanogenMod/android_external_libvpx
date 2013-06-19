@@ -614,7 +614,6 @@ static void calc_gf_params(VP8_COMP *cpi)
 static void calc_pframe_target_size(VP8_COMP *cpi)
 {
     int min_frame_target;
-    int Adjustment;
     int old_per_frame_bandwidth = cpi->per_frame_bandwidth;
 
     if ( cpi->current_layer > 0)
@@ -658,6 +657,7 @@ static void calc_pframe_target_size(VP8_COMP *cpi)
         /* 1 pass */
         else
         {
+            int Adjustment;
             /* Make rate adjustment to recover bits spent in key frame
              * Test to see if the key frame inter data rate correction
              * should still be in force
@@ -688,7 +688,7 @@ static void calc_pframe_target_size(VP8_COMP *cpi)
              */
             if ((cpi->gf_overspend_bits > 0) && (cpi->this_frame_target > min_frame_target))
             {
-                int Adjustment = (cpi->non_gf_bitrate_adjustment <= cpi->gf_overspend_bits) ? cpi->non_gf_bitrate_adjustment : cpi->gf_overspend_bits;
+                Adjustment = (cpi->non_gf_bitrate_adjustment <= cpi->gf_overspend_bits) ? cpi->non_gf_bitrate_adjustment : cpi->gf_overspend_bits;
 
                 if (Adjustment > (cpi->this_frame_target - min_frame_target))
                     Adjustment = (cpi->this_frame_target - min_frame_target);
@@ -1109,7 +1109,9 @@ void vp8_update_rate_correction_factors(VP8_COMP *cpi, int damp_var)
     }
     else
     {
-        if (cpi->common.refresh_alt_ref_frame || cpi->common.refresh_golden_frame)
+        if (cpi->oxcf.number_of_layers == 1 &&
+           (cpi->common.refresh_alt_ref_frame ||
+            cpi->common.refresh_golden_frame))
             rate_correction_factor = cpi->gf_rate_correction_factor;
         else
             rate_correction_factor = cpi->rate_correction_factor;
@@ -1122,9 +1124,9 @@ void vp8_update_rate_correction_factors(VP8_COMP *cpi, int damp_var)
     projected_size_based_on_q = (int)(((.5 + rate_correction_factor * vp8_bits_per_mb[cpi->common.frame_type][Q]) * cpi->common.MBs) / (1 << BPER_MB_NORMBITS));
 
     /* Make some allowance for cpi->zbin_over_quant */
-    if (cpi->zbin_over_quant > 0)
+    if (cpi->mb.zbin_over_quant > 0)
     {
-        int Z = cpi->zbin_over_quant;
+        int Z = cpi->mb.zbin_over_quant;
         double Factor = 0.99;
         double factor_adjustment = 0.01 / 256.0;
 
@@ -1186,7 +1188,9 @@ void vp8_update_rate_correction_factors(VP8_COMP *cpi, int damp_var)
         cpi->key_frame_rate_correction_factor = rate_correction_factor;
     else
     {
-        if (cpi->common.refresh_alt_ref_frame || cpi->common.refresh_golden_frame)
+        if (cpi->oxcf.number_of_layers == 1 &&
+           (cpi->common.refresh_alt_ref_frame ||
+            cpi->common.refresh_golden_frame))
             cpi->gf_rate_correction_factor = rate_correction_factor;
         else
             cpi->rate_correction_factor = rate_correction_factor;
@@ -1199,7 +1203,7 @@ int vp8_regulate_q(VP8_COMP *cpi, int target_bits_per_frame)
     int Q = cpi->active_worst_quality;
 
     /* Reset Zbin OQ value */
-    cpi->zbin_over_quant = 0;
+    cpi->mb.zbin_over_quant = 0;
 
     if (cpi->oxcf.fixed_q >= 0)
     {
@@ -1209,11 +1213,13 @@ int vp8_regulate_q(VP8_COMP *cpi, int target_bits_per_frame)
         {
             Q = cpi->oxcf.key_q;
         }
-        else if (cpi->common.refresh_alt_ref_frame)
+        else if (cpi->oxcf.number_of_layers == 1 &&
+            cpi->common.refresh_alt_ref_frame)
         {
             Q = cpi->oxcf.alt_q;
         }
-        else if (cpi->common.refresh_golden_frame)
+        else if (cpi->oxcf.number_of_layers == 1  &&
+            cpi->common.refresh_golden_frame)
         {
             Q = cpi->oxcf.gold_q;
         }
@@ -1232,7 +1238,9 @@ int vp8_regulate_q(VP8_COMP *cpi, int target_bits_per_frame)
             correction_factor = cpi->key_frame_rate_correction_factor;
         else
         {
-            if (cpi->common.refresh_alt_ref_frame || cpi->common.refresh_golden_frame)
+            if (cpi->oxcf.number_of_layers == 1 &&
+               (cpi->common.refresh_alt_ref_frame ||
+                cpi->common.refresh_golden_frame))
                 correction_factor = cpi->gf_rate_correction_factor;
             else
                 correction_factor = cpi->rate_correction_factor;
@@ -1281,7 +1289,10 @@ int vp8_regulate_q(VP8_COMP *cpi, int target_bits_per_frame)
 
             if (cpi->common.frame_type == KEY_FRAME)
                 zbin_oqmax = 0;
-            else if (cpi->common.refresh_alt_ref_frame || (cpi->common.refresh_golden_frame && !cpi->source_alt_ref_active))
+            else if (cpi->oxcf.number_of_layers == 1 &&
+                (cpi->common.refresh_alt_ref_frame ||
+                (cpi->common.refresh_golden_frame &&
+                 !cpi->source_alt_ref_active)))
                 zbin_oqmax = 16;
             else
                 zbin_oqmax = ZBIN_OQ_MAX;
@@ -1307,12 +1318,12 @@ int vp8_regulate_q(VP8_COMP *cpi, int target_bits_per_frame)
              * normal maximum by expanding the zero bin and hence
              * decreasing the number of low magnitude non zero coefficients.
              */
-            while (cpi->zbin_over_quant < zbin_oqmax)
+            while (cpi->mb.zbin_over_quant < zbin_oqmax)
             {
-                cpi->zbin_over_quant ++;
+                cpi->mb.zbin_over_quant ++;
 
-                if (cpi->zbin_over_quant > zbin_oqmax)
-                    cpi->zbin_over_quant = zbin_oqmax;
+                if (cpi->mb.zbin_over_quant > zbin_oqmax)
+                    cpi->mb.zbin_over_quant = zbin_oqmax;
 
                 /* Adjust bits_per_mb_at_this_q estimate */
                 bits_per_mb_at_this_q = (int)(Factor * bits_per_mb_at_this_q);
@@ -1349,10 +1360,10 @@ static int estimate_keyframe_frequency(VP8_COMP *cpi)
          * whichever is smaller.
          */
         int key_freq = cpi->oxcf.key_freq>0 ? cpi->oxcf.key_freq : 1;
-        av_key_frame_frequency = (int)cpi->output_frame_rate * 2;
+        av_key_frame_frequency = 1 + (int)cpi->output_frame_rate * 2;
 
         if (cpi->oxcf.auto_key && av_key_frame_frequency > key_freq)
-            av_key_frame_frequency = cpi->oxcf.key_freq;
+            av_key_frame_frequency = key_freq;
 
         cpi->prior_key_frame_distance[KEY_FRAME_CONTEXT - 1]
             = av_key_frame_frequency;
@@ -1382,6 +1393,10 @@ static int estimate_keyframe_frequency(VP8_COMP *cpi)
         av_key_frame_frequency  /= total_weight;
 
     }
+    // TODO (marpan): Given the checks above, |av_key_frame_frequency|
+    // should always be above 0. But for now we keep the sanity check in.
+    if (av_key_frame_frequency == 0)
+        av_key_frame_frequency = 1;
     return av_key_frame_frequency;
 }
 
