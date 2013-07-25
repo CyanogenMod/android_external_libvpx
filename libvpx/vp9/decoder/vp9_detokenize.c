@@ -18,14 +18,8 @@
 #include "vp9/decoder/vp9_detokenize.h"
 #include "vp9/decoder/vp9_onyxd_int.h"
 
-#if CONFIG_BALANCED_COEFTREE
-#define ZERO_CONTEXT_NODE           0
-#define EOB_CONTEXT_NODE            1
-#else
 #define EOB_CONTEXT_NODE            0
 #define ZERO_CONTEXT_NODE           1
-#endif
-
 #define ONE_CONTEXT_NODE            2
 #define LOW_VAL_CONTEXT_NODE        3
 #define TWO_CONTEXT_NODE            4
@@ -91,13 +85,15 @@ DECLARE_ALIGNED(16, extern const uint8_t,
       val += 1 << bits_count;          \
   } while (0);
 
-static int decode_coefs(FRAME_CONTEXT *fc, const MACROBLOCKD *xd,
+static int decode_coefs(VP9_COMMON *cm, const MACROBLOCKD *xd,
                         vp9_reader *r, int block_idx,
                         PLANE_TYPE type, int seg_eob, int16_t *qcoeff_ptr,
                         TX_SIZE txfm_size, const int16_t *dq,
                         ENTROPY_CONTEXT *A, ENTROPY_CONTEXT *L) {
+  FRAME_CONTEXT *const fc = &cm->fc;
+  FRAME_COUNTS *const counts = &cm->counts;
   ENTROPY_CONTEXT above_ec, left_ec;
-  int pt, c = 0, pad, default_eob;
+  int pt, c = 0;
   int band;
   vp9_prob (*coef_probs)[PREV_COEF_CONTEXTS][UNCONSTRAINED_NODES];
   vp9_prob coef_probs_full[COEF_BANDS][PREV_COEF_CONTEXTS][ENTROPY_NODES];
@@ -113,53 +109,31 @@ static int decode_coefs(FRAME_CONTEXT *fc, const MACROBLOCKD *xd,
   vp9_prob *prob;
   vp9_coeff_count_model *coef_counts;
   const int ref = xd->mode_info_context->mbmi.ref_frame[0] != INTRA_FRAME;
-  TX_TYPE tx_type = DCT_DCT;
-  const int *scan, *nb;
+  const int16_t *scan, *nb;
   uint8_t token_cache[1024];
   const uint8_t * band_translate;
-#if CONFIG_BALANCED_COEFTREE
-  int skip_eob_node = 0;
-#endif
-
   coef_probs  = fc->coef_probs[txfm_size][type][ref];
-  coef_counts = fc->coef_counts[txfm_size];
+  coef_counts = counts->coef[txfm_size];
   switch (txfm_size) {
     default:
     case TX_4X4: {
-      tx_type = (type == PLANE_TYPE_Y_WITH_DC) ?
-          get_tx_type_4x4(xd, block_idx) : DCT_DCT;
-      scan = get_scan_4x4(tx_type);
+      scan = get_scan_4x4(get_tx_type_4x4(type, xd, block_idx));
       above_ec = A[0] != 0;
       left_ec = L[0] != 0;
-      default_eob = 16;
       band_translate = vp9_coefband_trans_4x4;
       break;
     }
     case TX_8X8: {
-      const BLOCK_SIZE_TYPE sb_type = xd->mode_info_context->mbmi.sb_type;
-      const int sz = 1 + b_width_log2(sb_type);
-      const int x = block_idx & ((1 << sz) - 1);
-      const int y = block_idx - x;
-      tx_type = (type == PLANE_TYPE_Y_WITH_DC) ?
-          get_tx_type_8x8(xd, y + (x >> 1)) : DCT_DCT;
-      scan = get_scan_8x8(tx_type);
+      scan = get_scan_8x8(get_tx_type_8x8(type, xd));
       above_ec = (A[0] + A[1]) != 0;
       left_ec = (L[0] + L[1]) != 0;
-      default_eob = 64;
       band_translate = vp9_coefband_trans_8x8plus;
       break;
     }
     case TX_16X16: {
-      const BLOCK_SIZE_TYPE sb_type = xd->mode_info_context->mbmi.sb_type;
-      const int sz = 2 + b_width_log2(sb_type);
-      const int x = block_idx & ((1 << sz) - 1);
-      const int y = block_idx - x;
-      tx_type = (type == PLANE_TYPE_Y_WITH_DC) ?
-          get_tx_type_16x16(xd, y + (x >> 2)) : DCT_DCT;
-      scan = get_scan_16x16(tx_type);
+      scan = get_scan_16x16(get_tx_type_16x16(type, xd));
       above_ec = (A[0] + A[1] + A[2] + A[3]) != 0;
       left_ec = (L[0] + L[1] + L[2] + L[3]) != 0;
-      default_eob = 256;
       band_translate = vp9_coefband_trans_8x8plus;
       break;
     }
@@ -167,13 +141,12 @@ static int decode_coefs(FRAME_CONTEXT *fc, const MACROBLOCKD *xd,
       scan = vp9_default_scan_32x32;
       above_ec = (A[0] + A[1] + A[2] + A[3] + A[4] + A[5] + A[6] + A[7]) != 0;
       left_ec = (L[0] + L[1] + L[2] + L[3] + L[4] + L[5] + L[6] + L[7]) != 0;
-      default_eob = 1024;
       band_translate = vp9_coefband_trans_8x8plus;
       break;
   }
 
   pt = combine_entropy_contexts(above_ec, left_ec);
-  nb = vp9_get_coef_neighbors_handle(scan, &pad);
+  nb = vp9_get_coef_neighbors_handle(scan);
 
   while (1) {
     int val;
@@ -181,43 +154,26 @@ static int decode_coefs(FRAME_CONTEXT *fc, const MACROBLOCKD *xd,
     if (c >= seg_eob)
       break;
     if (c)
-      pt = vp9_get_coef_context(scan, nb, pad, token_cache,
-                                c, default_eob);
+      pt = get_coef_context(nb, token_cache, c);
     band = get_coef_band(band_translate, c);
     prob = coef_probs[band][pt];
-#if !CONFIG_BALANCED_COEFTREE
-    fc->eob_branch_counts[txfm_size][type][ref][band][pt]++;
+    counts->eob_branch[txfm_size][type][ref][band][pt]++;
     if (!vp9_read(r, prob[EOB_CONTEXT_NODE]))
       break;
 
 SKIP_START:
-#endif
     if (c >= seg_eob)
       break;
     if (c)
-      pt = vp9_get_coef_context(scan, nb, pad, token_cache,
-                                c, default_eob);
+      pt = get_coef_context(nb, token_cache, c);
     band = get_coef_band(band_translate, c);
     prob = coef_probs[band][pt];
 
     if (!vp9_read(r, prob[ZERO_CONTEXT_NODE])) {
       INCREMENT_COUNT(ZERO_TOKEN);
       ++c;
-#if CONFIG_BALANCED_COEFTREE
-      skip_eob_node = 1;
-      continue;
-#else
       goto SKIP_START;
-#endif
     }
-#if CONFIG_BALANCED_COEFTREE
-    if (!skip_eob_node) {
-      fc->eob_branch_counts[txfm_size][type][ref][band][pt]++;
-      if (!vp9_read(r, prob[EOB_CONTEXT_NODE]))
-        break;
-    }
-    skip_eob_node = 0;
-#endif
 
     // ONE_CONTEXT_NODE_0_
     if (!vp9_read(r, prob[ONE_CONTEXT_NODE])) {
@@ -293,8 +249,8 @@ SKIP_START:
   return c;
 }
 
-static int get_eob(MACROBLOCKD* const xd, int segment_id, int eob_max) {
-  return vp9_segfeature_active(xd, segment_id, SEG_LVL_SKIP) ? 0 : eob_max;
+static int get_eob(struct segmentation *seg, int segment_id, int eob_max) {
+  return vp9_segfeature_active(seg, segment_id, SEG_LVL_SKIP) ? 0 : eob_max;
 }
 
 struct decode_block_args {
@@ -315,7 +271,7 @@ static void decode_block(int plane, int block,
   struct macroblockd_plane* pd = &xd->plane[plane];
   const int segment_id = xd->mode_info_context->mbmi.segment_id;
   const TX_SIZE ss_tx_size = ss_txfrm_size / 2;
-  const int seg_eob = get_eob(xd, segment_id, 16 << ss_txfrm_size);
+  const int seg_eob = get_eob(&xd->seg, segment_id, 16 << ss_txfrm_size);
   const int off = block >> ss_txfrm_size;
   const int mod = bw - ss_tx_size - pd->subsampling_x;
   const int aoff = (off & ((1 << mod) - 1)) << ss_tx_size;
@@ -323,7 +279,7 @@ static void decode_block(int plane, int block,
 
   ENTROPY_CONTEXT *A = pd->above_context + aoff;
   ENTROPY_CONTEXT *L = pd->left_context + loff;
-  const int eob = decode_coefs(&arg->pbi->common.fc, xd, arg->r, block,
+  const int eob = decode_coefs(&arg->pbi->common, xd, arg->r, block,
                                pd->plane_type, seg_eob,
                                BLOCK_OFFSET(pd->qcoeff, block, 16),
                                ss_tx_size, pd->dequant, A, L);

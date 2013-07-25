@@ -52,8 +52,6 @@ typedef struct {
 
 extern vp9_extra_bit vp9_extra_bits[12];    /* indexed by token value */
 
-#define PROB_UPDATE_BASELINE_COST   7
-
 #define MAX_PROB                255
 #define DCT_MAX_VALUE           16384
 
@@ -99,22 +97,62 @@ typedef vp9_prob vp9_coeff_probs[REF_TYPES][COEF_BANDS][PREV_COEF_CONTEXTS]
 
 struct VP9Common;
 void vp9_default_coef_probs(struct VP9Common *);
-extern DECLARE_ALIGNED(16, const int, vp9_default_scan_4x4[16]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_default_scan_4x4[16]);
 
-extern DECLARE_ALIGNED(16, const int, vp9_col_scan_4x4[16]);
-extern DECLARE_ALIGNED(16, const int, vp9_row_scan_4x4[16]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_col_scan_4x4[16]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_row_scan_4x4[16]);
 
-extern DECLARE_ALIGNED(64, const int, vp9_default_scan_8x8[64]);
+extern DECLARE_ALIGNED(64, const int16_t, vp9_default_scan_8x8[64]);
 
-extern DECLARE_ALIGNED(16, const int, vp9_col_scan_8x8[64]);
-extern DECLARE_ALIGNED(16, const int, vp9_row_scan_8x8[64]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_col_scan_8x8[64]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_row_scan_8x8[64]);
 
-extern DECLARE_ALIGNED(16, const int, vp9_default_scan_16x16[256]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_default_scan_16x16[256]);
 
-extern DECLARE_ALIGNED(16, const int, vp9_col_scan_16x16[256]);
-extern DECLARE_ALIGNED(16, const int, vp9_row_scan_16x16[256]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_col_scan_16x16[256]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_row_scan_16x16[256]);
 
-extern DECLARE_ALIGNED(16, const int, vp9_default_scan_32x32[1024]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_default_scan_32x32[1024]);
+
+extern DECLARE_ALIGNED(16, int16_t, vp9_default_iscan_4x4[16]);
+
+extern DECLARE_ALIGNED(16, int16_t, vp9_col_iscan_4x4[16]);
+extern DECLARE_ALIGNED(16, int16_t, vp9_row_iscan_4x4[16]);
+
+extern DECLARE_ALIGNED(64, int16_t, vp9_default_iscan_8x8[64]);
+
+extern DECLARE_ALIGNED(16, int16_t, vp9_col_iscan_8x8[64]);
+extern DECLARE_ALIGNED(16, int16_t, vp9_row_iscan_8x8[64]);
+
+extern DECLARE_ALIGNED(16, int16_t, vp9_default_iscan_16x16[256]);
+
+extern DECLARE_ALIGNED(16, int16_t, vp9_col_iscan_16x16[256]);
+extern DECLARE_ALIGNED(16, int16_t, vp9_row_iscan_16x16[256]);
+
+extern DECLARE_ALIGNED(16, int16_t, vp9_default_iscan_32x32[1024]);
+
+#define MAX_NEIGHBORS 2
+
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_default_scan_4x4_neighbors[17 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_col_scan_4x4_neighbors[17 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_row_scan_4x4_neighbors[17 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_col_scan_8x8_neighbors[65 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_row_scan_8x8_neighbors[65 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_default_scan_8x8_neighbors[65 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_col_scan_16x16_neighbors[257 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_row_scan_16x16_neighbors[257 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_default_scan_16x16_neighbors[257 * MAX_NEIGHBORS]);
+extern DECLARE_ALIGNED(16, int16_t,
+                       vp9_default_scan_32x32_neighbors[1025 * MAX_NEIGHBORS]);
 
 void vp9_coef_tree_initialize(void);
 void vp9_adapt_coef_probs(struct VP9Common *);
@@ -148,9 +186,14 @@ static int get_coef_band(const uint8_t * band_translate, int coef_index) {
     ? (COEF_BANDS-1) : band_translate[coef_index];
 }
 
-extern int vp9_get_coef_context(const int *scan, const int *neighbors,
-                                int nb_pad, uint8_t *token_cache, int c, int l);
-const int *vp9_get_coef_neighbors_handle(const int *scan, int *pad);
+static INLINE int get_coef_context(const int16_t *neighbors,
+                                   uint8_t *token_cache,
+                                   int c) {
+  return (1 + token_cache[neighbors[MAX_NEIGHBORS * c + 0]] +
+          token_cache[neighbors[MAX_NEIGHBORS * c + 1]]) >> 1;
+}
+
+const int16_t *vp9_get_coef_neighbors_handle(const int16_t *scan);
 
 
 // 128 lists of probabilities are stored for the following ONE node probs:
@@ -160,7 +203,6 @@ const int *vp9_get_coef_neighbors_handle(const int *scan, int *pad);
 #define COEFPROB_MODELS             128
 
 #define UNCONSTRAINED_NODES         3
-#define MODEL_NODES                 (ENTROPY_NODES - UNCONSTRAINED_NODES)
 
 #define PIVOT_NODE                  2   // which node is pivot
 
@@ -174,20 +216,10 @@ typedef unsigned int vp9_coeff_count_model[REF_TYPES][COEF_BANDS]
 typedef unsigned int vp9_coeff_stats_model[REF_TYPES][COEF_BANDS]
                                           [PREV_COEF_CONTEXTS]
                                           [UNCONSTRAINED_NODES][2];
-extern void vp9_full_to_model_count(unsigned int *model_count,
-                                    unsigned int *full_count);
-extern void vp9_full_to_model_counts(
-    vp9_coeff_count_model *model_count, vp9_coeff_count *full_count);
 
 void vp9_model_to_full_probs(const vp9_prob *model, vp9_prob *full);
 
-void vp9_model_to_full_probs_sb(
-    vp9_prob model[COEF_BANDS][PREV_COEF_CONTEXTS][UNCONSTRAINED_NODES],
-    vp9_prob full[COEF_BANDS][PREV_COEF_CONTEXTS][ENTROPY_NODES]);
-
-extern const vp9_prob vp9_modelcoefprobs[COEFPROB_MODELS][ENTROPY_NODES - 1];
-
-static INLINE const int* get_scan_4x4(TX_TYPE tx_type) {
+static INLINE const int16_t* get_scan_4x4(TX_TYPE tx_type) {
   switch (tx_type) {
     case ADST_DCT:
       return vp9_row_scan_4x4;
@@ -198,7 +230,36 @@ static INLINE const int* get_scan_4x4(TX_TYPE tx_type) {
   }
 }
 
-static INLINE const int* get_scan_8x8(TX_TYPE tx_type) {
+static INLINE void get_scan_nb_4x4(TX_TYPE tx_type,
+                                   const int16_t **scan, const int16_t **nb) {
+  switch (tx_type) {
+    case ADST_DCT:
+      *scan = vp9_row_scan_4x4;
+      *nb = vp9_row_scan_4x4_neighbors;
+      break;
+    case DCT_ADST:
+      *scan = vp9_col_scan_4x4;
+      *nb = vp9_col_scan_4x4_neighbors;
+      break;
+    default:
+      *scan = vp9_default_scan_4x4;
+      *nb = vp9_default_scan_4x4_neighbors;
+      break;
+  }
+}
+
+static INLINE const int16_t* get_iscan_4x4(TX_TYPE tx_type) {
+  switch (tx_type) {
+    case ADST_DCT:
+      return vp9_row_iscan_4x4;
+    case DCT_ADST:
+      return vp9_col_iscan_4x4;
+    default:
+      return vp9_default_iscan_4x4;
+  }
+}
+
+static INLINE const int16_t* get_scan_8x8(TX_TYPE tx_type) {
   switch (tx_type) {
     case ADST_DCT:
       return vp9_row_scan_8x8;
@@ -209,7 +270,36 @@ static INLINE const int* get_scan_8x8(TX_TYPE tx_type) {
   }
 }
 
-static INLINE const int* get_scan_16x16(TX_TYPE tx_type) {
+static INLINE void get_scan_nb_8x8(TX_TYPE tx_type,
+                                   const int16_t **scan, const int16_t **nb) {
+  switch (tx_type) {
+    case ADST_DCT:
+      *scan = vp9_row_scan_8x8;
+      *nb = vp9_row_scan_8x8_neighbors;
+      break;
+    case DCT_ADST:
+      *scan = vp9_col_scan_8x8;
+      *nb = vp9_col_scan_8x8_neighbors;
+      break;
+    default:
+      *scan = vp9_default_scan_8x8;
+      *nb = vp9_default_scan_8x8_neighbors;
+      break;
+  }
+}
+
+static INLINE const int16_t* get_iscan_8x8(TX_TYPE tx_type) {
+  switch (tx_type) {
+    case ADST_DCT:
+      return vp9_row_iscan_8x8;
+    case DCT_ADST:
+      return vp9_col_iscan_8x8;
+    default:
+      return vp9_default_iscan_8x8;
+  }
+}
+
+static INLINE const int16_t* get_scan_16x16(TX_TYPE tx_type) {
   switch (tx_type) {
     case ADST_DCT:
       return vp9_row_scan_16x16;
@@ -217,6 +307,35 @@ static INLINE const int* get_scan_16x16(TX_TYPE tx_type) {
       return vp9_col_scan_16x16;
     default:
       return vp9_default_scan_16x16;
+  }
+}
+
+static INLINE void get_scan_nb_16x16(TX_TYPE tx_type,
+                                     const int16_t **scan, const int16_t **nb) {
+  switch (tx_type) {
+    case ADST_DCT:
+      *scan = vp9_row_scan_16x16;
+      *nb = vp9_row_scan_16x16_neighbors;
+      break;
+    case DCT_ADST:
+      *scan = vp9_col_scan_16x16;
+      *nb = vp9_col_scan_16x16_neighbors;
+      break;
+    default:
+      *scan = vp9_default_scan_16x16;
+      *nb = vp9_default_scan_16x16_neighbors;
+      break;
+  }
+}
+
+static INLINE const int16_t* get_iscan_16x16(TX_TYPE tx_type) {
+  switch (tx_type) {
+    case ADST_DCT:
+      return vp9_row_iscan_16x16;
+    case DCT_ADST:
+      return vp9_col_iscan_16x16;
+    default:
+      return vp9_default_iscan_16x16;
   }
 }
 

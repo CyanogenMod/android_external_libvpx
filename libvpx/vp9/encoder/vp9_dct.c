@@ -587,7 +587,7 @@ void vp9_short_fht8x8_c(int16_t *input, int16_t *output,
       temp_in[j] = out[j + i * 8];
     ht.rows(temp_in, temp_out);
     for (j = 0; j < 8; ++j)
-      output[j + i * 8] = temp_out[j] >> 1;
+      output[j + i * 8] = (temp_out[j] + (temp_out[j] < 0)) >> 1;
   }
 }
 
@@ -978,7 +978,8 @@ void vp9_short_fht16x16_c(int16_t *input, int16_t *output,
       temp_in[j] = input[j * pitch + i] << 2;
     ht.cols(temp_in, temp_out);
     for (j = 0; j < 16; ++j)
-      outptr[j * 16 + i] = (temp_out[j] + 1 + (temp_out[j] > 0)) >> 2;
+      outptr[j * 16 + i] = (temp_out[j] + 1 + (temp_out[j] < 0)) >> 2;
+//      outptr[j * 16 + i] = (temp_out[j] + 1 + (temp_out[j] > 0)) >> 2;
   }
 
   // Rows
@@ -1366,6 +1367,9 @@ void vp9_short_fdct32x32_rd_c(int16_t *input, int16_t *out, int pitch) {
       temp_in[j] = input[j * shortpitch + i] << 2;
     dct32_1d(temp_in, temp_out, 0);
     for (j = 0; j < 32; ++j)
+      // TODO(cd): see quality impact of only doing
+      //           output[j * 32 + i] = (temp_out[j] + 1) >> 2;
+      //           PS: also change code in vp9/encoder/x86/vp9_dct_sse2.c
       output[j * 32 + i] = (temp_out[j] + 1 + (temp_out[j] > 0)) >> 2;
   }
 

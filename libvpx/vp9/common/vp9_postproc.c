@@ -411,7 +411,7 @@ static void fillrd(struct postproc_state *state, int q, int a) {
 
     }
 
-    for (next = next; next < 256; next++)
+    for (; next < 256; next++)
       char_dist[next] = 0;
   }
 
@@ -630,9 +630,11 @@ static void constrain_line(int x0, int *x1, int y0, int *y1,
   }
 }
 
-int vp9_post_proc_frame(VP9_COMMON *oci, YV12_BUFFER_CONFIG *dest,
+int vp9_post_proc_frame(struct VP9Common *oci,
+                        struct loopfilter *lf,
+                        YV12_BUFFER_CONFIG *dest,
                         vp9_ppflags_t *ppflags) {
-  int q = oci->filter_level * 10 / 6;
+  int q = lf->filter_level * 10 / 6;
   int flags = ppflags->post_proc_flag;
   int deblock_level = ppflags->deblocking_level;
   int noise_level = ppflags->noise_level;
@@ -758,7 +760,7 @@ int vp9_post_proc_frame(VP9_COMMON *oci, YV12_BUFFER_CONFIG *dest,
   if (flags & VP9D_DEBUG_TXT_RATE_INFO) {
     char message[512];
     snprintf(message, sizeof(message),
-             "Bitrate: %10.2f frame_rate: %10.2f ",
+             "Bitrate: %10.2f framerate: %10.2f ",
              oci->bitrate, oci->framerate);
     vp9_blit_text(message, oci->post_proc_buffer.y_buffer,
                   oci->post_proc_buffer.y_stride);
@@ -936,9 +938,9 @@ int vp9_post_proc_frame(VP9_COMMON *oci, YV12_BUFFER_CONFIG *dest,
             for (bx = 0; bx < 16; bx += 4) {
               if ((ppflags->display_b_modes_flag & (1 << mi->mbmi.mode))
                   || (ppflags->display_mb_modes_flag & I4X4_PRED)) {
-                Y = B_PREDICTION_MODE_colors[bmi->as_mode.first][0];
-                U = B_PREDICTION_MODE_colors[bmi->as_mode.first][1];
-                V = B_PREDICTION_MODE_colors[bmi->as_mode.first][2];
+                Y = B_PREDICTION_MODE_colors[bmi->as_mode][0];
+                U = B_PREDICTION_MODE_colors[bmi->as_mode][1];
+                V = B_PREDICTION_MODE_colors[bmi->as_mode][2];
 
                 vp9_blend_b(yl + bx, ul + (bx >> 1), vl + (bx >> 1), Y, U, V,
                     0xc000, y_stride);

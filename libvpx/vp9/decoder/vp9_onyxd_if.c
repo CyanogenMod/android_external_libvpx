@@ -136,7 +136,7 @@ VP9D_PTR vp9_create_decompressor(VP9D_CONFIG *oxcf) {
   // vp9_init_dequantizer() for every frame.
   vp9_init_dequantizer(&pbi->common);
 
-  vp9_loop_filter_init(&pbi->common);
+  vp9_loop_filter_init(&pbi->common, &pbi->mb.lf);
 
   pbi->common.error.setjmp = 0;
   pbi->decoded_key_frame = 0;
@@ -154,7 +154,6 @@ void vp9_remove_decompressor(VP9D_PTR ptr) {
     vpx_free(pbi->common.last_frame_seg_map);
 
   vp9_remove_common(&pbi->common);
-  vpx_free(pbi->mbc);
   vpx_free(pbi);
 }
 
@@ -347,9 +346,9 @@ int vp9_receive_compressed_data(VP9D_PTR ptr,
                              cm->current_video_frame + 1000);
 #endif
 
-    if (cm->filter_level) {
+    if (!pbi->do_loopfilter_inline) {
       /* Apply the loop filter if appropriate. */
-      vp9_loop_filter_frame(cm, &pbi->mb, cm->filter_level, 0);
+      vp9_loop_filter_frame(cm, &pbi->mb, pbi->mb.lf.filter_level, 0);
     }
 
 #if WRITE_RECON_BUFFER == 2
@@ -361,8 +360,9 @@ int vp9_receive_compressed_data(VP9D_PTR ptr,
                              cm->current_video_frame + 3000);
 #endif
 
-    vp9_extend_frame_borders(cm->frame_to_show,
-                             cm->subsampling_x, cm->subsampling_y);
+    vp9_extend_frame_inner_borders(cm->frame_to_show,
+                                   cm->subsampling_x,
+                                   cm->subsampling_y);
   }
 
 #if WRITE_RECON_BUFFER == 1
@@ -412,9 +412,8 @@ int vp9_get_raw_frame(VP9D_PTR ptr, YV12_BUFFER_CONFIG *sd,
   *time_stamp = pbi->last_time_stamp;
   *time_end_stamp = 0;
 
-  sd->clrtype = pbi->common.clr_type;
 #if CONFIG_POSTPROC
-  ret = vp9_post_proc_frame(&pbi->common, sd, flags);
+  ret = vp9_post_proc_frame(&pbi->common, &pbi->mb.lf, sd, flags);
 #else
 
   if (pbi->common.frame_to_show) {

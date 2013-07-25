@@ -370,19 +370,6 @@ static void zz_motion_search(VP9_COMP *cpi, MACROBLOCK *x, YV12_BUFFER_CONFIG *r
   }
 }
 
-static enum BlockSize get_bs(BLOCK_SIZE_TYPE b) {
-  switch (b) {
-    case BLOCK_SIZE_SB8X8:
-      return BLOCK_8X8;
-    case BLOCK_SIZE_SB16X8:
-      return BLOCK_16X8;
-    case BLOCK_SIZE_SB8X16:
-      return BLOCK_8X16;
-    default:
-      return BLOCK_16X16;
-  }
-}
-
 static void first_pass_motion_search(VP9_COMP *cpi, MACROBLOCK *x,
                                      int_mv *ref_mv, MV *best_mv,
                                      YV12_BUFFER_CONFIG *recon_buffer,
@@ -398,7 +385,7 @@ static void first_pass_motion_search(VP9_COMP *cpi, MACROBLOCK *x,
   int further_steps = (MAX_MVSEARCH_STEPS - 1) - step_param;
   int n;
   vp9_variance_fn_ptr_t v_fn_ptr =
-      cpi->fn_ptr[get_bs(xd->mode_info_context->mbmi.sb_type)];
+      cpi->fn_ptr[xd->mode_info_context->mbmi.sb_type];
   int new_mv_mode_penalty = 256;
 
   int sr = 0;
@@ -514,16 +501,14 @@ void vp9_first_pass(VP9_COMP *cpi) {
   vp9_clear_system_state();  // __asm emms;
 
   vp9_setup_src_planes(x, cpi->Source, 0, 0);
-  setup_pre_planes(xd, lst_yv12, NULL, 0, 0, NULL, NULL);
+  setup_pre_planes(xd, 0, lst_yv12, 0, 0, NULL);
   setup_dst_planes(xd, new_yv12, 0, 0);
 
   x->partition_info = x->pi;
 
   xd->mode_info_context = cm->mi;
 
-  vp9_build_block_offsets(x);
-
-  vp9_setup_block_dptrs(&x->e_mbd, cm->subsampling_x, cm->subsampling_y);
+  setup_block_dptrs(&x->e_mbd, cm->subsampling_x, cm->subsampling_y);
 
   vp9_frame_init_quantizer(cpi);
 
@@ -986,9 +971,11 @@ static int estimate_max_q(VP9_COMP *cpi,
 
   // Corrections for higher compression speed settings
   // (reduced compression expected)
+  // FIXME(jimbankoski): Once we settle on vp9 speed features we need to
+  // change this code.
   if (cpi->compressor_speed == 1)
     speed_correction = cpi->oxcf.cpu_used <= 5 ?
-                          1.04 + (cpi->oxcf.cpu_used * 0.04) :
+                          1.04 + (/*cpi->oxcf.cpu_used*/0 * 0.04) :
                           1.25;
 
   // Try and pick a max Q that will be high enough to encode the
@@ -1051,7 +1038,7 @@ static int estimate_cq(VP9_COMP *cpi,
   // (reduced compression expected)
   if (cpi->compressor_speed == 1) {
     if (cpi->oxcf.cpu_used <= 5)
-      speed_correction = 1.04 + (cpi->oxcf.cpu_used * 0.04);
+      speed_correction = 1.04 + (/*cpi->oxcf.cpu_used*/ 0 * 0.04);
     else
       speed_correction = 1.25;
   }
@@ -1106,13 +1093,13 @@ static int estimate_cq(VP9_COMP *cpi,
 }
 
 
-extern void vp9_new_frame_rate(VP9_COMP *cpi, double framerate);
+extern void vp9_new_framerate(VP9_COMP *cpi, double framerate);
 
 void vp9_init_second_pass(VP9_COMP *cpi) {
   FIRSTPASS_STATS this_frame;
   FIRSTPASS_STATS *start_pos;
 
-  double lower_bounds_min_rate = FRAME_OVERHEAD_BITS * cpi->oxcf.frame_rate;
+  double lower_bounds_min_rate = FRAME_OVERHEAD_BITS * cpi->oxcf.framerate;
   double two_pass_min_rate = (double)(cpi->oxcf.target_bandwidth
                                       * cpi->oxcf.two_pass_vbrmin_section / 100);
 
@@ -1133,10 +1120,10 @@ void vp9_init_second_pass(VP9_COMP *cpi) {
   // encoded in the second pass is a guess.  However the sum duration is not.
   // Its calculated based on the actual durations of all frames from the first
   // pass.
-  vp9_new_frame_rate(cpi, 10000000.0 * cpi->twopass.total_stats.count /
+  vp9_new_framerate(cpi, 10000000.0 * cpi->twopass.total_stats.count /
                        cpi->twopass.total_stats.duration);
 
-  cpi->output_frame_rate = cpi->oxcf.frame_rate;
+  cpi->output_framerate = cpi->oxcf.framerate;
   cpi->twopass.bits_left = (int64_t)(cpi->twopass.total_stats.duration *
                                      cpi->oxcf.target_bandwidth / 10000000.0);
   cpi->twopass.bits_left -= (int64_t)(cpi->twopass.total_stats.duration *
@@ -2216,7 +2203,7 @@ void vp9_second_pass(VP9_COMP *cpi) {
 
   // Set nominal per second bandwidth for this frame
   cpi->target_bandwidth = (int)(cpi->per_frame_bandwidth
-                                * cpi->output_frame_rate);
+                                * cpi->output_framerate);
   if (cpi->target_bandwidth < 0)
     cpi->target_bandwidth = 0;
 
@@ -2636,7 +2623,7 @@ static void find_next_key_frame(VP9_COMP *cpi, FIRSTPASS_STATS *this_frame) {
     cpi->per_frame_bandwidth = cpi->twopass.kf_bits;
     // Convert to a per second bitrate
     cpi->target_bandwidth = (int)(cpi->twopass.kf_bits *
-                                  cpi->output_frame_rate);
+                                  cpi->output_framerate);
   }
 
   // Note the total error score of the kf group minus the key frame itself

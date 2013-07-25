@@ -119,7 +119,6 @@ vp8/common/treecoder.c
 vp8/common/treecoder.h
 vp8/common/variance_c.c
 vp8/common/variance.h
-vp8/common/vp8_asm_com_offsets.c
 vp8/common/vp8_entropymodedata.h
 vp8/decoder/dboolhuff.c
 vp8/decoder/dboolhuff.h
@@ -133,7 +132,6 @@ vp8/decoder/onyxd_if.c
 vp8/decoder/onyxd_int.h
 vp8/decoder/threading.c
 vp8/decoder/treereader.h
-vp8/decoder/vp8_asm_dec_offsets.c
 vp8/encoder/arm/armv5te/boolhuff_armv5te.asm.s
 vp8/encoder/arm/armv5te/vp8_packtokens_armv5.asm.s
 vp8/encoder/arm/armv5te/vp8_packtokens_mbrow_armv5.asm.s
@@ -205,11 +203,18 @@ vp8/vp8_cx_iface.c
 vp8/vp8cx.mk
 vp8/vp8_dx_iface.c
 vp8/vp8dx.mk
+vp9/common/arm/neon/vp9_convolve8_avg_neon.asm.s
+vp9/common/arm/neon/vp9_convolve8_neon.asm.s
+vp9/common/arm/neon/vp9_convolve_neon.c
+vp9/common/arm/neon/vp9_dc_only_idct_add_neon.asm.s
+vp9/common/arm/neon/vp9_loopfilter_neon.asm.s
+vp9/common/arm/neon/vp9_short_idct8x8_add_neon.asm.s
 vp9/common/generic/vp9_systemdependent.c
 vp9/common/vp9_alloccommon.c
 vp9/common/vp9_alloccommon.h
-vp9/common/vp9_asm_com_offsets.c
 vp9/common/vp9_blockd.h
+vp9/common/vp9_common_data.c
+vp9/common/vp9_common_data.h
 vp9/common/vp9_common.h
 vp9/common/vp9_convolve.c
 vp9/common/vp9_convolve.h
@@ -233,10 +238,6 @@ vp9/common/vp9_idct.h
 vp9/common/vp9_loopfilter.c
 vp9/common/vp9_loopfilter_filters.c
 vp9/common/vp9_loopfilter.h
-vp9/common/vp9_mbpitch.c
-vp9/common/vp9_modecont.c
-vp9/common/vp9_modecontext.c
-vp9/common/vp9_modecont.h
 vp9/common/vp9_mv.h
 vp9/common/vp9_mvref_common.c
 vp9/common/vp9_mvref_common.h
@@ -264,7 +265,7 @@ vp9/common/vp9_tile_common.c
 vp9/common/vp9_tile_common.h
 vp9/common/vp9_treecoder.c
 vp9/common/vp9_treecoder.h
-vp9/decoder/vp9_asm_dec_offsets.c
+vp9/decoder/arm/neon/vp9_add_constant_residual_neon.asm.s
 vp9/decoder/vp9_dboolhuff.c
 vp9/decoder/vp9_dboolhuff.h
 vp9/decoder/vp9_decodemv.c
@@ -273,6 +274,8 @@ vp9/decoder/vp9_decodframe.c
 vp9/decoder/vp9_decodframe.h
 vp9/decoder/vp9_detokenize.c
 vp9/decoder/vp9_detokenize.h
+vp9/decoder/vp9_dsubexp.c
+vp9/decoder/vp9_dsubexp.h
 vp9/decoder/vp9_idct_blk.c
 vp9/decoder/vp9_idct_blk.h
 vp9/decoder/vp9_onyxd.h

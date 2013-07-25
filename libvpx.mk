@@ -60,14 +60,10 @@ LOCAL_SRC_FILES += $(libvpx_target)/vpx_config.c
 # used yet but are included in the comments for future reference.
 
 libvpx_asm_offsets_intermediates := \
-    vp8/common/vp8_asm_com_offsets.intermediate \
-    vp8/decoder/vp8_asm_dec_offsets.intermediate \
     vp8/encoder/vp8_asm_enc_offsets.intermediate \
     vpx_scale/vpx_scale_asm_offsets.intermediate \
 
 libvpx_asm_offsets_files := \
-    vp8/common/vp8_asm_com_offsets.asm \
-    vp8/decoder/vp8_asm_dec_offsets.asm \
     vp8/encoder/vp8_asm_enc_offsets.asm \
     vpx_scale/vpx_scale_asm_offsets.asm \
 

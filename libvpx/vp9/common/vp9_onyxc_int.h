@@ -24,86 +24,56 @@
 #include "vp9/common/vp9_postproc.h"
 #endif
 
-/* Create/destroy static data structures. */
-
-// Define the number of candidate reference buffers.
-#define NUM_REF_FRAMES 8
-#define NUM_REF_FRAMES_LG2 3
-
 #define ALLOWED_REFS_PER_FRAME 3
+
+#define NUM_REF_FRAMES_LOG2 3
+#define NUM_REF_FRAMES (1 << NUM_REF_FRAMES_LOG2)
 
 // 1 scratch frame for the new frame, 3 for scaled references on the encoder
 // TODO(jkoleszar): These 3 extra references could probably come from the
 // normal reference pool.
 #define NUM_YV12_BUFFERS (NUM_REF_FRAMES + 4)
 
-#define NUM_FRAME_CONTEXTS_LG2 2
-#define NUM_FRAME_CONTEXTS (1 << NUM_FRAME_CONTEXTS_LG2)
-
-#define MAX_LAG_BUFFERS 25
+#define NUM_FRAME_CONTEXTS_LOG2 2
+#define NUM_FRAME_CONTEXTS (1 << NUM_FRAME_CONTEXTS_LOG2)
 
 typedef struct frame_contexts {
   vp9_prob y_mode_prob[BLOCK_SIZE_GROUPS][VP9_INTRA_MODES - 1];
   vp9_prob uv_mode_prob[VP9_INTRA_MODES][VP9_INTRA_MODES - 1];
   vp9_prob partition_prob[NUM_FRAME_TYPES][NUM_PARTITION_CONTEXTS]
                          [PARTITION_TYPES - 1];
-
-  nmv_context nmvc;
-  nmv_context pre_nmvc;
-  /* interframe intra mode probs */
-  vp9_prob pre_y_mode_prob[BLOCK_SIZE_GROUPS][VP9_INTRA_MODES - 1];
-  vp9_prob pre_uv_mode_prob[VP9_INTRA_MODES][VP9_INTRA_MODES - 1];
-  vp9_prob pre_partition_prob[NUM_PARTITION_CONTEXTS][PARTITION_TYPES - 1];
-  /* interframe intra mode probs */
-  unsigned int y_mode_counts[BLOCK_SIZE_GROUPS][VP9_INTRA_MODES];
-  unsigned int uv_mode_counts[VP9_INTRA_MODES][VP9_INTRA_MODES];
-  unsigned int partition_counts[NUM_PARTITION_CONTEXTS][PARTITION_TYPES];
-
   vp9_coeff_probs_model coef_probs[TX_SIZE_MAX_SB][BLOCK_TYPES];
-  vp9_coeff_probs_model pre_coef_probs[TX_SIZE_MAX_SB][BLOCK_TYPES];
-  vp9_coeff_count_model coef_counts[TX_SIZE_MAX_SB][BLOCK_TYPES];
-  unsigned int eob_branch_counts[TX_SIZE_MAX_SB][BLOCK_TYPES][REF_TYPES]
-                                [COEF_BANDS][PREV_COEF_CONTEXTS];
-
-  nmv_context_counts NMVcount;
   vp9_prob switchable_interp_prob[VP9_SWITCHABLE_FILTERS + 1]
                                  [VP9_SWITCHABLE_FILTERS - 1];
-  vp9_prob pre_switchable_interp_prob[VP9_SWITCHABLE_FILTERS + 1]
-      [VP9_SWITCHABLE_FILTERS - 1];
-  unsigned int switchable_interp_count[VP9_SWITCHABLE_FILTERS + 1]
-                                      [VP9_SWITCHABLE_FILTERS];
-
   vp9_prob inter_mode_probs[INTER_MODE_CONTEXTS][VP9_INTER_MODES - 1];
-  vp9_prob pre_inter_mode_probs[INTER_MODE_CONTEXTS][VP9_INTER_MODES - 1];
-  unsigned int inter_mode_counts[INTER_MODE_CONTEXTS][VP9_INTER_MODES - 1][2];
-
   vp9_prob intra_inter_prob[INTRA_INTER_CONTEXTS];
   vp9_prob comp_inter_prob[COMP_INTER_CONTEXTS];
   vp9_prob single_ref_prob[REF_CONTEXTS][2];
   vp9_prob comp_ref_prob[REF_CONTEXTS];
-  vp9_prob pre_intra_inter_prob[INTRA_INTER_CONTEXTS];
-  vp9_prob pre_comp_inter_prob[COMP_INTER_CONTEXTS];
-  vp9_prob pre_single_ref_prob[REF_CONTEXTS][2];
-  vp9_prob pre_comp_ref_prob[REF_CONTEXTS];
-  unsigned int intra_inter_count[INTRA_INTER_CONTEXTS][2];
-  unsigned int comp_inter_count[COMP_INTER_CONTEXTS][2];
-  unsigned int single_ref_count[REF_CONTEXTS][2][2];
-  unsigned int comp_ref_count[REF_CONTEXTS][2];
-
-  vp9_prob tx_probs_32x32p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 1];
-  vp9_prob tx_probs_16x16p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 2];
-  vp9_prob tx_probs_8x8p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 3];
-  vp9_prob pre_tx_probs_32x32p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 1];
-  vp9_prob pre_tx_probs_16x16p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 2];
-  vp9_prob pre_tx_probs_8x8p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 3];
-  unsigned int tx_count_32x32p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB];
-  unsigned int tx_count_16x16p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 1];
-  unsigned int tx_count_8x8p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 2];
-
+  struct tx_probs tx_probs;
   vp9_prob mbskip_probs[MBSKIP_CONTEXTS];
-  vp9_prob pre_mbskip_probs[MBSKIP_CONTEXTS];
-  unsigned int mbskip_count[MBSKIP_CONTEXTS][2];
+  nmv_context nmvc;
 } FRAME_CONTEXT;
+
+typedef struct {
+  unsigned int y_mode[BLOCK_SIZE_GROUPS][VP9_INTRA_MODES];
+  unsigned int uv_mode[VP9_INTRA_MODES][VP9_INTRA_MODES];
+  unsigned int partition[NUM_PARTITION_CONTEXTS][PARTITION_TYPES];
+  vp9_coeff_count_model coef[TX_SIZE_MAX_SB][BLOCK_TYPES];
+  unsigned int eob_branch[TX_SIZE_MAX_SB][BLOCK_TYPES][REF_TYPES]
+                         [COEF_BANDS][PREV_COEF_CONTEXTS];
+  unsigned int switchable_interp[VP9_SWITCHABLE_FILTERS + 1]
+                                [VP9_SWITCHABLE_FILTERS];
+  unsigned int inter_mode[INTER_MODE_CONTEXTS][VP9_INTER_MODES - 1][2];
+  unsigned int intra_inter[INTRA_INTER_CONTEXTS][2];
+  unsigned int comp_inter[COMP_INTER_CONTEXTS][2];
+  unsigned int single_ref[REF_CONTEXTS][2][2];
+  unsigned int comp_ref[REF_CONTEXTS][2];
+  struct tx_counts tx;
+  unsigned int mbskip[MBSKIP_CONTEXTS][2];
+  nmv_context_counts mv;
+} FRAME_COUNTS;
+
 
 typedef enum {
   SINGLE_PREDICTION_ONLY = 0,
@@ -112,22 +82,13 @@ typedef enum {
   NB_PREDICTION_TYPES    = 3,
 } COMPPREDMODE_TYPE;
 
-typedef enum {
-  ONLY_4X4            = 0,
-  ALLOW_8X8           = 1,
-  ALLOW_16X16         = 2,
-  ALLOW_32X32         = 3,
-  TX_MODE_SELECT      = 4,
-  NB_TXFM_MODES       = 5,
-} TXFM_MODE;
-
 typedef struct VP9Common {
   struct vpx_internal_error_info  error;
 
-  DECLARE_ALIGNED(16, int16_t, y_dequant[QINDEX_RANGE][2]);
-  DECLARE_ALIGNED(16, int16_t, uv_dequant[QINDEX_RANGE][2]);
+  DECLARE_ALIGNED(16, int16_t, y_dequant[QINDEX_RANGE][8]);
+  DECLARE_ALIGNED(16, int16_t, uv_dequant[QINDEX_RANGE][8]);
 #if CONFIG_ALPHA
-  DECLARE_ALIGNED(16, int16_t, a_dequant[QINDEX_RANGE][2]);
+  DECLARE_ALIGNED(16, int16_t, a_dequant[QINDEX_RANGE][8]);
 #endif
 
   int width;
@@ -143,8 +104,6 @@ typedef struct VP9Common {
   int subsampling_x;
   int subsampling_y;
 
-  YUV_TYPE clr_type;
-
   YV12_BUFFER_CONFIG *frame_to_show;
 
   YV12_BUFFER_CONFIG yv12_fb[NUM_YV12_BUFFERS];
@@ -159,10 +118,7 @@ typedef struct VP9Common {
   struct scale_factors active_ref_scale[ALLOWED_REFS_PER_FRAME];
   int new_fb_idx;
 
-
   YV12_BUFFER_CONFIG post_proc_buffer;
-  YV12_BUFFER_CONFIG temp_scale_frame;
-
 
   FRAME_TYPE last_frame_type;  /* Save last frame's frame type for motion search. */
   FRAME_TYPE frame_type;
@@ -187,7 +143,7 @@ typedef struct VP9Common {
   int mode_info_stride;
 
   /* profile settings */
-  TXFM_MODE txfm_mode;
+  TX_MODE tx_mode;
 
   int base_qindex;
   int last_kf_gf_q;  /* Q used on the last GF or KF */
@@ -199,9 +155,6 @@ typedef struct VP9Common {
   int a_dc_delta_q;
   int a_ac_delta_q;
 #endif
-
-  unsigned int frames_since_golden;
-  unsigned int frames_till_alt_ref_frame;
 
   /* We allocate a MODE_INFO struct for each macroblock, together with
      an extra row on top and column on the left to simplify prediction. */
@@ -219,10 +172,6 @@ typedef struct VP9Common {
 
   loop_filter_info_n lf_info;
 
-  int filter_level;
-  int last_sharpness_level;
-  int sharpness_level;
-
   int refresh_frame_context;    /* Two state 0 = NO, 1 = YES */
 
   int ref_frame_sign_bias[MAX_REF_FRAMES];    /* Two state 0, 1 */
@@ -235,17 +184,6 @@ typedef struct VP9Common {
   PARTITION_CONTEXT *above_seg_context;
   PARTITION_CONTEXT left_seg_context[8];
 
-  /* keyframe block modes are predicted by their above, left neighbors */
-
-  vp9_prob kf_y_mode_prob[VP9_INTRA_MODES]
-                         [VP9_INTRA_MODES]
-                         [VP9_INTRA_MODES - 1];
-  vp9_prob kf_uv_mode_prob[VP9_INTRA_MODES] [VP9_INTRA_MODES - 1];
-
-  // Context probabilities when using predictive coding of segment id
-  vp9_prob segment_pred_probs[PREDICTION_PROBS];
-  unsigned char temporal_update;
-
   // Context probabilities for reference frame prediction
   int allow_comp_inter_inter;
   MV_REFERENCE_FRAME comp_fixed_ref;
@@ -255,13 +193,10 @@ typedef struct VP9Common {
   FRAME_CONTEXT fc;  /* this frame entropy */
   FRAME_CONTEXT frame_contexts[NUM_FRAME_CONTEXTS];
   unsigned int  frame_context_idx; /* Context to use/update */
+  FRAME_COUNTS counts;
 
   unsigned int current_video_frame;
-  int near_boffset[3];
   int version;
-
-  double bitrate;
-  double framerate;
 
 #if CONFIG_POSTPROC
   struct postproc_state  postproc_state;
@@ -270,10 +205,9 @@ typedef struct VP9Common {
   int error_resilient_mode;
   int frame_parallel_decoding_mode;
 
-  int tile_columns, log2_tile_columns;
-  int cur_tile_mi_col_start, cur_tile_mi_col_end, cur_tile_col_idx;
-  int tile_rows, log2_tile_rows;
-  int cur_tile_mi_row_start, cur_tile_mi_row_end, cur_tile_row_idx;
+  int log2_tile_cols, log2_tile_rows;
+  int cur_tile_mi_col_start, cur_tile_mi_col_end;
+  int cur_tile_mi_row_start, cur_tile_mi_row_end;
 } VP9_COMMON;
 
 static int get_free_fb(VP9_COMMON *cm) {
@@ -296,15 +230,14 @@ static void ref_cnt_fb(int *buf, int *idx, int new_idx) {
   buf[new_idx]++;
 }
 
-static int mi_cols_aligned_to_sb(VP9_COMMON *cm) {
-  return 2 * ((cm->mb_cols + 3) & ~3);
+static int mi_cols_aligned_to_sb(int n_mis) {
+  return ALIGN_POWER_OF_TWO(n_mis, LOG2_MI_BLOCK_SIZE);
 }
 
-static INLINE void set_partition_seg_context(VP9_COMMON *cm,
-                                             MACROBLOCKD *xd,
+static INLINE void set_partition_seg_context(VP9_COMMON *cm, MACROBLOCKD *xd,
                                              int mi_row, int mi_col) {
   xd->above_seg_context = cm->above_seg_context + mi_col;
-  xd->left_seg_context  = cm->left_seg_context + (mi_row & MI_MASK);
+  xd->left_seg_context = cm->left_seg_context + (mi_row & MI_MASK);
 }
 
 static int check_bsize_coverage(VP9_COMMON *cm, MACROBLOCKD *xd,
