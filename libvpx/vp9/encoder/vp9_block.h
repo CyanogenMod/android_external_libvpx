@@ -47,7 +47,7 @@ typedef struct {
   int hybrid_pred_diff;
   int comp_pred_diff;
   int single_pred_diff;
-  int64_t txfm_rd_diff[NB_TXFM_MODES];
+  int64_t tx_rd_diff[TX_MODES];
   int64_t best_filter_diff[VP9_SWITCHABLE_FILTERS + 1];
 
   // Bit flag for each mode whether it has high error in comparison to others.
@@ -71,6 +71,11 @@ struct macroblock_plane {
   // Zbin Over Quant value
   int16_t zbin_extra;
 };
+
+/* The [2] dimension is for whether we skip the EOB node (i.e. if previous
+ * coefficient in this block was zero) or not. */
+typedef unsigned int vp9_coeff_cost[BLOCK_TYPES][REF_TYPES][COEF_BANDS][2]
+                                   [PREV_COEF_CONTEXTS][MAX_ENTROPY_TOKENS];
 
 typedef struct macroblock MACROBLOCK;
 struct macroblock {
@@ -97,6 +102,7 @@ struct macroblock {
 
   int mv_best_ref_index[MAX_REF_FRAMES];
   unsigned int max_mv_context[MAX_REF_FRAMES];
+  unsigned int source_variance;
 
   int nmvjointcost[MV_JOINTS];
   int nmvcosts[2][MV_VALS];
@@ -133,7 +139,7 @@ struct macroblock {
   unsigned char *active_ptr;
 
   // note that token_costs is the cost when eob node is skipped
-  vp9_coeff_count token_costs[TX_SIZE_MAX_SB][BLOCK_TYPES][2];
+  vp9_coeff_cost token_costs[TX_SIZES];
 
   int optimize;
 

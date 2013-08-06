@@ -208,6 +208,7 @@ vp9/common/arm/neon/vp9_convolve8_neon.asm.s
 vp9/common/arm/neon/vp9_convolve_neon.c
 vp9/common/arm/neon/vp9_dc_only_idct_add_neon.asm.s
 vp9/common/arm/neon/vp9_loopfilter_neon.asm.s
+vp9/common/arm/neon/vp9_mb_lpf_neon.asm.s
 vp9/common/arm/neon/vp9_short_idct8x8_add_neon.asm.s
 vp9/common/generic/vp9_systemdependent.c
 vp9/common/vp9_alloccommon.c
@@ -282,6 +283,8 @@ vp9/decoder/vp9_onyxd.h
 vp9/decoder/vp9_onyxd_if.c
 vp9/decoder/vp9_onyxd_int.h
 vp9/decoder/vp9_read_bit_buffer.h
+vp9/decoder/vp9_thread.c
+vp9/decoder/vp9_thread.h
 vp9/decoder/vp9_treereader.h
 vp9/vp9_common.mk
 vp9/vp9_dx_iface.c

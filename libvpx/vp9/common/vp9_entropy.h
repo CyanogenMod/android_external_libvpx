@@ -50,7 +50,7 @@ typedef struct {
   int base_val;
 } vp9_extra_bit;
 
-extern vp9_extra_bit vp9_extra_bits[12];    /* indexed by token value */
+extern const vp9_extra_bit vp9_extra_bits[12];    /* indexed by token value */
 
 #define MAX_PROB                255
 #define DCT_MAX_VALUE           16384
@@ -80,7 +80,6 @@ extern vp9_extra_bit vp9_extra_bits[12];    /* indexed by token value */
    coefficient band (and since zigzag positions 0, 1, and 2 are in
    distinct bands). */
 
-/*# define DC_TOKEN_CONTEXTS        3*/ /* 00, 0!0, !0!0 */
 #define PREV_COEF_CONTEXTS          6
 
 // #define ENTROPY_STATS
@@ -102,7 +101,7 @@ extern DECLARE_ALIGNED(16, const int16_t, vp9_default_scan_4x4[16]);
 extern DECLARE_ALIGNED(16, const int16_t, vp9_col_scan_4x4[16]);
 extern DECLARE_ALIGNED(16, const int16_t, vp9_row_scan_4x4[16]);
 
-extern DECLARE_ALIGNED(64, const int16_t, vp9_default_scan_8x8[64]);
+extern DECLARE_ALIGNED(16, const int16_t, vp9_default_scan_8x8[64]);
 
 extern DECLARE_ALIGNED(16, const int16_t, vp9_col_scan_8x8[64]);
 extern DECLARE_ALIGNED(16, const int16_t, vp9_row_scan_8x8[64]);
@@ -119,7 +118,7 @@ extern DECLARE_ALIGNED(16, int16_t, vp9_default_iscan_4x4[16]);
 extern DECLARE_ALIGNED(16, int16_t, vp9_col_iscan_4x4[16]);
 extern DECLARE_ALIGNED(16, int16_t, vp9_row_iscan_4x4[16]);
 
-extern DECLARE_ALIGNED(64, int16_t, vp9_default_iscan_8x8[64]);
+extern DECLARE_ALIGNED(16, int16_t, vp9_default_iscan_8x8[64]);
 
 extern DECLARE_ALIGNED(16, int16_t, vp9_col_iscan_8x8[64]);
 extern DECLARE_ALIGNED(16, int16_t, vp9_row_iscan_8x8[64]);

@@ -237,6 +237,8 @@ vp9/decoder/vp9_onyxd.h
 vp9/decoder/vp9_onyxd_if.c
 vp9/decoder/vp9_onyxd_int.h
 vp9/decoder/vp9_read_bit_buffer.h
+vp9/decoder/vp9_thread.c
+vp9/decoder/vp9_thread.h
 vp9/decoder/vp9_treereader.h
 vp9/vp9_common.mk
 vp9/vp9_dx_iface.c

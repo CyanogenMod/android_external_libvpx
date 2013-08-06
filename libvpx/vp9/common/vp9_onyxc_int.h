@@ -42,7 +42,7 @@ typedef struct frame_contexts {
   vp9_prob uv_mode_prob[VP9_INTRA_MODES][VP9_INTRA_MODES - 1];
   vp9_prob partition_prob[NUM_FRAME_TYPES][NUM_PARTITION_CONTEXTS]
                          [PARTITION_TYPES - 1];
-  vp9_coeff_probs_model coef_probs[TX_SIZE_MAX_SB][BLOCK_TYPES];
+  vp9_coeff_probs_model coef_probs[TX_SIZES][BLOCK_TYPES];
   vp9_prob switchable_interp_prob[VP9_SWITCHABLE_FILTERS + 1]
                                  [VP9_SWITCHABLE_FILTERS - 1];
   vp9_prob inter_mode_probs[INTER_MODE_CONTEXTS][VP9_INTER_MODES - 1];
@@ -59,12 +59,12 @@ typedef struct {
   unsigned int y_mode[BLOCK_SIZE_GROUPS][VP9_INTRA_MODES];
   unsigned int uv_mode[VP9_INTRA_MODES][VP9_INTRA_MODES];
   unsigned int partition[NUM_PARTITION_CONTEXTS][PARTITION_TYPES];
-  vp9_coeff_count_model coef[TX_SIZE_MAX_SB][BLOCK_TYPES];
-  unsigned int eob_branch[TX_SIZE_MAX_SB][BLOCK_TYPES][REF_TYPES]
+  vp9_coeff_count_model coef[TX_SIZES][BLOCK_TYPES];
+  unsigned int eob_branch[TX_SIZES][BLOCK_TYPES][REF_TYPES]
                          [COEF_BANDS][PREV_COEF_CONTEXTS];
   unsigned int switchable_interp[VP9_SWITCHABLE_FILTERS + 1]
                                 [VP9_SWITCHABLE_FILTERS];
-  unsigned int inter_mode[INTER_MODE_CONTEXTS][VP9_INTER_MODES - 1][2];
+  unsigned int inter_mode[INTER_MODE_CONTEXTS][VP9_INTER_MODES];
   unsigned int intra_inter[INTRA_INTER_CONTEXTS][2];
   unsigned int comp_inter[COMP_INTER_CONTEXTS][2];
   unsigned int single_ref[REF_CONTEXTS][2][2];
@@ -240,8 +240,7 @@ static INLINE void set_partition_seg_context(VP9_COMMON *cm, MACROBLOCKD *xd,
   xd->left_seg_context = cm->left_seg_context + (mi_row & MI_MASK);
 }
 
-static int check_bsize_coverage(VP9_COMMON *cm, MACROBLOCKD *xd,
-                                int mi_row, int mi_col,
+static int check_bsize_coverage(VP9_COMMON *cm, int mi_row, int mi_col,
                                 BLOCK_SIZE_TYPE bsize) {
   int bsl = mi_width_log2(bsize), bs = 1 << bsl;
   int ms = bs / 2;
@@ -276,14 +275,6 @@ static void set_mi_row_col(VP9_COMMON *cm, MACROBLOCKD *xd,
   xd->up_available    = (mi_row != 0);
   xd->left_available  = (mi_col > cm->cur_tile_mi_col_start);
   xd->right_available = (mi_col + bw < cm->cur_tile_mi_col_end);
-}
-
-static int get_mi_row(const MACROBLOCKD *xd) {
-  return ((-xd->mb_to_top_edge) >> (3 + LOG2_MI_SIZE));
-}
-
-static int get_mi_col(const MACROBLOCKD *xd) {
-  return ((-xd->mb_to_left_edge) >> (3 + LOG2_MI_SIZE));
 }
 
 static int get_token_alloc(int mb_rows, int mb_cols) {

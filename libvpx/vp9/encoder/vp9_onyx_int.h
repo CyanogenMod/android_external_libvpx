@@ -77,7 +77,7 @@ typedef struct {
   // 0 = ZERO_MV, MV
   signed char last_mode_lf_deltas[MAX_MODE_LF_DELTAS];
 
-  vp9_coeff_probs_model coef_probs[TX_SIZE_MAX_SB][BLOCK_TYPES];
+  vp9_coeff_probs_model coef_probs[TX_SIZES][BLOCK_TYPES];
 
   vp9_prob y_mode_prob[4][VP9_INTRA_MODES - 1];
   vp9_prob uv_mode_prob[VP9_INTRA_MODES][VP9_INTRA_MODES - 1];
@@ -145,14 +145,14 @@ typedef struct {
 // const MODE_DEFINITION vp9_mode_order[MAX_MODES] used in the rd code.
 typedef enum {
   THR_NEARESTMV,
+  THR_DC,
+
   THR_NEARESTA,
   THR_NEARESTG,
   THR_NEWMV,
   THR_COMP_NEARESTLA,
   THR_NEARMV,
   THR_COMP_NEARESTGA,
-
-  THR_DC,
 
   THR_NEWG,
   THR_NEWA,
@@ -224,6 +224,10 @@ typedef enum {
   // skips oblique intra modes  at angles 27, 63, 117, 153 if the best
   // intra so far is not one of the neighboring directions
   FLAG_SKIP_INTRA_DIRMISMATCH = 16,
+
+  // skips intra modes other than DC_PRED if the source variance
+  // is small
+  FLAG_SKIP_INTRA_LOWVAR = 32,
 } MODE_SEARCH_SKIP_LOGIC;
 
 typedef struct {
@@ -258,10 +262,13 @@ typedef struct {
   int unused_mode_skip_lvl;
   int reference_masking;
   BLOCK_SIZE_TYPE always_this_block_size;
-  int use_partitions_greater_than;
-  BLOCK_SIZE_TYPE greater_than_block_size;
-  int use_partitions_less_than;
-  BLOCK_SIZE_TYPE less_than_block_size;
+  int auto_min_max_partition_size;
+  int auto_min_max_partition_interval;
+  int auto_min_max_partition_count;
+  BLOCK_SIZE_TYPE min_partition_size;
+  BLOCK_SIZE_TYPE max_partition_size;
+  // int use_min_partition_size;       // not used in code
+  // int use_max_partition_size;
   int adjust_partitioning_from_last_frame;
   int last_partitioning_redo_frequency;
   int disable_splitmv;
@@ -370,9 +377,9 @@ typedef struct VP9_COMP {
   unsigned int single_ref_count[REF_CONTEXTS][2][2];
   unsigned int comp_ref_count[REF_CONTEXTS][2];
 
-  int64_t rd_tx_select_diff[NB_TXFM_MODES];
+  int64_t rd_tx_select_diff[TX_MODES];
   // FIXME(rbultje) can this overflow?
-  int rd_tx_select_threshes[4][NB_TXFM_MODES];
+  int rd_tx_select_threshes[4][TX_MODES];
 
   int64_t rd_filter_diff[VP9_SWITCHABLE_FILTERS + 1];
   int64_t rd_filter_threshes[4][VP9_SWITCHABLE_FILTERS + 1];
@@ -457,9 +464,9 @@ typedef struct VP9_COMP {
 
   nmv_context_counts NMVcount;
 
-  vp9_coeff_count coef_counts[TX_SIZE_MAX_SB][BLOCK_TYPES];
-  vp9_coeff_probs_model frame_coef_probs[TX_SIZE_MAX_SB][BLOCK_TYPES];
-  vp9_coeff_stats frame_branch_ct[TX_SIZE_MAX_SB][BLOCK_TYPES];
+  vp9_coeff_count coef_counts[TX_SIZES][BLOCK_TYPES];
+  vp9_coeff_probs_model frame_coef_probs[TX_SIZES][BLOCK_TYPES];
+  vp9_coeff_stats frame_branch_ct[TX_SIZES][BLOCK_TYPES];
 
   int gfu_boost;
   int last_boost;
@@ -527,7 +534,7 @@ typedef struct VP9_COMP {
   uint64_t time_receive_data;
   uint64_t time_compress_data;
   uint64_t time_pick_lpf;
-  uint64_t time_encode_mb_row;
+  uint64_t time_encode_sb_row;
 
   struct twopass_rc {
     unsigned int section_intra_rating;
@@ -619,7 +626,7 @@ typedef struct VP9_COMP {
   unsigned int switchable_interp_count[VP9_SWITCHABLE_FILTERS + 1]
                                       [VP9_SWITCHABLE_FILTERS];
 
-  unsigned int txfm_stepdown_count[TX_SIZE_MAX_SB];
+  unsigned int txfm_stepdown_count[TX_SIZES];
 
   int initial_width;
   int initial_height;

@@ -14,9 +14,7 @@
 #include "vpx/vpx_integer.h"
 #include "vp9/common/vp9_enums.h"
 
-struct loop_filter_info;
 struct macroblockd;
-struct loop_filter_info;
 
 /* Encoder forward decls */
 struct macroblock;
@@ -207,7 +205,8 @@ void vp9_add_constant_residual_32x32_neon(const int16_t diff, uint8_t *dest, int
 #define vp9_add_constant_residual_32x32 vp9_add_constant_residual_32x32_neon
 
 void vp9_mb_lpf_vertical_edge_w_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh);
-#define vp9_mb_lpf_vertical_edge_w vp9_mb_lpf_vertical_edge_w_c
+void vp9_mb_lpf_vertical_edge_w_neon(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh);
+#define vp9_mb_lpf_vertical_edge_w vp9_mb_lpf_vertical_edge_w_neon
 
 void vp9_mbloop_filter_vertical_edge_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
 void vp9_mbloop_filter_vertical_edge_neon(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
@@ -218,7 +217,8 @@ void vp9_loop_filter_vertical_edge_neon(uint8_t *s, int pitch, const uint8_t *bl
 #define vp9_loop_filter_vertical_edge vp9_loop_filter_vertical_edge_neon
 
 void vp9_mb_lpf_horizontal_edge_w_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
-#define vp9_mb_lpf_horizontal_edge_w vp9_mb_lpf_horizontal_edge_w_c
+void vp9_mb_lpf_horizontal_edge_w_neon(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
+#define vp9_mb_lpf_horizontal_edge_w vp9_mb_lpf_horizontal_edge_w_neon
 
 void vp9_mbloop_filter_horizontal_edge_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
 void vp9_mbloop_filter_horizontal_edge_neon(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
@@ -273,6 +273,9 @@ void vp9_short_idct4x4_1_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 void vp9_short_idct4x4_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 #define vp9_short_idct4x4_add vp9_short_idct4x4_add_c
 
+void vp9_short_idct8x8_1_add_c(int16_t *input, uint8_t *dest, int dest_stride);
+#define vp9_short_idct8x8_1_add vp9_short_idct8x8_1_add_c
+
 void vp9_short_idct8x8_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 void vp9_short_idct8x8_add_neon(int16_t *input, uint8_t *dest, int dest_stride);
 #define vp9_short_idct8x8_add vp9_short_idct8x8_add_neon
@@ -280,8 +283,8 @@ void vp9_short_idct8x8_add_neon(int16_t *input, uint8_t *dest, int dest_stride);
 void vp9_short_idct10_8x8_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 #define vp9_short_idct10_8x8_add vp9_short_idct10_8x8_add_c
 
-void vp9_short_idct1_8x8_c(int16_t *input, int16_t *output);
-#define vp9_short_idct1_8x8 vp9_short_idct1_8x8_c
+void vp9_short_idct16x16_1_add_c(int16_t *input, uint8_t *dest, int dest_stride);
+#define vp9_short_idct16x16_1_add vp9_short_idct16x16_1_add_c
 
 void vp9_short_idct16x16_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 #define vp9_short_idct16x16_add vp9_short_idct16x16_add_c
@@ -289,17 +292,11 @@ void vp9_short_idct16x16_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 void vp9_short_idct10_16x16_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 #define vp9_short_idct10_16x16_add vp9_short_idct10_16x16_add_c
 
-void vp9_short_idct1_16x16_c(int16_t *input, int16_t *output);
-#define vp9_short_idct1_16x16 vp9_short_idct1_16x16_c
-
 void vp9_short_idct32x32_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 #define vp9_short_idct32x32_add vp9_short_idct32x32_add_c
 
 void vp9_short_idct1_32x32_c(int16_t *input, int16_t *output);
 #define vp9_short_idct1_32x32 vp9_short_idct1_32x32_c
-
-void vp9_short_idct10_32x32_add_c(int16_t *input, uint8_t *dest, int dest_stride);
-#define vp9_short_idct10_32x32_add vp9_short_idct10_32x32_add_c
 
 void vp9_short_iht4x4_add_c(int16_t *input, uint8_t *dest, int dest_stride, int tx_type);
 #define vp9_short_iht4x4_add vp9_short_iht4x4_add_c

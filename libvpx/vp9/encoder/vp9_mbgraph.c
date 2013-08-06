@@ -63,7 +63,7 @@ static unsigned int do_16x16_motion_iteration(VP9_COMP *cpi,
   }
 
   vp9_set_mbmode_and_mvs(x, NEWMV, dst_mv);
-  vp9_build_inter_predictors_sby(xd, mb_row, mb_col, BLOCK_SIZE_MB16X16);
+  vp9_build_inter_predictors_sby(xd, mb_row, mb_col, BLOCK_16X16);
   best_err = vp9_sad16x16(x->plane[0].src.buf, x->plane[0].src.stride,
                           xd->plane[0].dst.buf, xd->plane[0].dst.stride,
                           INT_MAX);
@@ -77,9 +77,7 @@ static unsigned int do_16x16_motion_iteration(VP9_COMP *cpi,
   return best_err;
 }
 
-static int do_16x16_motion_search(VP9_COMP *cpi,
-                                  int_mv *ref_mv, int_mv *dst_mv,
-                                  int buf_mb_y_offset, int mb_y_offset,
+static int do_16x16_motion_search(VP9_COMP *cpi, int_mv *ref_mv, int_mv *dst_mv,
                                   int mb_row, int mb_col) {
   MACROBLOCK *const x = &cpi->mb;
   MACROBLOCKD *const xd = &x->e_mbd;
@@ -118,9 +116,7 @@ static int do_16x16_motion_search(VP9_COMP *cpi,
   return err;
 }
 
-static int do_16x16_zerozero_search(VP9_COMP *cpi,
-                                    int_mv *dst_mv,
-                                    int buf_mb_y_offset, int mb_y_offset) {
+static int do_16x16_zerozero_search(VP9_COMP *cpi, int_mv *dst_mv) {
   MACROBLOCK *const x = &cpi->mb;
   MACROBLOCKD *const xd = &x->e_mbd;
   unsigned int err;
@@ -210,7 +206,6 @@ static void update_mbgraph_mb_stats
     g_motion_error = do_16x16_motion_search(cpi,
                                             prev_golden_ref_mv,
                                             &stats->ref[GOLDEN_FRAME].m.mv,
-                                            mb_y_offset, gld_y_offset,
                                             mb_row, mb_col);
     stats->ref[GOLDEN_FRAME].err = g_motion_error;
   } else {
@@ -224,8 +219,7 @@ static void update_mbgraph_mb_stats
     xd->plane[0].pre[0].buf = alt_ref->y_buffer + mb_y_offset;
     xd->plane[0].pre[0].stride = alt_ref->y_stride;
     a_motion_error = do_16x16_zerozero_search(cpi,
-                                              &stats->ref[ALTREF_FRAME].m.mv,
-                                              mb_y_offset, arf_y_offset);
+                                              &stats->ref[ALTREF_FRAME].m.mv);
 
     stats->ref[ALTREF_FRAME].err = a_motion_error;
   } else {
@@ -248,8 +242,7 @@ static void update_mbgraph_frame_stats(VP9_COMP *cpi,
   int_mv arf_top_mv, gld_top_mv;
   MODE_INFO mi_local;
 
-  // Make sure the mi context starts in a consistent state.
-  memset(&mi_local, 0, sizeof(mi_local));
+  vp9_zero(mi_local);
 
   // Set up limit values for motion vectors to prevent them extending outside the UMV borders
   arf_top_mv.as_int = 0;
@@ -262,7 +255,7 @@ static void update_mbgraph_frame_stats(VP9_COMP *cpi,
   xd->plane[0].pre[0].stride  = buf->y_stride;
   xd->plane[1].dst.stride = buf->uv_stride;
   xd->mode_info_context = &mi_local;
-  mi_local.mbmi.sb_type = BLOCK_SIZE_MB16X16;
+  mi_local.mbmi.sb_type = BLOCK_16X16;
   mi_local.mbmi.ref_frame[0] = LAST_FRAME;
   mi_local.mbmi.ref_frame[1] = NONE;
 

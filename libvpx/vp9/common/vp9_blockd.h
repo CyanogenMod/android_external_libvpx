@@ -26,9 +26,6 @@
 #include "vp9/common/vp9_treecoder.h"
 
 #define BLOCK_SIZE_GROUPS   4
-
-#define PREDICTION_PROBS 3
-
 #define MBSKIP_CONTEXTS 3
 
 /* Segment Feature Masks */
@@ -164,6 +161,11 @@ typedef struct {
   union b_mode_info bmi[4];
 } MODE_INFO;
 
+static int is_inter_block(const MB_MODE_INFO *mbmi) {
+  return mbmi->ref_frame[0] > INTRA_FRAME;
+}
+
+
 enum mv_precision {
   MV_PRECISION_Q3,
   MV_PRECISION_Q4
@@ -286,22 +288,22 @@ typedef struct macroblockd {
 
 static INLINE unsigned char *get_sb_index(MACROBLOCKD *xd, BLOCK_SIZE_TYPE subsize) {
   switch (subsize) {
-    case BLOCK_SIZE_SB64X64:
-    case BLOCK_SIZE_SB64X32:
-    case BLOCK_SIZE_SB32X64:
-    case BLOCK_SIZE_SB32X32:
+    case BLOCK_64X64:
+    case BLOCK_64X32:
+    case BLOCK_32X64:
+    case BLOCK_32X32:
       return &xd->sb_index;
-    case BLOCK_SIZE_SB32X16:
-    case BLOCK_SIZE_SB16X32:
-    case BLOCK_SIZE_MB16X16:
+    case BLOCK_32X16:
+    case BLOCK_16X32:
+    case BLOCK_16X16:
       return &xd->mb_index;
-    case BLOCK_SIZE_SB16X8:
-    case BLOCK_SIZE_SB8X16:
-    case BLOCK_SIZE_SB8X8:
+    case BLOCK_16X8:
+    case BLOCK_8X16:
+    case BLOCK_8X8:
       return &xd->b_index;
-    case BLOCK_SIZE_SB8X4:
-    case BLOCK_SIZE_SB4X8:
-    case BLOCK_SIZE_AB4X4:
+    case BLOCK_8X4:
+    case BLOCK_4X8:
+    case BLOCK_4X4:
       return &xd->ab_index;
     default:
       assert(0);
@@ -315,7 +317,7 @@ static INLINE void update_partition_context(MACROBLOCKD *xd,
   const int bsl = b_width_log2(sb_size), bs = (1 << bsl) / 2;
   const int bwl = b_width_log2(sb_type);
   const int bhl = b_height_log2(sb_type);
-  const int boffset = b_width_log2(BLOCK_SIZE_SB64X64) - bsl;
+  const int boffset = b_width_log2(BLOCK_64X64) - bsl;
   const char pcval0 = ~(0xe << boffset);
   const char pcval1 = ~(0xf << boffset);
   const char pcvalue[2] = {pcval0, pcval1};
@@ -333,7 +335,7 @@ static INLINE int partition_plane_context(MACROBLOCKD *xd,
                                           BLOCK_SIZE_TYPE sb_type) {
   int bsl = mi_width_log2(sb_type), bs = 1 << bsl;
   int above = 0, left = 0, i;
-  int boffset = mi_width_log2(BLOCK_SIZE_SB64X64) - bsl;
+  int boffset = mi_width_log2(BLOCK_64X64) - bsl;
 
   assert(mi_width_log2(sb_type) == mi_height_log2(sb_type));
   assert(bsl >= 0);
@@ -366,10 +368,10 @@ static INLINE TX_TYPE get_tx_type_4x4(PLANE_TYPE plane_type,
 
   if (plane_type != PLANE_TYPE_Y_WITH_DC ||
       xd->lossless ||
-      mbmi->ref_frame[0] != INTRA_FRAME)
+      is_inter_block(mbmi))
     return DCT_DCT;
 
-  return mode2txfm_map[mbmi->sb_type < BLOCK_SIZE_SB8X8 ?
+  return mode2txfm_map[mbmi->sb_type < BLOCK_8X8 ?
                        mi->bmi[ib].as_mode : mbmi->mode];
 }
 
@@ -496,16 +498,16 @@ static INLINE void foreach_transformed_block_in_plane(
     // it to 4x4 block sizes.
     if (xd->mb_to_right_edge < 0)
       max_blocks_wide +=
-          + (xd->mb_to_right_edge >> (5 + xd->plane[plane].subsampling_x));
+          (xd->mb_to_right_edge >> (5 + xd->plane[plane].subsampling_x));
 
     if (xd->mb_to_bottom_edge < 0)
       max_blocks_high +=
-          + (xd->mb_to_bottom_edge >> (5 + xd->plane[plane].subsampling_y));
+          (xd->mb_to_bottom_edge >> (5 + xd->plane[plane].subsampling_y));
 
     i = 0;
     // Unlike the normal case - in here we have to keep track of the
     // row and column of the blocks we use so that we know if we are in
-    // the unrestricted motion border..
+    // the unrestricted motion border.
     for (r = 0; r < (1 << sh); r += (1 << tx_size)) {
       for (c = 0; c < (1 << sw); c += (1 << tx_size)) {
         if (r < max_blocks_high && c < max_blocks_wide)
@@ -563,8 +565,8 @@ static INLINE void foreach_predicted_block_in_plane(
   // size of the predictor to use.
   int pred_w, pred_h;
 
-  if (xd->mode_info_context->mbmi.sb_type < BLOCK_SIZE_SB8X8) {
-    assert(bsize == BLOCK_SIZE_SB8X8);
+  if (xd->mode_info_context->mbmi.sb_type < BLOCK_8X8) {
+    assert(bsize == BLOCK_8X8);
     pred_w = 0;
     pred_h = 0;
   } else {
@@ -689,46 +691,39 @@ static void extend_for_intra(MACROBLOCKD* const xd, int plane, int block,
   }
 }
 static void set_contexts_on_border(MACROBLOCKD *xd, BLOCK_SIZE_TYPE bsize,
-                                   int plane, int ss_tx_size, int eob, int aoff,
-                                   int loff, ENTROPY_CONTEXT *A,
-                                   ENTROPY_CONTEXT *L) {
-  const int bw = b_width_log2(bsize), bh = b_height_log2(bsize);
-  const int sw = bw - xd->plane[plane].subsampling_x;
-  const int sh = bh - xd->plane[plane].subsampling_y;
-  int mi_blocks_wide = 1 << sw;
-  int mi_blocks_high = 1 << sh;
-  int tx_size_in_blocks = (1 << ss_tx_size);
+                                   int plane, int tx_size_in_blocks,
+                                   int eob, int aoff, int loff,
+                                   ENTROPY_CONTEXT *A, ENTROPY_CONTEXT *L) {
+  struct macroblockd_plane *pd = &xd->plane[plane];
   int above_contexts = tx_size_in_blocks;
   int left_contexts = tx_size_in_blocks;
+  int mi_blocks_wide = 1 << plane_block_width_log2by4(bsize, pd);
+  int mi_blocks_high = 1 << plane_block_height_log2by4(bsize, pd);
   int pt;
 
   // xd->mb_to_right_edge is in units of pixels * 8.  This converts
   // it to 4x4 block sizes.
-  if (xd->mb_to_right_edge < 0) {
-    mi_blocks_wide += (xd->mb_to_right_edge
-        >> (5 + xd->plane[plane].subsampling_x));
-  }
+  if (xd->mb_to_right_edge < 0)
+    mi_blocks_wide += (xd->mb_to_right_edge >> (5 + pd->subsampling_x));
 
   // this code attempts to avoid copying into contexts that are outside
   // our border.  Any blocks that do are set to 0...
   if (above_contexts + aoff > mi_blocks_wide)
     above_contexts = mi_blocks_wide - aoff;
 
-  if (xd->mb_to_bottom_edge < 0) {
-    mi_blocks_high += (xd->mb_to_bottom_edge
-        >> (5 + xd->plane[plane].subsampling_y));
-  }
-  if (left_contexts + loff > mi_blocks_high) {
+  if (xd->mb_to_bottom_edge < 0)
+    mi_blocks_high += (xd->mb_to_bottom_edge >> (5 + pd->subsampling_y));
+
+  if (left_contexts + loff > mi_blocks_high)
     left_contexts = mi_blocks_high - loff;
-  }
 
   for (pt = 0; pt < above_contexts; pt++)
     A[pt] = eob > 0;
-  for (pt = above_contexts; pt < (1 << ss_tx_size); pt++)
+  for (pt = above_contexts; pt < tx_size_in_blocks; pt++)
     A[pt] = 0;
   for (pt = 0; pt < left_contexts; pt++)
     L[pt] = eob > 0;
-  for (pt = left_contexts; pt < (1 << ss_tx_size); pt++)
+  for (pt = left_contexts; pt < tx_size_in_blocks; pt++)
     L[pt] = 0;
 }
 

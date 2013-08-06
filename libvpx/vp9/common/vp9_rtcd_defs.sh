@@ -7,9 +7,7 @@ cat <<EOF
 #include "vpx/vpx_integer.h"
 #include "vp9/common/vp9_enums.h"
 
-struct loop_filter_info;
 struct macroblockd;
-struct loop_filter_info;
 
 /* Encoder forward decls */
 struct macroblock;
@@ -22,7 +20,11 @@ EOF
 }
 forward_decls vp9_common_forward_decls
 
-[ $arch = "x86_64" ] && mmx_x86_64=mmx && sse2_x86_64=sse2
+# x86inc.asm doesn't work if pic is enabled on 32 bit platforms so no assembly.
+[ "$CONFIG_USE_X86INC" = "yes" ] && mmx_x86inc=mmx && sse2_x86inc=sse2  && ssse3_x86inc=ssse3
+
+# this variable is for functions that are 64 bit only.
+[ $arch = "x86_64" ] && mmx_x86_64=mmx && sse2_x86_64=sse2  && ssse3_x86_64=ssse3
 
 #
 # Dequant
@@ -47,7 +49,7 @@ prototype void vp9_d27_predictor_4x4 "uint8_t *ypred_ptr, ptrdiff_t y_stride, ui
 specialize vp9_d27_predictor_4x4
 
 prototype void vp9_d45_predictor_4x4 "uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col"
-specialize vp9_d45_predictor_4x4
+specialize vp9_d45_predictor_4x4 ssse3
 
 prototype void vp9_d63_predictor_4x4 "uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col"
 specialize vp9_d63_predictor_4x4
@@ -86,7 +88,7 @@ prototype void vp9_d27_predictor_8x8 "uint8_t *ypred_ptr, ptrdiff_t y_stride, ui
 specialize vp9_d27_predictor_8x8
 
 prototype void vp9_d45_predictor_8x8 "uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col"
-specialize vp9_d45_predictor_8x8
+specialize vp9_d45_predictor_8x8 ssse3
 
 prototype void vp9_d63_predictor_8x8 "uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col"
 specialize vp9_d63_predictor_8x8
@@ -125,7 +127,7 @@ prototype void vp9_d27_predictor_16x16 "uint8_t *ypred_ptr, ptrdiff_t y_stride, 
 specialize vp9_d27_predictor_16x16
 
 prototype void vp9_d45_predictor_16x16 "uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col"
-specialize vp9_d45_predictor_16x16
+specialize vp9_d45_predictor_16x16 ssse3
 
 prototype void vp9_d63_predictor_16x16 "uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col"
 specialize vp9_d63_predictor_16x16
@@ -164,7 +166,7 @@ prototype void vp9_d27_predictor_32x32 "uint8_t *ypred_ptr, ptrdiff_t y_stride, 
 specialize vp9_d27_predictor_32x32
 
 prototype void vp9_d45_predictor_32x32 "uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col"
-specialize vp9_d45_predictor_32x32
+specialize vp9_d45_predictor_32x32 ssse3
 
 prototype void vp9_d63_predictor_32x32 "uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col"
 specialize vp9_d63_predictor_32x32
@@ -214,7 +216,7 @@ fi
 # Loopfilter
 #
 prototype void vp9_mb_lpf_vertical_edge_w "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh"
-specialize vp9_mb_lpf_vertical_edge_w sse2
+specialize vp9_mb_lpf_vertical_edge_w sse2 neon
 
 prototype void vp9_mbloop_filter_vertical_edge "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count"
 specialize vp9_mbloop_filter_vertical_edge sse2 neon
@@ -223,7 +225,7 @@ prototype void vp9_loop_filter_vertical_edge "uint8_t *s, int pitch, const uint8
 specialize vp9_loop_filter_vertical_edge mmx neon
 
 prototype void vp9_mb_lpf_horizontal_edge_w "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count"
-specialize vp9_mb_lpf_horizontal_edge_w sse2
+specialize vp9_mb_lpf_horizontal_edge_w sse2 neon
 
 prototype void vp9_mbloop_filter_horizontal_edge "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count"
 specialize vp9_mbloop_filter_horizontal_edge sse2 neon
@@ -265,10 +267,10 @@ specialize vp9_blend_b
 # Sub Pixel Filters
 #
 prototype void vp9_convolve_copy "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const int16_t *filter_x, int x_step_q4, const int16_t *filter_y, int y_step_q4, int w, int h"
-specialize vp9_convolve_copy sse2
+specialize vp9_convolve_copy $sse2_x86inc
 
 prototype void vp9_convolve_avg "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const int16_t *filter_x, int x_step_q4, const int16_t *filter_y, int y_step_q4, int w, int h"
-specialize vp9_convolve_avg sse2
+specialize vp9_convolve_avg $sse2_x86inc
 
 prototype void vp9_convolve8 "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const int16_t *filter_x, int x_step_q4, const int16_t *filter_y, int y_step_q4, int w, int h"
 specialize vp9_convolve8 ssse3 neon
@@ -297,14 +299,17 @@ specialize vp9_short_idct4x4_1_add sse2
 prototype void vp9_short_idct4x4_add "int16_t *input, uint8_t *dest, int dest_stride"
 specialize vp9_short_idct4x4_add sse2
 
+prototype void vp9_short_idct8x8_1_add "int16_t *input, uint8_t *dest, int dest_stride"
+specialize vp9_short_idct8x8_1_add sse2
+
 prototype void vp9_short_idct8x8_add "int16_t *input, uint8_t *dest, int dest_stride"
 specialize vp9_short_idct8x8_add sse2 neon
 
 prototype void vp9_short_idct10_8x8_add "int16_t *input, uint8_t *dest, int dest_stride"
 specialize vp9_short_idct10_8x8_add sse2
 
-prototype void vp9_short_idct1_8x8 "int16_t *input, int16_t *output"
-specialize vp9_short_idct1_8x8
+prototype void vp9_short_idct16x16_1_add "int16_t *input, uint8_t *dest, int dest_stride"
+specialize vp9_short_idct16x16_1_add sse2
 
 prototype void vp9_short_idct16x16_add "int16_t *input, uint8_t *dest, int dest_stride"
 specialize vp9_short_idct16x16_add sse2
@@ -312,17 +317,11 @@ specialize vp9_short_idct16x16_add sse2
 prototype void vp9_short_idct10_16x16_add "int16_t *input, uint8_t *dest, int dest_stride"
 specialize vp9_short_idct10_16x16_add sse2
 
-prototype void vp9_short_idct1_16x16 "int16_t *input, int16_t *output"
-specialize vp9_short_idct1_16x16
-
 prototype void vp9_short_idct32x32_add "int16_t *input, uint8_t *dest, int dest_stride"
 specialize vp9_short_idct32x32_add sse2
 
 prototype void vp9_short_idct1_32x32 "int16_t *input, int16_t *output"
 specialize vp9_short_idct1_32x32
-
-prototype void vp9_short_idct10_32x32_add "int16_t *input, uint8_t *dest, int dest_stride"
-specialize vp9_short_idct10_32x32_add
 
 prototype void vp9_short_iht4x4_add "int16_t *input, uint8_t *dest, int dest_stride, int tx_type"
 specialize vp9_short_iht4x4_add sse2
@@ -702,12 +701,10 @@ specialize vp9_get_mb_ss mmx sse2
 # ENCODEMB INVOKE
 
 prototype int64_t vp9_block_error "int16_t *coeff, int16_t *dqcoeff, intptr_t block_size, int64_t *ssz"
-specialize vp9_block_error sse2
+specialize vp9_block_error $sse2_x86inc
 
 prototype void vp9_subtract_block "int rows, int cols, int16_t *diff_ptr, ptrdiff_t diff_stride, const uint8_t *src_ptr, ptrdiff_t src_stride, const uint8_t *pred_ptr, ptrdiff_t pred_stride"
-specialize vp9_subtract_block sse2
-
-[ $arch = "x86_64" ] && ssse3_x86_64=ssse3
+specialize vp9_subtract_block $sse2_x86inc
 
 prototype void vp9_quantize_b "int16_t *coeff_ptr, intptr_t n_coeffs, int skip_block, int16_t *zbin_ptr, int16_t *round_ptr, int16_t *quant_ptr, int16_t *quant_shift_ptr, int16_t *qcoeff_ptr, int16_t *dqcoeff_ptr, int16_t *dequant_ptr, int zbin_oq_value, uint16_t *eob_ptr, const int16_t *scan, const int16_t *iscan"
 specialize vp9_quantize_b $ssse3_x86_64
@@ -719,13 +716,11 @@ specialize vp9_quantize_b_32x32 $ssse3_x86_64
 # Structured Similarity (SSIM)
 #
 if [ "$CONFIG_INTERNAL_STATS" = "yes" ]; then
-    [ $arch = "x86_64" ] && sse2_on_x86_64=sse2
-
     prototype void vp9_ssim_parms_8x8 "uint8_t *s, int sp, uint8_t *r, int rp, unsigned long *sum_s, unsigned long *sum_r, unsigned long *sum_sq_s, unsigned long *sum_sq_r, unsigned long *sum_sxr"
-    specialize vp9_ssim_parms_8x8 $sse2_on_x86_64
+    specialize vp9_ssim_parms_8x8 $sse2_x86_64
 
     prototype void vp9_ssim_parms_16x16 "uint8_t *s, int sp, uint8_t *r, int rp, unsigned long *sum_s, unsigned long *sum_r, unsigned long *sum_sq_s, unsigned long *sum_sq_r, unsigned long *sum_sxr"
-    specialize vp9_ssim_parms_16x16 $sse2_on_x86_64
+    specialize vp9_ssim_parms_16x16 $sse2_x86_64
 fi
 
 # fdct functions

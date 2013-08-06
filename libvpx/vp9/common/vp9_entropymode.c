@@ -356,53 +356,15 @@ void vp9_entropy_mode_init() {
                               vp9_inter_mode_tree, NEARESTMV);
 }
 
-void vp9_accum_mv_refs(VP9_COMMON *pc,
-                       MB_PREDICTION_MODE m,
-                       const int context) {
-  unsigned int (*inter_mode_counts)[VP9_INTER_MODES - 1][2] =
-      pc->counts.inter_mode;
-
-  if (m == ZEROMV) {
-    ++inter_mode_counts[context][0][0];
-  } else {
-    ++inter_mode_counts[context][0][1];
-    if (m == NEARESTMV) {
-      ++inter_mode_counts[context][1][0];
-    } else {
-      ++inter_mode_counts[context][1][1];
-      if (m == NEARMV) {
-        ++inter_mode_counts[context][2][0];
-      } else {
-        ++inter_mode_counts[context][2][1];
-      }
-    }
-  }
-}
-
 #define COUNT_SAT 20
 #define MAX_UPDATE_FACTOR 128
 
-static int update_ct(vp9_prob pre_prob, vp9_prob prob,
-                          unsigned int ct[2]) {
-  const int count = MIN(ct[0] + ct[1], COUNT_SAT);
-  const int factor = MAX_UPDATE_FACTOR * count / COUNT_SAT;
-  return weighted_prob(pre_prob, prob, factor);
+static int update_ct(vp9_prob pre_prob, vp9_prob prob, unsigned int ct[2]) {
+  return merge_probs(pre_prob, prob, ct, COUNT_SAT, MAX_UPDATE_FACTOR);
 }
 
 static int update_ct2(vp9_prob pre_prob, unsigned int ct[2]) {
-  return update_ct(pre_prob, get_binary_prob(ct[0], ct[1]), ct);
-}
-
-void vp9_adapt_mode_context(VP9_COMMON *pc) {
-  int i, j;
-  FRAME_CONTEXT *const fc = &pc->fc;
-  FRAME_CONTEXT *const pre_fc = &pc->frame_contexts[pc->frame_context_idx];
-  FRAME_COUNTS  *const counts = &pc->counts;
-
-  for (j = 0; j < INTER_MODE_CONTEXTS; j++)
-    for (i = 0; i < VP9_INTER_MODES - 1; i++)
-      fc->inter_mode_probs[j][i] = update_ct2(pre_fc->inter_mode_probs[j][i],
-                                              counts->inter_mode[j][i]);
+  return merge_probs2(pre_prob, ct, COUNT_SAT, MAX_UPDATE_FACTOR);
 }
 
 static void update_mode_probs(int n_modes,
@@ -440,6 +402,11 @@ void vp9_adapt_mode_probs(VP9_COMMON *cm) {
       fc->single_ref_prob[i][j] = update_ct2(pre_fc->single_ref_prob[i][j],
                                              counts->single_ref[i][j]);
 
+  for (i = 0; i < INTER_MODE_CONTEXTS; i++)
+    update_mode_probs(VP9_INTER_MODES, vp9_inter_mode_tree,
+                      counts->inter_mode[i], pre_fc->inter_mode_probs[i],
+                      fc->inter_mode_probs[i], NEARESTMV);
+
   for (i = 0; i < BLOCK_SIZE_GROUPS; i++)
     update_mode_probs(VP9_INTRA_MODES, vp9_intra_mode_tree,
                       counts->y_mode[i], pre_fc->y_mode_prob[i],
@@ -466,25 +433,25 @@ void vp9_adapt_mode_probs(VP9_COMMON *cm) {
 
   if (cm->tx_mode == TX_MODE_SELECT) {
     int j;
-    unsigned int branch_ct_8x8p[TX_SIZE_MAX_SB - 3][2];
-    unsigned int branch_ct_16x16p[TX_SIZE_MAX_SB - 2][2];
-    unsigned int branch_ct_32x32p[TX_SIZE_MAX_SB - 1][2];
+    unsigned int branch_ct_8x8p[TX_SIZES - 3][2];
+    unsigned int branch_ct_16x16p[TX_SIZES - 2][2];
+    unsigned int branch_ct_32x32p[TX_SIZES - 1][2];
 
     for (i = 0; i < TX_SIZE_CONTEXTS; ++i) {
       tx_counts_to_branch_counts_8x8(counts->tx.p8x8[i], branch_ct_8x8p);
-      for (j = 0; j < TX_SIZE_MAX_SB - 3; ++j)
+      for (j = 0; j < TX_SIZES - 3; ++j)
         fc->tx_probs.p8x8[i][j] = update_ct2(pre_fc->tx_probs.p8x8[i][j],
                                              branch_ct_8x8p[j]);
 
       tx_counts_to_branch_counts_16x16(counts->tx.p16x16[i],
                                        branch_ct_16x16p);
-      for (j = 0; j < TX_SIZE_MAX_SB - 2; ++j)
+      for (j = 0; j < TX_SIZES - 2; ++j)
         fc->tx_probs.p16x16[i][j] = update_ct2(pre_fc->tx_probs.p16x16[i][j],
                                                branch_ct_16x16p[j]);
 
       tx_counts_to_branch_counts_32x32(counts->tx.p32x32[i],
                                        branch_ct_32x32p);
-      for (j = 0; j < TX_SIZE_MAX_SB - 1; ++j)
+      for (j = 0; j < TX_SIZES - 1; ++j)
         fc->tx_probs.p32x32[i][j] = update_ct2(pre_fc->tx_probs.p32x32[i][j],
                                                branch_ct_32x32p[j]);
     }
@@ -495,22 +462,24 @@ void vp9_adapt_mode_probs(VP9_COMMON *cm) {
                                      counts->mbskip[i]);
 }
 
-static void set_default_lf_deltas(MACROBLOCKD *xd) {
-  xd->lf.mode_ref_delta_enabled = 1;
-  xd->lf.mode_ref_delta_update = 1;
+static void set_default_lf_deltas(struct loopfilter *lf) {
+  lf->mode_ref_delta_enabled = 1;
+  lf->mode_ref_delta_update = 1;
 
-  xd->lf.ref_deltas[INTRA_FRAME] = 1;
-  xd->lf.ref_deltas[LAST_FRAME] = 0;
-  xd->lf.ref_deltas[GOLDEN_FRAME] = -1;
-  xd->lf.ref_deltas[ALTREF_FRAME] = -1;
+  lf->ref_deltas[INTRA_FRAME] = 1;
+  lf->ref_deltas[LAST_FRAME] = 0;
+  lf->ref_deltas[GOLDEN_FRAME] = -1;
+  lf->ref_deltas[ALTREF_FRAME] = -1;
 
-  xd->lf.mode_deltas[0] = 0;
-  xd->lf.mode_deltas[1] = 0;
+  lf->mode_deltas[0] = 0;
+  lf->mode_deltas[1] = 0;
 }
 
 void vp9_setup_past_independence(VP9_COMMON *cm, MACROBLOCKD *xd) {
   // Reset the segment feature data to the default stats:
   // Features disabled, 0, with delta coding (Default state).
+  struct loopfilter *const lf = &xd->lf;
+
   int i;
   vp9_clearall_segfeatures(&xd->seg);
   xd->seg.abs_delta = SEGMENT_DELTADATA;
@@ -518,12 +487,12 @@ void vp9_setup_past_independence(VP9_COMMON *cm, MACROBLOCKD *xd) {
     vpx_memset(cm->last_frame_seg_map, 0, (cm->mi_rows * cm->mi_cols));
 
   // Reset the mode ref deltas for loop filter
-  vp9_zero(xd->lf.last_ref_deltas);
-  vp9_zero(xd->lf.last_mode_deltas);
-  set_default_lf_deltas(xd);
+  vp9_zero(lf->last_ref_deltas);
+  vp9_zero(lf->last_mode_deltas);
+  set_default_lf_deltas(lf);
 
   // To force update of the sharpness
-  xd->lf.last_sharpness_level = -1;
+  lf->last_sharpness_level = -1;
 
   vp9_default_coef_probs(cm);
   vp9_init_mbmode_probs(cm);

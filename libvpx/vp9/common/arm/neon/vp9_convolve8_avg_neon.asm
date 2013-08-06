@@ -52,15 +52,15 @@
 ; sp[]int h
 
 |vp9_convolve8_avg_horiz_neon| PROC
+    ldr             r12, [sp, #4]           ; x_step_q4
+    cmp             r12, #16
+    bne             vp9_convolve8_avg_horiz_c
+
     push            {r4-r10, lr}
 
     sub             r0, r0, #3              ; adjust for taps
 
-    ldr             r4, [sp, #36]           ; x_step_q4
     ldr             r5, [sp, #32]           ; filter_x
-    cmp             r4, #16
-    bne             call_horiz_c_convolve   ; x_step_q4 != 16
-
     ldr             r6, [sp, #48]           ; w
     ldr             r7, [sp, #52]           ; h
 
@@ -82,21 +82,21 @@
     mov             r10, r6                 ; w loop counter
 
 loop_horiz
-    vld4.u8         {d24[0], d25[0], d26[0], d27[0]}, [r0]!
-    vld4.u8         {d24[4], d25[4], d26[4], d27[4]}, [r0]!
+    vld1.8          {d24}, [r0]!
     vld3.u8         {d28[0], d29[0], d30[0]}, [r0], r9
 
-    vld4.u8         {d24[1], d25[1], d26[1], d27[1]}, [r0]!
-    vld4.u8         {d24[5], d25[5], d26[5], d27[5]}, [r0]!
+    vld1.8          {d25}, [r0]!
     vld3.u8         {d28[1], d29[1], d30[1]}, [r0], r9
 
-    vld4.u8         {d24[2], d25[2], d26[2], d27[2]}, [r0]!
-    vld4.u8         {d24[6], d25[6], d26[6], d27[6]}, [r0]!
+    vld1.8          {d26}, [r0]!
     vld3.u8         {d28[2], d29[2], d30[2]}, [r0], r9
 
-    vld4.u8         {d24[3], d25[3], d26[3], d27[3]}, [r0]!
-    vld4.u8         {d24[7], d25[7], d26[7], d27[7]}, [r0]!
+    vld1.8          {d27}, [r0]!
     vld3.u8         {d28[3], d29[3], d30[3]}, [r0], r8
+
+    vtrn.16         q12, q13
+    vtrn.8          d24, d25
+    vtrn.8          d26, d27
 
     ; extract to s16
     vmovl.u8        q8, d24
@@ -128,8 +128,8 @@ loop_horiz
     vqrshrun.s32    d5, q15, #7
 
     ; saturate
-    vqshrn.u16      d2, q1, #0
-    vqshrn.u16      d3, q2, #0
+    vqmovn.u16      d2, q1
+    vqmovn.u16      d3, q2
 
     ; transpose
     vtrn.16         d2, d3
@@ -137,10 +137,7 @@ loop_horiz
     vtrn.8          d2, d3
     
     ; average the new value and the dst value
-    vaddl.u8        q8, d2, d6
-    vaddl.u8        q9, d3, d7
-    vqrshrn.u16     d2, q8, #1
-    vqrshrn.u16     d3, q9, #1
+    vrhadd.u8       q1, q1, q3
 
     vst1.u32        {d2[0]}, [r2], r3
     vst1.u32        {d3[0]}, [r2], r3
@@ -159,26 +156,20 @@ loop_horiz
 
     pop             {r4-r10, pc}
 
-call_horiz_c_convolve
-    pop             {r4-r10, lr}
-    add             r0, r0, #3              ; un-adjust for taps
-    b               vp9_convolve8_avg_horiz_c
-
-
     ENDP
 
 |vp9_convolve8_avg_vert_neon| PROC
+    ldr             r12, [sp, #12]
+    cmp             r12, #16
+    bne             vp9_convolve8_avg_vert_c
+
     push            {r4-r10, lr}
 
     ; adjust for taps
     sub             r0, r0, r1
     sub             r0, r0, r1, lsl #1
 
-    ldr             r6, [sp, #44]           ; y_step_q4
     ldr             r7, [sp, #40]           ; filter_y
-    cmp             r6, #16
-    bne             call_vert_c_convolve    ; y_step_q4 != 16
-
     ldr             r8, [sp, #48]           ; w
     ldr             r9, [sp, #52]           ; h
 
@@ -240,14 +231,11 @@ loop_vert
     vqrshrun.s32    d5, q15, #7
 
     ; saturate
-    vqshrn.u16      d2, q1, #0
-    vqshrn.u16      d3, q2, #0
+    vqmovn.u16      d2, q1
+    vqmovn.u16      d3, q2
 
     ; average the new value and the dst value
-    vaddl.u8        q8, d2, d6
-    vaddl.u8        q9, d3, d7
-    vqrshrn.u16     d2, q8, #1
-    vqrshrn.u16     d3, q9, #1
+    vrhadd.u8       q1, q1, q3
 
     vst1.u32        {d2[0]}, [r2], r3
     vst1.u32        {d2[1]}, [r2], r3
@@ -265,13 +253,6 @@ loop_vert
     bgt             loop_vert
 
     pop             {r4-r10, pc}
-
-call_vert_c_convolve
-    pop             {r4-r10, lr}
-    ; un-adjust for taps
-    add             r0, r0, r1
-    add             r0, r0, r1, lsl #1
-    b               vp9_convolve8_avg_vert_c
 
     ENDP
     END

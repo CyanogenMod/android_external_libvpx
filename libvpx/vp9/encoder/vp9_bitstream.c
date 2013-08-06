@@ -44,16 +44,16 @@ unsigned __int64 Sectionbits[500];
 int intra_mode_stats[VP9_INTRA_MODES]
                     [VP9_INTRA_MODES]
                     [VP9_INTRA_MODES];
-vp9_coeff_stats tree_update_hist[TX_SIZE_MAX_SB][BLOCK_TYPES];
+vp9_coeff_stats tree_update_hist[TX_SIZES][BLOCK_TYPES];
 
 extern unsigned int active_section;
 #endif
 
 
 #ifdef MODE_STATS
-int64_t tx_count_32x32p_stats[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB];
-int64_t tx_count_16x16p_stats[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 1];
-int64_t tx_count_8x8p_stats[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB - 2];
+int64_t tx_count_32x32p_stats[TX_SIZE_CONTEXTS][TX_SIZES];
+int64_t tx_count_16x16p_stats[TX_SIZE_CONTEXTS][TX_SIZES - 1];
+int64_t tx_count_8x8p_stats[TX_SIZE_CONTEXTS][TX_SIZES - 2];
 int64_t switchable_interp_stats[VP9_SWITCHABLE_FILTERS+1]
                                [VP9_SWITCHABLE_FILTERS];
 
@@ -70,17 +70,17 @@ void init_switchable_interp_stats() {
 static void update_tx_count_stats(VP9_COMMON *cm) {
   int i, j;
   for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
-    for (j = 0; j < TX_SIZE_MAX_SB; j++) {
+    for (j = 0; j < TX_SIZES; j++) {
       tx_count_32x32p_stats[i][j] += cm->fc.tx_count_32x32p[i][j];
     }
   }
   for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
-    for (j = 0; j < TX_SIZE_MAX_SB - 1; j++) {
+    for (j = 0; j < TX_SIZES - 1; j++) {
       tx_count_16x16p_stats[i][j] += cm->fc.tx_count_16x16p[i][j];
     }
   }
   for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
-    for (j = 0; j < TX_SIZE_MAX_SB - 2; j++) {
+    for (j = 0; j < TX_SIZES - 2; j++) {
       tx_count_8x8p_stats[i][j] += cm->fc.tx_count_8x8p[i][j];
     }
   }
@@ -103,30 +103,30 @@ void write_tx_count_stats() {
   fclose(fp);
 
   printf(
-      "vp9_default_tx_count_32x32p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB] = {\n");
+      "vp9_default_tx_count_32x32p[TX_SIZE_CONTEXTS][TX_SIZES] = {\n");
   for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
     printf("  { ");
-    for (j = 0; j < TX_SIZE_MAX_SB; j++) {
+    for (j = 0; j < TX_SIZES; j++) {
       printf("%"PRId64", ", tx_count_32x32p_stats[i][j]);
     }
     printf("},\n");
   }
   printf("};\n");
   printf(
-      "vp9_default_tx_count_16x16p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB-1] = {\n");
+      "vp9_default_tx_count_16x16p[TX_SIZE_CONTEXTS][TX_SIZES-1] = {\n");
   for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
     printf("  { ");
-    for (j = 0; j < TX_SIZE_MAX_SB - 1; j++) {
+    for (j = 0; j < TX_SIZES - 1; j++) {
       printf("%"PRId64", ", tx_count_16x16p_stats[i][j]);
     }
     printf("},\n");
   }
   printf("};\n");
   printf(
-      "vp9_default_tx_count_8x8p[TX_SIZE_CONTEXTS][TX_SIZE_MAX_SB-2] = {\n");
+      "vp9_default_tx_count_8x8p[TX_SIZE_CONTEXTS][TX_SIZES-2] = {\n");
   for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
     printf("  { ");
-    for (j = 0; j < TX_SIZE_MAX_SB - 2; j++) {
+    for (j = 0; j < TX_SIZES - 2; j++) {
       printf("%"PRId64", ", tx_count_8x8p_stats[i][j]);
     }
     printf("},\n");
@@ -169,7 +169,6 @@ void vp9_encode_unsigned_max(struct vp9_write_bit_buffer *wb,
 static void update_mode(
   vp9_writer *w,
   int n,
-  const struct vp9_token tok[/* n */],
   vp9_tree tree,
   vp9_prob Pnew[/* n-1 */],
   vp9_prob Pcur[/* n-1 */],
@@ -194,20 +193,19 @@ static void update_mbintra_mode_probs(VP9_COMP* const cpi,
   unsigned int bct[VP9_INTRA_MODES - 1][2];
 
   for (j = 0; j < BLOCK_SIZE_GROUPS; j++)
-    update_mode(bc, VP9_INTRA_MODES, vp9_intra_mode_encodings,
-                vp9_intra_mode_tree, pnew,
+    update_mode(bc, VP9_INTRA_MODES, vp9_intra_mode_tree, pnew,
                 cm->fc.y_mode_prob[j], bct,
                 (unsigned int *)cpi->y_mode_count[j]);
 }
 
-static void write_selected_txfm_size(const VP9_COMP *cpi, TX_SIZE tx_size,
-                                     BLOCK_SIZE_TYPE bsize, vp9_writer *w) {
+static void write_selected_tx_size(const VP9_COMP *cpi, TX_SIZE tx_size,
+                                   BLOCK_SIZE_TYPE bsize, vp9_writer *w) {
   const MACROBLOCKD *const xd = &cpi->mb.e_mbd;
   const vp9_prob *tx_probs = get_tx_probs2(xd, &cpi->common.fc.tx_probs);
   vp9_write(w, tx_size != TX_4X4, tx_probs[0]);
-  if (bsize >= BLOCK_SIZE_MB16X16 && tx_size != TX_4X4) {
+  if (bsize >= BLOCK_16X16 && tx_size != TX_4X4) {
     vp9_write(w, tx_size != TX_8X8, tx_probs[1]);
-    if (bsize >= BLOCK_SIZE_SB32X32 && tx_size != TX_8X8)
+    if (bsize >= BLOCK_32X32 && tx_size != TX_8X8)
       vp9_write(w, tx_size != TX_16X16, tx_probs[2]);
   }
 }
@@ -265,12 +263,17 @@ static void update_switchable_interp_probs(VP9_COMP *const cpi,
 static void update_inter_mode_probs(VP9_COMMON *pc, vp9_writer* const bc) {
   int i, j;
 
-  for (i = 0; i < INTER_MODE_CONTEXTS; i++) {
-    for (j = 0; j < VP9_INTER_MODES - 1; j++) {
+  for (i = 0; i < INTER_MODE_CONTEXTS; ++i) {
+    unsigned int branch_ct[VP9_INTER_MODES - 1][2];
+    vp9_prob new_prob[VP9_INTER_MODES - 1];
+
+    vp9_tree_probs_from_distribution(vp9_inter_mode_tree,
+                                     new_prob, branch_ct,
+                                     pc->counts.inter_mode[i], NEARESTMV);
+
+    for (j = 0; j < VP9_INTER_MODES - 1; ++j)
       vp9_cond_prob_diff_update(bc, &pc->fc.inter_mode_probs[i][j],
-                                VP9_MODE_UPDATE_PROB,
-                                pc->counts.inter_mode[i][j]);
-    }
+                                VP9_MODE_UPDATE_PROB, branch_ct[j]);
   }
 }
 
@@ -393,8 +396,7 @@ static void encode_ref_frame(VP9_COMP *cpi, vp9_writer *bc) {
   // the reference frame is fully coded by the segment
 }
 
-static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m,
-                                vp9_writer *bc, int mi_row, int mi_col) {
+static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m, vp9_writer *bc) {
   VP9_COMMON *const pc = &cpi->common;
   const nmv_context *nmvc = &pc->fc.nmvc;
   MACROBLOCK *const x = &cpi->mb;
@@ -406,6 +408,7 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m,
   const int segment_id = mi->segment_id;
   int skip_coeff;
   const BLOCK_SIZE_TYPE bsize = mi->sb_type;
+  const int allow_hp = xd->allow_high_precision_mv;
 
   x->partition_info = x->pi + (m - pc->mi);
 
@@ -434,7 +437,7 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m,
   if (bsize >= BLOCK_SIZE_SB8X8 && pc->tx_mode == TX_MODE_SELECT &&
       !(rf != INTRA_FRAME &&
         (skip_coeff || vp9_segfeature_active(seg, segment_id, SEG_LVL_SKIP)))) {
-    write_selected_txfm_size(cpi, mi->txfm_size, bsize, bc);
+    write_selected_tx_size(cpi, mi->txfm_size, bsize, bc);
   }
 
   if (rf == INTRA_FRAME) {
@@ -443,18 +446,17 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m,
 #endif
 
     if (bsize >= BLOCK_SIZE_SB8X8) {
-      const int bwl = b_width_log2(bsize), bhl = b_height_log2(bsize);
-      const int bsl = MIN(bwl, bhl);
-      write_intra_mode(bc, mode, pc->fc.y_mode_prob[MIN(3, bsl)]);
+      write_intra_mode(bc, mode, pc->fc.y_mode_prob[size_group_lookup[bsize]]);
     } else {
       int idx, idy;
-      int num_4x4_blocks_wide = num_4x4_blocks_wide_lookup[bsize];
-      int num_4x4_blocks_high = num_4x4_blocks_high_lookup[bsize];
-      for (idy = 0; idy < 2; idy += num_4x4_blocks_high)
+      const int num_4x4_blocks_wide = num_4x4_blocks_wide_lookup[bsize];
+      const int num_4x4_blocks_high = num_4x4_blocks_high_lookup[bsize];
+      for (idy = 0; idy < 2; idy += num_4x4_blocks_high) {
         for (idx = 0; idx < 2; idx += num_4x4_blocks_wide) {
           const MB_PREDICTION_MODE bm = m->bmi[idy * 2 + idx].as_mode;
           write_intra_mode(bc, bm, pc->fc.y_mode_prob[0]);
         }
+      }
     }
     write_intra_mode(bc, mi->uv_mode, pc->fc.uv_mode_prob[mode]);
   } else {
@@ -470,7 +472,8 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m,
     if (!vp9_segfeature_active(seg, segment_id, SEG_LVL_SKIP)) {
       if (bsize >= BLOCK_SIZE_SB8X8) {
         write_sb_mv_ref(bc, mode, mv_ref_p);
-        vp9_accum_mv_refs(&cpi->common, mode, mi->mb_mode_context[rf]);
+        ++pc->counts.inter_mode[mi->mb_mode_context[rf]]
+                               [inter_mode_offset(mode)];
       }
     }
 
@@ -487,8 +490,8 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m,
       int j;
       MB_PREDICTION_MODE blockmode;
       int_mv blockmv;
-      int num_4x4_blocks_wide = num_4x4_blocks_wide_lookup[bsize];
-      int num_4x4_blocks_high = num_4x4_blocks_high_lookup[bsize];
+      const int num_4x4_blocks_wide = num_4x4_blocks_wide_lookup[bsize];
+      const int num_4x4_blocks_high = num_4x4_blocks_high_lookup[bsize];
       int idx, idy;
       for (idy = 0; idy < 2; idy += num_4x4_blocks_high) {
         for (idx = 0; idx < 2; idx += num_4x4_blocks_wide) {
@@ -496,19 +499,21 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m,
           blockmode = x->partition_info->bmi[j].mode;
           blockmv = m->bmi[j].as_mv[0];
           write_sb_mv_ref(bc, blockmode, mv_ref_p);
-          vp9_accum_mv_refs(&cpi->common, blockmode, mi->mb_mode_context[rf]);
+          ++pc->counts.inter_mode[mi->mb_mode_context[rf]]
+                                 [inter_mode_offset(blockmode)];
+
           if (blockmode == NEWMV) {
 #ifdef ENTROPY_STATS
             active_section = 11;
 #endif
             vp9_encode_mv(cpi, bc, &blockmv.as_mv, &mi->best_mv.as_mv,
-                          nmvc, xd->allow_high_precision_mv);
+                          nmvc, allow_hp);
 
             if (mi->ref_frame[1] > INTRA_FRAME)
               vp9_encode_mv(cpi, bc,
                             &m->bmi[j].as_mv[1].as_mv,
                             &mi->best_second_mv.as_mv,
-                            nmvc, xd->allow_high_precision_mv);
+                            nmvc, allow_hp);
           }
         }
       }
@@ -516,21 +521,18 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m,
 #ifdef ENTROPY_STATS
       active_section = 5;
 #endif
-      vp9_encode_mv(cpi, bc,
-                    &mi->mv[0].as_mv, &mi->best_mv.as_mv,
-                    nmvc, xd->allow_high_precision_mv);
+      vp9_encode_mv(cpi, bc, &mi->mv[0].as_mv, &mi->best_mv.as_mv,
+                    nmvc, allow_hp);
 
       if (mi->ref_frame[1] > INTRA_FRAME)
-        vp9_encode_mv(cpi, bc,
-                      &mi->mv[1].as_mv, &mi->best_second_mv.as_mv,
-                      nmvc, xd->allow_high_precision_mv);
+        vp9_encode_mv(cpi, bc, &mi->mv[1].as_mv, &mi->best_second_mv.as_mv,
+                      nmvc, allow_hp);
     }
   }
 }
 
-static void write_mb_modes_kf(const VP9_COMP *cpi,
-                              MODE_INFO *m,
-                              vp9_writer *bc, int mi_row, int mi_col) {
+static void write_mb_modes_kf(const VP9_COMP *cpi, MODE_INFO *m,
+                              vp9_writer *bc) {
   const VP9_COMMON *const c = &cpi->common;
   const MACROBLOCKD *const xd = &cpi->mb.e_mbd;
   const int ym = m->mbmi.mode;
@@ -543,7 +545,7 @@ static void write_mb_modes_kf(const VP9_COMP *cpi,
   write_skip_coeff(cpi, segment_id, m, bc);
 
   if (m->mbmi.sb_type >= BLOCK_SIZE_SB8X8 && c->tx_mode == TX_MODE_SELECT)
-    write_selected_txfm_size(cpi, m->mbmi.txfm_size, m->mbmi.sb_type, bc);
+    write_selected_tx_size(cpi, m->mbmi.txfm_size, m->mbmi.sb_type, bc);
 
   if (m->mbmi.sb_type >= BLOCK_SIZE_SB8X8) {
     const MB_PREDICTION_MODE A = above_block_mode(m, 0, mis);
@@ -552,11 +554,11 @@ static void write_mb_modes_kf(const VP9_COMP *cpi,
     write_intra_mode(bc, ym, vp9_kf_y_mode_prob[A][L]);
   } else {
     int idx, idy;
-    int num_4x4_blocks_wide = num_4x4_blocks_wide_lookup[m->mbmi.sb_type];
-    int num_4x4_blocks_high = num_4x4_blocks_high_lookup[m->mbmi.sb_type];
+    const int num_4x4_blocks_wide = num_4x4_blocks_wide_lookup[m->mbmi.sb_type];
+    const int num_4x4_blocks_high = num_4x4_blocks_high_lookup[m->mbmi.sb_type];
     for (idy = 0; idy < 2; idy += num_4x4_blocks_high) {
       for (idx = 0; idx < 2; idx += num_4x4_blocks_wide) {
-        int i = idy * 2 + idx;
+        const int i = idy * 2 + idx;
         const MB_PREDICTION_MODE A = above_block_mode(m, i, mis);
         const MB_PREDICTION_MODE L = (xd->left_available || idx) ?
                                      left_block_mode(m, i) : DC_PRED;
@@ -586,12 +588,12 @@ static void write_modes_b(VP9_COMP *cpi, MODE_INFO *m, vp9_writer *bc,
                  1 << mi_height_log2(m->mbmi.sb_type),
                  mi_col, 1 << mi_width_log2(m->mbmi.sb_type));
   if ((cm->frame_type == KEY_FRAME) || cm->intra_only) {
-    write_mb_modes_kf(cpi, m, bc, mi_row, mi_col);
+    write_mb_modes_kf(cpi, m, bc);
 #ifdef ENTROPY_STATS
     active_section = 8;
 #endif
   } else {
-    pack_inter_mode_mvs(cpi, m, bc, mi_row, mi_col);
+    pack_inter_mode_mvs(cpi, m, bc);
 #ifdef ENTROPY_STATS
     active_section = 1;
 #endif
@@ -625,7 +627,7 @@ static void write_modes_sb(VP9_COMP *cpi, MODE_INFO *m, vp9_writer *bc,
 
   if (bsize >= BLOCK_SIZE_SB8X8) {
     int pl;
-    const int idx = check_bsize_coverage(cm, xd, mi_row, mi_col, bsize);
+    const int idx = check_bsize_coverage(cm, mi_row, mi_col, bsize);
     set_partition_seg_context(cm, xd, mi_row, mi_col);
     pl = partition_plane_context(xd, bsize);
     // encode the partition information
@@ -692,8 +694,7 @@ static void write_modes(VP9_COMP *cpi, vp9_writer* const bc,
     vp9_zero(c->left_seg_context);
     for (mi_col = c->cur_tile_mi_col_start; mi_col < c->cur_tile_mi_col_end;
          mi_col += MI_BLOCK_SIZE, m += MI_BLOCK_SIZE)
-      write_modes_sb(cpi, m, bc, tok, tok_end, mi_row, mi_col,
-                     BLOCK_SIZE_SB64X64);
+      write_modes_sb(cpi, m, bc, tok, tok_end, mi_row, mi_col, BLOCK_64X64);
   }
 }
 
@@ -726,12 +727,12 @@ static void print_prob_tree(vp9_coeff_probs *coef_probs, int block_types) {
   fclose(f);
 }
 
-static void build_tree_distribution(VP9_COMP *cpi, TX_SIZE txfm_size) {
-  vp9_coeff_probs_model *coef_probs = cpi->frame_coef_probs[txfm_size];
-  vp9_coeff_count *coef_counts = cpi->coef_counts[txfm_size];
+static void build_tree_distribution(VP9_COMP *cpi, TX_SIZE tx_size) {
+  vp9_coeff_probs_model *coef_probs = cpi->frame_coef_probs[tx_size];
+  vp9_coeff_count *coef_counts = cpi->coef_counts[tx_size];
   unsigned int (*eob_branch_ct)[REF_TYPES][COEF_BANDS][PREV_COEF_CONTEXTS] =
-      cpi->common.counts.eob_branch[txfm_size];
-  vp9_coeff_stats *coef_branch_ct = cpi->frame_branch_ct[txfm_size];
+      cpi->common.counts.eob_branch[tx_size];
+  vp9_coeff_stats *coef_branch_ct = cpi->frame_branch_ct[tx_size];
   vp9_prob full_probs[ENTROPY_NODES];
   int i, j, k, l;
 
@@ -756,9 +757,9 @@ static void build_tree_distribution(VP9_COMP *cpi, TX_SIZE txfm_size) {
           if (!cpi->dummy_packing) {
             int t;
             for (t = 0; t < MAX_ENTROPY_TOKENS; ++t)
-              context_counters[txfm_size][i][j][k][l][t] +=
+              context_counters[tx_size][i][j][k][l][t] +=
                   coef_counts[i][j][k][l][t];
-            context_counters[txfm_size][i][j][k][l][MAX_ENTROPY_TOKENS] +=
+            context_counters[tx_size][i][j][k][l][MAX_ENTROPY_TOKENS] +=
                 eob_branch_ct[i][j][k][l];
           }
 #endif
@@ -1036,15 +1037,15 @@ static void encode_txfm_probs(VP9_COMP *cpi, vp9_writer *w) {
   // Probabilities
   if (cm->tx_mode == TX_MODE_SELECT) {
     int i, j;
-    unsigned int ct_8x8p[TX_SIZE_MAX_SB - 3][2];
-    unsigned int ct_16x16p[TX_SIZE_MAX_SB - 2][2];
-    unsigned int ct_32x32p[TX_SIZE_MAX_SB - 1][2];
+    unsigned int ct_8x8p[TX_SIZES - 3][2];
+    unsigned int ct_16x16p[TX_SIZES - 2][2];
+    unsigned int ct_32x32p[TX_SIZES - 1][2];
 
 
     for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
       tx_counts_to_branch_counts_8x8(cm->counts.tx.p8x8[i],
                                      ct_8x8p);
-      for (j = 0; j < TX_SIZE_MAX_SB - 3; j++)
+      for (j = 0; j < TX_SIZES - 3; j++)
         vp9_cond_prob_diff_update(w, &cm->fc.tx_probs.p8x8[i][j],
                                   VP9_MODE_UPDATE_PROB, ct_8x8p[j]);
     }
@@ -1052,14 +1053,14 @@ static void encode_txfm_probs(VP9_COMP *cpi, vp9_writer *w) {
     for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
       tx_counts_to_branch_counts_16x16(cm->counts.tx.p16x16[i],
                                        ct_16x16p);
-      for (j = 0; j < TX_SIZE_MAX_SB - 2; j++)
+      for (j = 0; j < TX_SIZES - 2; j++)
         vp9_cond_prob_diff_update(w, &cm->fc.tx_probs.p16x16[i][j],
                                   VP9_MODE_UPDATE_PROB, ct_16x16p[j]);
     }
 
     for (i = 0; i < TX_SIZE_CONTEXTS; i++) {
       tx_counts_to_branch_counts_32x32(cm->counts.tx.p32x32[i], ct_32x32p);
-      for (j = 0; j < TX_SIZE_MAX_SB - 1; j++)
+      for (j = 0; j < TX_SIZES - 1; j++)
         vp9_cond_prob_diff_update(w, &cm->fc.tx_probs.p32x32[i][j],
                                   VP9_MODE_UPDATE_PROB, ct_32x32p[j]);
     }
@@ -1422,7 +1423,7 @@ static size_t write_compressed_header(VP9_COMP *cpi, uint8_t *data) {
     for (i = 0; i < NUM_PARTITION_CONTEXTS; ++i) {
       vp9_prob pnew[PARTITION_TYPES - 1];
       unsigned int bct[PARTITION_TYPES - 1][2];
-      update_mode(&header_bc, PARTITION_TYPES, vp9_partition_encodings,
+      update_mode(&header_bc, PARTITION_TYPES,
                   vp9_partition_tree, pnew,
                   fc->partition_prob[cm->frame_type][i], bct,
                   (unsigned int *)cpi->partition_count[i]);

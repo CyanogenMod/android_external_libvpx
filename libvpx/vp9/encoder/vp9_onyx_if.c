@@ -243,16 +243,17 @@ void vp9_initialize_enc() {
 
 static void setup_features(VP9_COMP *cpi) {
   MACROBLOCKD *xd = &cpi->mb.e_mbd;
-  struct loopfilter *lf = &xd->lf;
+  struct loopfilter *const lf = &xd->lf;
+  struct segmentation *const seg = &xd->seg;
 
   // Set up default state for MB feature flags
-  xd->seg.enabled = 0;
+  seg->enabled = 0;
 
-  xd->seg.update_map = 0;
-  xd->seg.update_data = 0;
-  vpx_memset(xd->seg.tree_probs, 255, sizeof(xd->seg.tree_probs));
+  seg->update_map = 0;
+  seg->update_data = 0;
+  vpx_memset(seg->tree_probs, 255, sizeof(seg->tree_probs));
 
-  vp9_clearall_segfeatures(&xd->seg);
+  vp9_clearall_segfeatures(seg);
 
   lf->mode_ref_delta_enabled = 0;
   lf->mode_ref_delta_update = 0;
@@ -324,6 +325,7 @@ static int compute_qdelta(VP9_COMP *cpi, double qstart, double qtarget) {
 static void configure_static_seg_features(VP9_COMP *cpi) {
   VP9_COMMON *cm = &cpi->common;
   MACROBLOCKD *xd = &cpi->mb.e_mbd;
+  struct segmentation *seg = &xd->seg;
 
   int high_q = (int)(cpi->avg_q > 48.0);
   int qi_delta;
@@ -332,26 +334,26 @@ static void configure_static_seg_features(VP9_COMP *cpi) {
   if (cm->frame_type == KEY_FRAME) {
     // Clear down the global segmentation map
     vpx_memset(cpi->segmentation_map, 0, cm->mi_rows * cm->mi_cols);
-    xd->seg.update_map = 0;
-    xd->seg.update_data = 0;
+    seg->update_map = 0;
+    seg->update_data = 0;
     cpi->static_mb_pct = 0;
 
     // Disable segmentation
     vp9_disable_segmentation((VP9_PTR)cpi);
 
     // Clear down the segment features.
-    vp9_clearall_segfeatures(&xd->seg);
+    vp9_clearall_segfeatures(seg);
   } else if (cpi->refresh_alt_ref_frame) {
     // If this is an alt ref frame
     // Clear down the global segmentation map
     vpx_memset(cpi->segmentation_map, 0, cm->mi_rows * cm->mi_cols);
-    xd->seg.update_map = 0;
-    xd->seg.update_data = 0;
+    seg->update_map = 0;
+    seg->update_data = 0;
     cpi->static_mb_pct = 0;
 
     // Disable segmentation and individual segment features by default
     vp9_disable_segmentation((VP9_PTR)cpi);
-    vp9_clearall_segfeatures(&xd->seg);
+    vp9_clearall_segfeatures(seg);
 
     // Scan frames from current to arf frame.
     // This function re-enables segmentation if appropriate.
@@ -359,45 +361,45 @@ static void configure_static_seg_features(VP9_COMP *cpi) {
 
     // If segmentation was enabled set those features needed for the
     // arf itself.
-    if (xd->seg.enabled) {
-      xd->seg.update_map = 1;
-      xd->seg.update_data = 1;
+    if (seg->enabled) {
+      seg->update_map = 1;
+      seg->update_data = 1;
 
       qi_delta = compute_qdelta(cpi, cpi->avg_q, (cpi->avg_q * 0.875));
-      vp9_set_segdata(&xd->seg, 1, SEG_LVL_ALT_Q, (qi_delta - 2));
-      vp9_set_segdata(&xd->seg, 1, SEG_LVL_ALT_LF, -2);
+      vp9_set_segdata(seg, 1, SEG_LVL_ALT_Q, (qi_delta - 2));
+      vp9_set_segdata(seg, 1, SEG_LVL_ALT_LF, -2);
 
-      vp9_enable_segfeature(&xd->seg, 1, SEG_LVL_ALT_Q);
-      vp9_enable_segfeature(&xd->seg, 1, SEG_LVL_ALT_LF);
+      vp9_enable_segfeature(seg, 1, SEG_LVL_ALT_Q);
+      vp9_enable_segfeature(seg, 1, SEG_LVL_ALT_LF);
 
       // Where relevant assume segment data is delta data
-      xd->seg.abs_delta = SEGMENT_DELTADATA;
+      seg->abs_delta = SEGMENT_DELTADATA;
 
     }
-  } else if (xd->seg.enabled) {
+  } else if (seg->enabled) {
     // All other frames if segmentation has been enabled
 
     // First normal frame in a valid gf or alt ref group
     if (cpi->frames_since_golden == 0) {
       // Set up segment features for normal frames in an arf group
       if (cpi->source_alt_ref_active) {
-        xd->seg.update_map = 0;
-        xd->seg.update_data = 1;
-        xd->seg.abs_delta = SEGMENT_DELTADATA;
+        seg->update_map = 0;
+        seg->update_data = 1;
+        seg->abs_delta = SEGMENT_DELTADATA;
 
         qi_delta = compute_qdelta(cpi, cpi->avg_q,
                                   (cpi->avg_q * 1.125));
-        vp9_set_segdata(&xd->seg, 1, SEG_LVL_ALT_Q, (qi_delta + 2));
-        vp9_enable_segfeature(&xd->seg, 1, SEG_LVL_ALT_Q);
+        vp9_set_segdata(seg, 1, SEG_LVL_ALT_Q, (qi_delta + 2));
+        vp9_enable_segfeature(seg, 1, SEG_LVL_ALT_Q);
 
-        vp9_set_segdata(&xd->seg, 1, SEG_LVL_ALT_LF, -2);
-        vp9_enable_segfeature(&xd->seg, 1, SEG_LVL_ALT_LF);
+        vp9_set_segdata(seg, 1, SEG_LVL_ALT_LF, -2);
+        vp9_enable_segfeature(seg, 1, SEG_LVL_ALT_LF);
 
         // Segment coding disabled for compred testing
         if (high_q || (cpi->static_mb_pct == 100)) {
-          vp9_set_segdata(&xd->seg, 1, SEG_LVL_REF_FRAME, ALTREF_FRAME);
-          vp9_enable_segfeature(&xd->seg, 1, SEG_LVL_REF_FRAME);
-          vp9_enable_segfeature(&xd->seg, 1, SEG_LVL_SKIP);
+          vp9_set_segdata(seg, 1, SEG_LVL_REF_FRAME, ALTREF_FRAME);
+          vp9_enable_segfeature(seg, 1, SEG_LVL_REF_FRAME);
+          vp9_enable_segfeature(seg, 1, SEG_LVL_SKIP);
         }
       } else {
         // Disable segmentation and clear down features if alt ref
@@ -407,10 +409,10 @@ static void configure_static_seg_features(VP9_COMP *cpi) {
 
         vpx_memset(cpi->segmentation_map, 0, cm->mi_rows * cm->mi_cols);
 
-        xd->seg.update_map = 0;
-        xd->seg.update_data = 0;
+        seg->update_map = 0;
+        seg->update_data = 0;
 
-        vp9_clearall_segfeatures(&xd->seg);
+        vp9_clearall_segfeatures(seg);
       }
     } else if (cpi->is_src_frame_alt_ref) {
       // Special case where we are coding over the top of a previous
@@ -418,28 +420,28 @@ static void configure_static_seg_features(VP9_COMP *cpi) {
       // Segment coding disabled for compred testing
 
       // Enable ref frame features for segment 0 as well
-      vp9_enable_segfeature(&xd->seg, 0, SEG_LVL_REF_FRAME);
-      vp9_enable_segfeature(&xd->seg, 1, SEG_LVL_REF_FRAME);
+      vp9_enable_segfeature(seg, 0, SEG_LVL_REF_FRAME);
+      vp9_enable_segfeature(seg, 1, SEG_LVL_REF_FRAME);
 
       // All mbs should use ALTREF_FRAME
-      vp9_clear_segdata(&xd->seg, 0, SEG_LVL_REF_FRAME);
-      vp9_set_segdata(&xd->seg, 0, SEG_LVL_REF_FRAME, ALTREF_FRAME);
-      vp9_clear_segdata(&xd->seg, 1, SEG_LVL_REF_FRAME);
-      vp9_set_segdata(&xd->seg, 1, SEG_LVL_REF_FRAME, ALTREF_FRAME);
+      vp9_clear_segdata(seg, 0, SEG_LVL_REF_FRAME);
+      vp9_set_segdata(seg, 0, SEG_LVL_REF_FRAME, ALTREF_FRAME);
+      vp9_clear_segdata(seg, 1, SEG_LVL_REF_FRAME);
+      vp9_set_segdata(seg, 1, SEG_LVL_REF_FRAME, ALTREF_FRAME);
 
       // Skip all MBs if high Q (0,0 mv and skip coeffs)
       if (high_q) {
-          vp9_enable_segfeature(&xd->seg, 0, SEG_LVL_SKIP);
-          vp9_enable_segfeature(&xd->seg, 1, SEG_LVL_SKIP);
+          vp9_enable_segfeature(seg, 0, SEG_LVL_SKIP);
+          vp9_enable_segfeature(seg, 1, SEG_LVL_SKIP);
       }
       // Enable data update
-      xd->seg.update_data = 1;
+      seg->update_data = 1;
     } else {
       // All other frames.
 
       // No updates.. leave things as they are.
-      xd->seg.update_map = 0;
-      xd->seg.update_data = 0;
+      seg->update_map = 0;
+      seg->update_data = 0;
     }
   }
 }
@@ -718,7 +720,7 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
   sf->reduce_first_step_size = 0;
   sf->auto_mv_step_size = 0;
   sf->max_step_search_steps = MAX_MVSEARCH_STEPS;
-  sf->comp_inter_joint_search_thresh = BLOCK_SIZE_AB4X4;
+  sf->comp_inter_joint_search_thresh = BLOCK_4X4;
   sf->adaptive_rd_thresh = 0;
   sf->use_lastframe_partitioning = 0;
   sf->tx_size_search_method = USE_FULL_RD;
@@ -731,10 +733,13 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
   sf->use_one_partition_size_always = 0;
   sf->less_rectangular_check = 0;
   sf->use_square_partition_only = 0;
-  sf->use_partitions_less_than = 0;
-  sf->less_than_block_size = BLOCK_SIZE_MB16X16;
-  sf->use_partitions_greater_than = 0;
-  sf->greater_than_block_size = BLOCK_SIZE_SB8X8;
+  sf->auto_min_max_partition_size = 0;
+  sf->auto_min_max_partition_interval = 0;
+  sf->auto_min_max_partition_count = 0;
+  // sf->use_max_partition_size = 0;
+  sf->max_partition_size = BLOCK_64X64;
+  // sf->use_min_partition_size = 0;
+  sf->min_partition_size = BLOCK_4X4;
   sf->adjust_partitioning_from_last_frame = 0;
   sf->last_partitioning_redo_frequency = 4;
   sf->disable_splitmv = 0;
@@ -745,8 +750,8 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
   sf->use_uv_intra_rd_estimate = 0;
   sf->using_small_partition_info = 0;
   // Skip any mode not chosen at size < X for all sizes > X
-  // Hence BLOCK_SIZE_SB64X64 (skip is off)
-  sf->unused_mode_skip_lvl = BLOCK_SIZE_SB64X64;
+  // Hence BLOCK_64X64 (skip is off)
+  sf->unused_mode_skip_lvl = BLOCK_64X64;
 
 #if CONFIG_MULTIPLE_ARF
   // Switch segmentation off.
@@ -769,8 +774,6 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
 #endif
       sf->use_avoid_tested_higherror = 1;
       sf->adaptive_rd_thresh = 1;
-      sf->last_chroma_intra_mode = TM_PRED;
-
       if (speed == 1) {
         sf->comp_inter_joint_search_thresh = BLOCK_SIZE_TYPES;
         sf->less_rectangular_check  = 1;
@@ -784,14 +787,20 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
                                    cpi->common.show_frame == 0);
         sf->disable_splitmv =
             (MIN(cpi->common.width, cpi->common.height) >= 720)? 1 : 0;
-        sf->unused_mode_skip_lvl = BLOCK_SIZE_SB32X32;
+        sf->unused_mode_skip_lvl = BLOCK_32X32;
         sf->mode_search_skip_flags = FLAG_SKIP_INTRA_DIRMISMATCH |
                                      FLAG_SKIP_INTRA_BESTINTER |
-                                     FLAG_SKIP_COMP_BESTINTRA;
-        sf->last_chroma_intra_mode = H_PRED;
+                                     FLAG_SKIP_COMP_BESTINTRA |
+                                     FLAG_SKIP_INTRA_LOWVAR;
+        sf->use_uv_intra_rd_estimate = 1;
         sf->use_rd_breakout = 1;
         sf->skip_encode_sb = 1;
         sf->auto_mv_step_size = 1;
+
+        sf->auto_min_max_partition_size = 1;
+        // sf->use_max_partition_size = 1;
+        // sf->use_min_partition_size = 1;
+        sf->auto_min_max_partition_interval = 1;
       }
       if (speed == 2) {
         sf->adjust_thresholds_by_speed = 1;
@@ -801,7 +810,7 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
         sf->use_lastframe_partitioning = 1;
         sf->adjust_partitioning_from_last_frame = 1;
         sf->last_partitioning_redo_frequency = 3;
-        sf->unused_mode_skip_lvl = BLOCK_SIZE_SB32X32;
+        sf->unused_mode_skip_lvl = BLOCK_32X32;
         sf->tx_size_search_method = ((cpi->common.frame_type == KEY_FRAME ||
                                       cpi->common.intra_only ||
                                       cpi->common.show_frame == 0) ?
@@ -810,11 +819,13 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
         sf->mode_search_skip_flags = FLAG_SKIP_INTRA_DIRMISMATCH |
                                      FLAG_SKIP_INTRA_BESTINTER |
                                      FLAG_SKIP_COMP_BESTINTRA |
-                                     FLAG_SKIP_COMP_REFMISMATCH;
+                                     FLAG_SKIP_COMP_REFMISMATCH |
+                                     FLAG_SKIP_INTRA_LOWVAR |
+                                     FLAG_EARLY_TERMINATE;
         sf->last_chroma_intra_mode = DC_PRED;
+        sf->use_uv_intra_rd_estimate = 1;
         sf->use_rd_breakout = 1;
         sf->skip_encode_sb = 1;
-        sf->use_uv_intra_rd_estimate = 1;
         sf->using_small_partition_info = 1;
         sf->disable_splitmv =
             (MIN(cpi->common.width, cpi->common.height) >= 720)? 1 : 0;
@@ -831,7 +842,9 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
         sf->mode_search_skip_flags = FLAG_SKIP_INTRA_DIRMISMATCH |
                                      FLAG_SKIP_INTRA_BESTINTER |
                                      FLAG_SKIP_COMP_BESTINTRA |
-                                     FLAG_SKIP_COMP_REFMISMATCH;
+                                     FLAG_SKIP_COMP_REFMISMATCH |
+                                     FLAG_SKIP_INTRA_LOWVAR |
+                                     FLAG_EARLY_TERMINATE;
         sf->use_rd_breakout = 1;
         sf->skip_encode_sb = 1;
         sf->disable_splitmv = 1;
@@ -840,7 +853,7 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
       if (speed == 4) {
         sf->comp_inter_joint_search_thresh = BLOCK_SIZE_TYPES;
         sf->use_one_partition_size_always = 1;
-        sf->always_this_block_size = BLOCK_SIZE_MB16X16;
+        sf->always_this_block_size = BLOCK_16X16;
         sf->tx_size_search_method = ((cpi->common.frame_type == KEY_FRAME ||
                                       cpi->common.intra_only ||
                                       cpi->common.show_frame == 0) ?
@@ -849,7 +862,9 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
         sf->mode_search_skip_flags = FLAG_SKIP_INTRA_DIRMISMATCH |
                                      FLAG_SKIP_INTRA_BESTINTER |
                                      FLAG_SKIP_COMP_BESTINTRA |
-                                     FLAG_SKIP_COMP_REFMISMATCH;
+                                     FLAG_SKIP_COMP_REFMISMATCH |
+                                     FLAG_SKIP_INTRA_LOWVAR |
+                                     FLAG_EARLY_TERMINATE;
         sf->use_rd_breakout = 1;
         sf->optimize_coefficients = 0;
         sf->auto_mv_step_size = 1;
@@ -861,15 +876,15 @@ void vp9_set_speed_features(VP9_COMP *cpi) {
       /*
       if (speed == 2) {
         sf->first_step = 0;
-        sf->comp_inter_joint_search_thresh = BLOCK_SIZE_SB8X8;
-        sf->use_partitions_less_than = 1;
-        sf->less_than_block_size = BLOCK_SIZE_MB16X16;
+        sf->comp_inter_joint_search_thresh = BLOCK_8X8;
+        sf->use_max_partition_size = 1;
+        sf->max_partition_size = BLOCK_16X16;
       }
       if (speed == 3) {
         sf->first_step = 0;
-        sf->comp_inter_joint_search_thresh = BLOCK_SIZE_SB8X8;
-        sf->use_partitions_greater_than = 1;
-        sf->greater_than_block_size = BLOCK_SIZE_SB8X8;
+        sf->comp_inter_joint_search_thresh = BLOCK_B8X8;
+        sf->use_min_partition_size = 1;
+        sf->min_partition_size = BLOCK_8X8;
       }
       */
 
@@ -1383,7 +1398,7 @@ VP9_PTR vp9_create_compressor(VP9_CONFIG *oxcf) {
 
   cm = &cpi->common;
 
-  vpx_memset(cpi, 0, sizeof(VP9_COMP));
+  vp9_zero(*cpi);
 
   if (setjmp(cm->error.jmp)) {
     VP9_PTR ptr = ctx.ptr;
@@ -1833,7 +1848,10 @@ void vp9_remove_compressor(VP9_PTR *ptr) {
     {
       printf("\n_pick_loop_filter_level:%d\n", cpi->time_pick_lpf / 1000);
       printf("\n_frames recive_data encod_mb_row compress_frame  Total\n");
-      printf("%6d %10ld %10ld %10ld %10ld\n", cpi->common.current_video_frame, cpi->time_receive_data / 1000, cpi->time_encode_mb_row / 1000, cpi->time_compress_data / 1000, (cpi->time_receive_data + cpi->time_compress_data) / 1000);
+      printf("%6d %10ld %10ld %10ld %10ld\n", cpi->common.current_video_frame,
+             cpi->time_receive_data / 1000, cpi->time_encode_sb_row / 1000,
+             cpi->time_compress_data / 1000,
+             (cpi->time_receive_data + cpi->time_compress_data) / 1000);
     }
 #endif
 
@@ -2406,8 +2424,9 @@ static void update_reference_frames(VP9_COMP * const cpi) {
 
 static void loopfilter_frame(VP9_COMP *cpi, VP9_COMMON *cm) {
   MACROBLOCKD *xd = &cpi->mb.e_mbd;
+  struct loopfilter *lf = &xd->lf;
   if (xd->lossless) {
-      xd->lf.filter_level = 0;
+      lf->filter_level = 0;
   } else {
     struct vpx_usec_timer timer;
 
@@ -2421,9 +2440,9 @@ static void loopfilter_frame(VP9_COMP *cpi, VP9_COMMON *cm) {
     cpi->time_pick_lpf += vpx_usec_timer_elapsed(&timer);
   }
 
-  if (xd->lf.filter_level > 0) {
-    vp9_set_alt_lf_level(cpi, xd->lf.filter_level);
-    vp9_loop_filter_frame(cm, xd, xd->lf.filter_level, 0);
+  if (lf->filter_level > 0) {
+    vp9_set_alt_lf_level(cpi, lf->filter_level);
+    vp9_loop_filter_frame(cm, xd, lf->filter_level, 0);
   }
 
   vp9_extend_frame_inner_borders(cm->frame_to_show,
@@ -2513,6 +2532,7 @@ static void encode_frame_to_data_rate(VP9_COMP *cpi,
 
   SPEED_FEATURES *sf = &cpi->sf;
   unsigned int max_mv_def = MIN(cpi->common.width, cpi->common.height);
+  struct segmentation *seg = &xd->seg;
 #if RESET_FOREACH_FILTER
   int q_low0;
   int q_high0;
@@ -2612,9 +2632,9 @@ static void encode_frame_to_data_rate(VP9_COMP *cpi,
     setup_features(cpi);
 
     // If segmentation is enabled force a map update for key frames
-    if (xd->seg.enabled) {
-      xd->seg.update_map = 1;
-      xd->seg.update_data = 1;
+    if (seg->enabled) {
+      seg->update_map = 1;
+      seg->update_data = 1;
     }
 
     // The alternate reference frame cannot be active for a key frame
@@ -2818,7 +2838,7 @@ static void encode_frame_to_data_rate(VP9_COMP *cpi,
   }
 #endif
   loop_count = 0;
-  vpx_memset(cpi->rd_tx_select_threshes, 0, sizeof(cpi->rd_tx_select_threshes));
+  vp9_zero(cpi->rd_tx_select_threshes);
 
   if (cm->frame_type != KEY_FRAME) {
     /* TODO: Decide this more intelligently */
@@ -3173,7 +3193,6 @@ static void encode_frame_to_data_rate(VP9_COMP *cpi,
     if (!cpi->common.error_resilient_mode &&
         !cpi->common.frame_parallel_decoding_mode) {
       vp9_adapt_mode_probs(&cpi->common);
-      vp9_adapt_mode_context(&cpi->common);
       vp9_adapt_mv_probs(&cpi->common, cpi->mb.e_mbd.allow_high_precision_mv);
     }
   }
@@ -3994,7 +4013,7 @@ int vp9_set_roimap(VP9_PTR comp, unsigned char *map, unsigned int rows,
                    unsigned int threshold[MAX_SEGMENTS]) {
   VP9_COMP *cpi = (VP9_COMP *) comp;
   signed char feature_data[SEG_LVL_MAX][MAX_SEGMENTS];
-  MACROBLOCKD *xd = &cpi->mb.e_mbd;
+  struct segmentation *seg = &cpi->mb.e_mbd.seg;
   int i;
 
   if (cpi->common.mb_rows != rows || cpi->common.mb_cols != cols)
@@ -4021,14 +4040,14 @@ int vp9_set_roimap(VP9_PTR comp, unsigned char *map, unsigned int rows,
   // Enable the loop and quant changes in the feature mask
   for (i = 0; i < MAX_SEGMENTS; i++) {
     if (delta_q[i])
-      vp9_enable_segfeature(&xd->seg, i, SEG_LVL_ALT_Q);
+      vp9_enable_segfeature(seg, i, SEG_LVL_ALT_Q);
     else
-      vp9_disable_segfeature(&xd->seg, i, SEG_LVL_ALT_Q);
+      vp9_disable_segfeature(seg, i, SEG_LVL_ALT_Q);
 
     if (delta_lf[i])
-      vp9_enable_segfeature(&xd->seg, i, SEG_LVL_ALT_LF);
+      vp9_enable_segfeature(seg, i, SEG_LVL_ALT_LF);
     else
-      vp9_disable_segfeature(&xd->seg, i, SEG_LVL_ALT_LF);
+      vp9_disable_segfeature(seg, i, SEG_LVL_ALT_LF);
   }
 
   // Initialise the feature data structure
