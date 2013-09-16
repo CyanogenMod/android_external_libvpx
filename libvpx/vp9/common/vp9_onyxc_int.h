@@ -20,7 +20,7 @@
 #include "vp9/common/vp9_entropymode.h"
 #include "vp9/common/vp9_quant_common.h"
 
-#if CONFIG_POSTPROC
+#if CONFIG_VP9_POSTPROC
 #include "vp9/common/vp9_postproc.h"
 #endif
 
@@ -38,14 +38,14 @@
 #define NUM_FRAME_CONTEXTS (1 << NUM_FRAME_CONTEXTS_LOG2)
 
 typedef struct frame_contexts {
-  vp9_prob y_mode_prob[BLOCK_SIZE_GROUPS][VP9_INTRA_MODES - 1];
-  vp9_prob uv_mode_prob[VP9_INTRA_MODES][VP9_INTRA_MODES - 1];
+  vp9_prob y_mode_prob[BLOCK_SIZE_GROUPS][INTRA_MODES - 1];
+  vp9_prob uv_mode_prob[INTRA_MODES][INTRA_MODES - 1];
   vp9_prob partition_prob[NUM_FRAME_TYPES][NUM_PARTITION_CONTEXTS]
                          [PARTITION_TYPES - 1];
   vp9_coeff_probs_model coef_probs[TX_SIZES][BLOCK_TYPES];
-  vp9_prob switchable_interp_prob[VP9_SWITCHABLE_FILTERS + 1]
-                                 [VP9_SWITCHABLE_FILTERS - 1];
-  vp9_prob inter_mode_probs[INTER_MODE_CONTEXTS][VP9_INTER_MODES - 1];
+  vp9_prob switchable_interp_prob[SWITCHABLE_FILTERS + 1]
+                                 [SWITCHABLE_FILTERS - 1];
+  vp9_prob inter_mode_probs[INTER_MODE_CONTEXTS][INTER_MODES - 1];
   vp9_prob intra_inter_prob[INTRA_INTER_CONTEXTS];
   vp9_prob comp_inter_prob[COMP_INTER_CONTEXTS];
   vp9_prob single_ref_prob[REF_CONTEXTS][2];
@@ -56,15 +56,15 @@ typedef struct frame_contexts {
 } FRAME_CONTEXT;
 
 typedef struct {
-  unsigned int y_mode[BLOCK_SIZE_GROUPS][VP9_INTRA_MODES];
-  unsigned int uv_mode[VP9_INTRA_MODES][VP9_INTRA_MODES];
+  unsigned int y_mode[BLOCK_SIZE_GROUPS][INTRA_MODES];
+  unsigned int uv_mode[INTRA_MODES][INTRA_MODES];
   unsigned int partition[NUM_PARTITION_CONTEXTS][PARTITION_TYPES];
   vp9_coeff_count_model coef[TX_SIZES][BLOCK_TYPES];
   unsigned int eob_branch[TX_SIZES][BLOCK_TYPES][REF_TYPES]
                          [COEF_BANDS][PREV_COEF_CONTEXTS];
-  unsigned int switchable_interp[VP9_SWITCHABLE_FILTERS + 1]
-                                [VP9_SWITCHABLE_FILTERS];
-  unsigned int inter_mode[INTER_MODE_CONTEXTS][VP9_INTER_MODES];
+  unsigned int switchable_interp[SWITCHABLE_FILTERS + 1]
+                                [SWITCHABLE_FILTERS];
+  unsigned int inter_mode[INTER_MODE_CONTEXTS][INTER_MODES];
   unsigned int intra_inter[INTRA_INTER_CONTEXTS][2];
   unsigned int comp_inter[COMP_INTER_CONTEXTS][2];
   unsigned int single_ref[REF_CONTEXTS][2][2];
@@ -164,6 +164,10 @@ typedef struct VP9Common {
   MODE_INFO *prev_mip; /* MODE_INFO array 'mip' from last decoded frame */
   MODE_INFO *prev_mi;  /* 'mi' from last frame (points into prev_mip) */
 
+  MODE_INFO **mi_grid_base;
+  MODE_INFO **mi_grid_visible;
+  MODE_INFO **prev_mi_grid_base;
+  MODE_INFO **prev_mi_grid_visible;
 
   // Persistent mb segment id map used in prediction.
   unsigned char *last_frame_seg_map;
@@ -175,6 +179,9 @@ typedef struct VP9Common {
   int refresh_frame_context;    /* Two state 0 = NO, 1 = YES */
 
   int ref_frame_sign_bias[MAX_REF_FRAMES];    /* Two state 0, 1 */
+
+  struct loopfilter lf;
+  struct segmentation seg;
 
   /* Y,U,V */
   ENTROPY_CONTEXT *above_context[MAX_MB_PLANE];
@@ -198,7 +205,7 @@ typedef struct VP9Common {
   unsigned int current_video_frame;
   int version;
 
-#if CONFIG_POSTPROC
+#if CONFIG_VP9_POSTPROC
   struct postproc_state  postproc_state;
 #endif
 
@@ -231,7 +238,19 @@ static void ref_cnt_fb(int *buf, int *idx, int new_idx) {
 }
 
 static int mi_cols_aligned_to_sb(int n_mis) {
-  return ALIGN_POWER_OF_TWO(n_mis, LOG2_MI_BLOCK_SIZE);
+  return ALIGN_POWER_OF_TWO(n_mis, MI_BLOCK_SIZE_LOG2);
+}
+
+static INLINE void set_skip_context(VP9_COMMON *cm, MACROBLOCKD *xd,
+                                    int mi_row, int mi_col) {
+  const int above_idx = mi_col * 2;
+  const int left_idx = (mi_row * 2) & 15;
+  int i;
+  for (i = 0; i < MAX_MB_PLANE; i++) {
+    struct macroblockd_plane *const pd = &xd->plane[i];
+    pd->above_context = cm->above_context[i] + (above_idx >> pd->subsampling_x);
+    pd->left_context = cm->left_context[i] + (left_idx >> pd->subsampling_y);
+  }
 }
 
 static INLINE void set_partition_seg_context(VP9_COMMON *cm, MACROBLOCKD *xd,
@@ -240,25 +259,20 @@ static INLINE void set_partition_seg_context(VP9_COMMON *cm, MACROBLOCKD *xd,
   xd->left_seg_context = cm->left_seg_context + (mi_row & MI_MASK);
 }
 
-static int check_bsize_coverage(VP9_COMMON *cm, int mi_row, int mi_col,
-                                BLOCK_SIZE_TYPE bsize) {
-  int bsl = mi_width_log2(bsize), bs = 1 << bsl;
-  int ms = bs / 2;
+// return the node index in the prob tree for binary coding
+static int check_bsize_coverage(int bs, int mi_rows, int mi_cols,
+                                int mi_row, int mi_col) {
+  const int r = (mi_row + bs < mi_rows);
+  const int c = (mi_col + bs < mi_cols);
 
-  if ((mi_row + ms < cm->mi_rows) && (mi_col + ms < cm->mi_cols))
+  if (r && c)
     return 0;
 
-  // frame width/height are multiples of 8, hence 8x8 block should always
-  // pass the above check
-  assert(bsize > BLOCK_SIZE_SB8X8);
+  if (c && !r)
+    return 1;  // only allow horizontal/split partition types
 
-  // return the node index in the prob tree for binary coding
-  // only allow horizontal/split partition types
-  if ((mi_col + ms < cm->mi_cols) && (mi_row + ms >= cm->mi_rows))
-    return 1;
-  // only allow vertical/split partition types
-  if ((mi_row + ms < cm->mi_rows) && (mi_col + ms >= cm->mi_cols))
-    return 2;
+  if (r && !c)
+    return 2;  // only allow vertical/split partition types
 
   return -1;
 }

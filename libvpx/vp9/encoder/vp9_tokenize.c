@@ -97,103 +97,51 @@ struct tokenize_b_args {
   TX_SIZE tx_size;
 };
 
-static void set_entropy_context_b(int plane, int block, BLOCK_SIZE_TYPE bsize,
-                                  int ss_txfrm_size, void *arg) {
+static void set_entropy_context_b(int plane, int block, BLOCK_SIZE plane_bsize,
+                                  TX_SIZE tx_size, void *arg) {
   struct tokenize_b_args* const args = arg;
-  TX_SIZE tx_size = ss_txfrm_size >> 1;
-  MACROBLOCKD *xd = args->xd;
-  const int bwl = b_width_log2(bsize);
-  const int off = block >> (2 * tx_size);
-  const int mod = bwl - tx_size - xd->plane[plane].subsampling_x;
-  const int aoff = (off & ((1 << mod) - 1)) << tx_size;
-  const int loff = (off >> mod) << tx_size;
-  ENTROPY_CONTEXT *A = xd->plane[plane].above_context + aoff;
-  ENTROPY_CONTEXT *L = xd->plane[plane].left_context + loff;
-  const int eob = xd->plane[plane].eobs[block];
-  const int tx_size_in_blocks = 1 << tx_size;
-
-  if (xd->mb_to_right_edge < 0 || xd->mb_to_bottom_edge < 0) {
-    set_contexts_on_border(xd, bsize, plane, tx_size_in_blocks, eob, aoff, loff,
-                           A, L);
-  } else {
-    vpx_memset(A, eob > 0, sizeof(ENTROPY_CONTEXT) * tx_size_in_blocks);
-    vpx_memset(L, eob > 0, sizeof(ENTROPY_CONTEXT) * tx_size_in_blocks);
-  }
+  MACROBLOCKD *const xd = args->xd;
+  struct macroblockd_plane *pd = &xd->plane[plane];
+  int aoff, loff;
+  txfrm_block_to_raster_xy(plane_bsize, tx_size, block, &aoff, &loff);
+  set_contexts(xd, pd, plane_bsize, tx_size, pd->eobs[block] > 0, aoff, loff);
 }
 
-static void tokenize_b(int plane, int block, BLOCK_SIZE_TYPE bsize,
-                       int ss_txfrm_size, void *arg) {
+static void tokenize_b(int plane, int block, BLOCK_SIZE plane_bsize,
+                       TX_SIZE tx_size, void *arg) {
   struct tokenize_b_args* const args = arg;
   VP9_COMP *cpi = args->cpi;
   MACROBLOCKD *xd = args->xd;
   TOKENEXTRA **tp = args->tp;
-  const TX_SIZE tx_size = ss_txfrm_size >> 1;
-  const int tx_size_in_blocks = 1 << tx_size;
-  MB_MODE_INFO *mbmi = &xd->mode_info_context->mbmi;
+  struct macroblockd_plane *pd = &xd->plane[plane];
+  MB_MODE_INFO *mbmi = &xd->this_mi->mbmi;
   int pt; /* near block/prev token context index */
   int c = 0, rc = 0;
   TOKENEXTRA *t = *tp;        /* store tokens starting here */
-  const int eob = xd->plane[plane].eobs[block];
-  const PLANE_TYPE type = xd->plane[plane].plane_type;
-  const int16_t *qcoeff_ptr = BLOCK_OFFSET(xd->plane[plane].qcoeff, block, 16);
-  const int bwl = b_width_log2(bsize);
-  const int off = block >> (2 * tx_size);
-  const int mod = bwl - tx_size - xd->plane[plane].subsampling_x;
-  const int aoff = (off & ((1 << mod) - 1)) << tx_size;
-  const int loff = (off >> mod) << tx_size;
-  ENTROPY_CONTEXT *A = xd->plane[plane].above_context + aoff;
-  ENTROPY_CONTEXT *L = xd->plane[plane].left_context + loff;
-  int seg_eob;
+  const int eob = pd->eobs[block];
+  const PLANE_TYPE type = pd->plane_type;
+  const int16_t *qcoeff_ptr = BLOCK_OFFSET(pd->qcoeff, block);
+
   const int segment_id = mbmi->segment_id;
   const int16_t *scan, *nb;
-  vp9_coeff_count *counts;
-  vp9_coeff_probs_model *coef_probs;
+  vp9_coeff_count *const counts = cpi->coef_counts[tx_size];
+  vp9_coeff_probs_model *const coef_probs = cpi->common.fc.coef_probs[tx_size];
   const int ref = is_inter_block(mbmi);
-  ENTROPY_CONTEXT above_ec, left_ec;
   uint8_t token_cache[1024];
   const uint8_t *band_translate;
+  ENTROPY_CONTEXT *A, *L;
+  const int seg_eob = get_tx_eob(&cpi->common.seg, segment_id, tx_size);
+  int aoff, loff;
+  txfrm_block_to_raster_xy(plane_bsize, tx_size, block, &aoff, &loff);
+
+  A = pd->above_context + aoff;
+  L = pd->left_context + loff;
+
   assert((!type && !plane) || (type && plane));
 
-  counts = cpi->coef_counts[tx_size];
-  coef_probs = cpi->common.fc.coef_probs[tx_size];
-  switch (tx_size) {
-    default:
-    case TX_4X4:
-      above_ec = A[0] != 0;
-      left_ec = L[0] != 0;
-      seg_eob = 16;
-      scan = get_scan_4x4(get_tx_type_4x4(type, xd, block));
-      band_translate = vp9_coefband_trans_4x4;
-      break;
-    case TX_8X8:
-      above_ec = !!*(uint16_t *)A;
-      left_ec  = !!*(uint16_t *)L;
-      seg_eob = 64;
-      scan = get_scan_8x8(get_tx_type_8x8(type, xd));
-      band_translate = vp9_coefband_trans_8x8plus;
-      break;
-    case TX_16X16:
-      above_ec = !!*(uint32_t *)A;
-      left_ec  = !!*(uint32_t *)L;
-      seg_eob = 256;
-      scan = get_scan_16x16(get_tx_type_16x16(type, xd));
-      band_translate = vp9_coefband_trans_8x8plus;
-      break;
-    case TX_32X32:
-      above_ec = !!*(uint64_t *)A;
-      left_ec  = !!*(uint64_t *)L;
-      seg_eob = 1024;
-      scan = vp9_default_scan_32x32;
-      band_translate = vp9_coefband_trans_8x8plus;
-      break;
-  }
-
-  pt = combine_entropy_contexts(above_ec, left_ec);
+  pt = get_entropy_context(xd, tx_size, type, block, A, L,
+                           &scan, &band_translate);
   nb = vp9_get_coef_neighbors_handle(scan);
-
-  if (vp9_segfeature_active(&xd->seg, segment_id, SEG_LVL_SKIP))
-    seg_eob = 0;
-
   c = 0;
   do {
     const int band = get_coef_band(band_translate, c);
@@ -227,62 +175,53 @@ static void tokenize_b(int plane, int block, BLOCK_SIZE_TYPE bsize,
   } while (c < eob && ++c < seg_eob);
 
   *tp = t;
-  if (xd->mb_to_right_edge < 0 || xd->mb_to_bottom_edge < 0) {
-    set_contexts_on_border(xd, bsize, plane, tx_size_in_blocks, c, aoff, loff,
-                           A, L);
-  } else {
-    vpx_memset(A, c > 0, sizeof(ENTROPY_CONTEXT) * tx_size_in_blocks);
-    vpx_memset(L, c > 0, sizeof(ENTROPY_CONTEXT) * tx_size_in_blocks);
-  }
+
+  set_contexts(xd, pd, plane_bsize, tx_size, c > 0, aoff, loff);
 }
 
 struct is_skippable_args {
   MACROBLOCKD *xd;
   int *skippable;
 };
+
 static void is_skippable(int plane, int block,
-                         BLOCK_SIZE_TYPE bsize, int ss_txfrm_size, void *argv) {
+                         BLOCK_SIZE plane_bsize, TX_SIZE tx_size,
+                         void *argv) {
   struct is_skippable_args *args = argv;
   args->skippable[0] &= (!args->xd->plane[plane].eobs[block]);
 }
 
-int vp9_sb_is_skippable(MACROBLOCKD *xd, BLOCK_SIZE_TYPE bsize) {
+int vp9_sb_is_skippable(MACROBLOCKD *xd, BLOCK_SIZE bsize) {
   int result = 1;
   struct is_skippable_args args = {xd, &result};
   foreach_transformed_block(xd, bsize, is_skippable, &args);
   return result;
 }
 
-int vp9_sby_is_skippable(MACROBLOCKD *xd, BLOCK_SIZE_TYPE bsize) {
+int vp9_is_skippable_in_plane(MACROBLOCKD *xd, BLOCK_SIZE bsize,
+                              int plane) {
   int result = 1;
   struct is_skippable_args args = {xd, &result};
-  foreach_transformed_block_in_plane(xd, bsize, 0, is_skippable, &args);
-  return result;
-}
-
-int vp9_sbuv_is_skippable(MACROBLOCKD *xd, BLOCK_SIZE_TYPE bsize) {
-  int result = 1;
-  struct is_skippable_args args = {xd, &result};
-  foreach_transformed_block_uv(xd, bsize, is_skippable, &args);
+  foreach_transformed_block_in_plane(xd, bsize, plane, is_skippable, &args);
   return result;
 }
 
 void vp9_tokenize_sb(VP9_COMP *cpi, TOKENEXTRA **t, int dry_run,
-                     BLOCK_SIZE_TYPE bsize) {
+                     BLOCK_SIZE bsize) {
   VP9_COMMON *const cm = &cpi->common;
   MACROBLOCKD *const xd = &cpi->mb.e_mbd;
-  MB_MODE_INFO *const mbmi = &xd->mode_info_context->mbmi;
+  MB_MODE_INFO *const mbmi = &xd->this_mi->mbmi;
   TOKENEXTRA *t_backup = *t;
   const int mb_skip_context = vp9_get_pred_context_mbskip(xd);
-  const int skip_inc = !vp9_segfeature_active(&xd->seg, mbmi->segment_id,
+  const int skip_inc = !vp9_segfeature_active(&cm->seg, mbmi->segment_id,
                                               SEG_LVL_SKIP);
-  struct tokenize_b_args arg = {cpi, xd, t, mbmi->txfm_size};
+  struct tokenize_b_args arg = {cpi, xd, t, mbmi->tx_size};
 
-  mbmi->mb_skip_coeff = vp9_sb_is_skippable(xd, bsize);
-  if (mbmi->mb_skip_coeff) {
+  mbmi->skip_coeff = vp9_sb_is_skippable(xd, bsize);
+  if (mbmi->skip_coeff) {
     if (!dry_run)
       cm->counts.mbskip[mb_skip_context][1] += skip_inc;
-    vp9_reset_sb_tokens_context(xd, bsize);
+    reset_skip_context(xd, bsize);
     if (dry_run)
       *t = t_backup;
     return;

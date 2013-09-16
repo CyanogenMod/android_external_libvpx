@@ -8,6 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <string.h>
 #include "test/acm_random.h"
 #include "test/register_state_check.h"
 #include "test/util.h"
@@ -187,7 +188,7 @@ class ConvolveTest : public PARAMS(int, int, const ConvolveFunctions*) {
 
  protected:
   static const int kDataAlignment = 16;
-  static const int kOuterBlockSize = 128;
+  static const int kOuterBlockSize = 256;
   static const int kInputStride = kOuterBlockSize;
   static const int kOutputStride = kOuterBlockSize;
   static const int kMaxDimension = 64;
@@ -222,6 +223,10 @@ class ConvolveTest : public PARAMS(int, int, const ConvolveFunctions*) {
     ::libvpx_test::ACMRandom prng;
     for (int i = 0; i < kInputBufferSize; ++i)
       input_[i] = prng.Rand8Extremes();
+  }
+
+  void SetConstantInput(int value) {
+    memset(input_, value, kInputBufferSize);
   }
 
   void CheckGuardBlocks() {
@@ -456,45 +461,86 @@ DECLARE_ALIGNED(256, const int16_t, kChangeFilters[16][8]) = {
     { 128}
 };
 
+/* This test exercises the horizontal and vertical filter functions. */
 TEST_P(ConvolveTest, ChangeFilterWorks) {
   uint8_t* const in = input();
   uint8_t* const out = output();
+
+  /* Assume that the first input sample is at the 8/16th position. */
+  const int kInitialSubPelOffset = 8;
+
+  /* Filters are 8-tap, so the first filter tap will be applied to the pixel
+   * at position -3 with respect to the current filtering position. Since
+   * kInitialSubPelOffset is set to 8, we first select sub-pixel filter 8,
+   * which is non-zero only in the last tap. So, applying the filter at the
+   * current input position will result in an output equal to the pixel at
+   * offset +4 (-3 + 7) with respect to the current filtering position.
+   */
   const int kPixelSelected = 4;
 
+  /* Assume that each output pixel requires us to step on by 17/16th pixels in
+   * the input.
+   */
+  const int kInputPixelStep = 17;
+
+  /* The filters are setup in such a way that the expected output produces
+   * sets of 8 identical output samples. As the filter position moves to the
+   * next 1/16th pixel position the only active (=128) filter tap moves one
+   * position to the left, resulting in the same input pixel being replicated
+   * in to the output for 8 consecutive samples. After each set of 8 positions
+   * the filters select a different input pixel. kFilterPeriodAdjust below
+   * computes which input pixel is written to the output for a specified
+   * x or y position.
+   */
+
+  /* Test the horizontal filter. */
   REGISTER_STATE_CHECK(UUT_->h8_(in, kInputStride, out, kOutputStride,
-                                 kChangeFilters[8], 17, kChangeFilters[4], 16,
-                                 Width(), Height()));
+                                 kChangeFilters[kInitialSubPelOffset],
+                                 kInputPixelStep, NULL, 0, Width(), Height()));
 
   for (int x = 0; x < Width(); ++x) {
-    const int kQ4StepAdjust = x >> 4;
     const int kFilterPeriodAdjust = (x >> 3) << 3;
-    const int ref_x = kQ4StepAdjust + kFilterPeriodAdjust + kPixelSelected;
-    ASSERT_EQ(in[ref_x], out[x]) << "x == " << x;
+    const int ref_x =
+        kPixelSelected + ((kInitialSubPelOffset
+            + kFilterPeriodAdjust * kInputPixelStep)
+                          >> SUBPEL_BITS);
+    ASSERT_EQ(in[ref_x], out[x]) << "x == " << x << "width = " << Width();
   }
 
+  /* Test the vertical filter. */
   REGISTER_STATE_CHECK(UUT_->v8_(in, kInputStride, out, kOutputStride,
-                                 kChangeFilters[4], 16, kChangeFilters[8], 17,
-                                 Width(), Height()));
+                                 NULL, 0, kChangeFilters[kInitialSubPelOffset],
+                                 kInputPixelStep, Width(), Height()));
 
   for (int y = 0; y < Height(); ++y) {
-    const int kQ4StepAdjust = y >> 4;
     const int kFilterPeriodAdjust = (y >> 3) << 3;
-    const int ref_y = kQ4StepAdjust + kFilterPeriodAdjust + kPixelSelected;
+    const int ref_y =
+        kPixelSelected + ((kInitialSubPelOffset
+            + kFilterPeriodAdjust * kInputPixelStep)
+                          >> SUBPEL_BITS);
     ASSERT_EQ(in[ref_y * kInputStride], out[y * kInputStride]) << "y == " << y;
   }
 
+  /* Test the horizontal and vertical filters in combination. */
   REGISTER_STATE_CHECK(UUT_->hv8_(in, kInputStride, out, kOutputStride,
-                                  kChangeFilters[8], 17, kChangeFilters[8], 17,
+                                  kChangeFilters[kInitialSubPelOffset],
+                                  kInputPixelStep,
+                                  kChangeFilters[kInitialSubPelOffset],
+                                  kInputPixelStep,
                                   Width(), Height()));
 
   for (int y = 0; y < Height(); ++y) {
-    const int kQ4StepAdjustY = y >> 4;
     const int kFilterPeriodAdjustY = (y >> 3) << 3;
-    const int ref_y = kQ4StepAdjustY + kFilterPeriodAdjustY + kPixelSelected;
+    const int ref_y =
+        kPixelSelected + ((kInitialSubPelOffset
+            + kFilterPeriodAdjustY * kInputPixelStep)
+                          >> SUBPEL_BITS);
     for (int x = 0; x < Width(); ++x) {
-      const int kQ4StepAdjustX = x >> 4;
       const int kFilterPeriodAdjustX = (x >> 3) << 3;
-      const int ref_x = kQ4StepAdjustX + kFilterPeriodAdjustX + kPixelSelected;
+      const int ref_x =
+          kPixelSelected + ((kInitialSubPelOffset
+              + kFilterPeriodAdjustX * kInputPixelStep)
+                            >> SUBPEL_BITS);
 
       ASSERT_EQ(in[ref_y * kInputStride + ref_x], out[y * kOutputStride + x])
           << "x == " << x << ", y == " << y;
@@ -502,6 +548,34 @@ TEST_P(ConvolveTest, ChangeFilterWorks) {
   }
 }
 
+/* This test exercises that enough rows and columns are filtered with every
+   possible initial fractional positions and scaling steps. */
+TEST_P(ConvolveTest, CheckScalingFiltering) {
+  uint8_t* const in = input();
+  uint8_t* const out = output();
+
+  SetConstantInput(127);
+
+  for (int frac = 0; frac < 16; ++frac) {
+    for (int step = 1; step <= 32; ++step) {
+      /* Test the horizontal and vertical filters in combination. */
+      REGISTER_STATE_CHECK(UUT_->hv8_(in, kInputStride, out, kOutputStride,
+                                      vp9_sub_pel_filters_8[frac], step,
+                                      vp9_sub_pel_filters_8[frac], step,
+                                      Width(), Height()));
+
+      CheckGuardBlocks();
+
+      for (int y = 0; y < Height(); ++y) {
+        for (int x = 0; x < Width(); ++x) {
+          ASSERT_EQ(in[y * kInputStride + x], out[y * kOutputStride + x])
+              << "x == " << x << ", y == " << y
+              << ", frac == " << frac << ", step == " << step;
+        }
+      }
+    }
+  }
+}
 
 using std::tr1::make_tuple;
 

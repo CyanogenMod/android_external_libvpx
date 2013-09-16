@@ -172,6 +172,8 @@ vp9/common/vp9_reconintra.h
 vp9/common/vp9_rtcd.c
 vp9/common/vp9_rtcd_defs.sh
 vp9/common/vp9_sadmxn.h
+vp9/common/vp9_scale.c
+vp9/common/vp9_scale.h
 vp9/common/vp9_seg_common.c
 vp9/common/vp9_seg_common.h
 vp9/common/vp9_subpelvar.h

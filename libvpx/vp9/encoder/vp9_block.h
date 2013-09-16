@@ -48,7 +48,11 @@ typedef struct {
   int comp_pred_diff;
   int single_pred_diff;
   int64_t tx_rd_diff[TX_MODES];
-  int64_t best_filter_diff[VP9_SWITCHABLE_FILTERS + 1];
+  int64_t best_filter_diff[SWITCHABLE_FILTERS + 1];
+
+  // motion vector cache for adaptive motion search control in partition
+  // search loop
+  int_mv pred_mv[MAX_REF_FRAMES];
 
   // Bit flag for each mode whether it has high error in comparison to others.
   unsigned int modes_with_high_error;
@@ -121,9 +125,9 @@ struct macroblock {
   int mbmode_cost[MB_MODE_COUNT];
   unsigned inter_mode_cost[INTER_MODE_CONTEXTS][MB_MODE_COUNT - NEARESTMV];
   int intra_uv_mode_cost[2][MB_MODE_COUNT];
-  int y_mode_costs[VP9_INTRA_MODES][VP9_INTRA_MODES][VP9_INTRA_MODES];
-  int switchable_interp_costs[VP9_SWITCHABLE_FILTERS + 1]
-                             [VP9_SWITCHABLE_FILTERS];
+  int y_mode_costs[INTRA_MODES][INTRA_MODES][INTRA_MODES];
+  int switchable_interp_costs[SWITCHABLE_FILTERS + 1]
+                             [SWITCHABLE_FILTERS];
 
   // These define limits to motion vector components to prevent them
   // from extending outside the UMV borders
@@ -144,12 +148,12 @@ struct macroblock {
   int optimize;
 
   // indicate if it is in the rd search loop or encoding process
-  int rd_search;
+  int use_lp32x32fdct;
   int skip_encode;
 
   // Used to store sub partition's choices.
   int fast_ms;
-  int_mv pred_mv;
+  int_mv pred_mv[MAX_REF_FRAMES];
   int subblock_ref;
 
   // TODO(jingning): Need to refactor the structure arrays that buffers the
@@ -170,10 +174,10 @@ struct macroblock {
   PICK_MODE_CONTEXT sb64_context;
   int partition_cost[NUM_PARTITION_CONTEXTS][PARTITION_TYPES];
 
-  BLOCK_SIZE_TYPE b_partitioning[4][4][4];
-  BLOCK_SIZE_TYPE mb_partitioning[4][4];
-  BLOCK_SIZE_TYPE sb_partitioning[4];
-  BLOCK_SIZE_TYPE sb64_partitioning;
+  BLOCK_SIZE b_partitioning[4][4][4];
+  BLOCK_SIZE mb_partitioning[4][4];
+  BLOCK_SIZE sb_partitioning[4];
+  BLOCK_SIZE sb64_partitioning;
 
   void (*fwd_txm4x4)(int16_t *input, int16_t *output, int pitch);
   void (*fwd_txm8x4)(int16_t *input, int16_t *output, int pitch);

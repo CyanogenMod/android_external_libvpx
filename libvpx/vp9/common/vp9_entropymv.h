@@ -24,7 +24,7 @@ void vp9_init_mv_probs(struct VP9Common *cm);
 void vp9_adapt_mv_probs(struct VP9Common *cm, int usehp);
 int vp9_use_mv_hp(const MV *ref);
 
-#define VP9_NMV_UPDATE_PROB  252
+#define NMV_UPDATE_PROB  252
 
 /* Symbols for coding which components are zero jointly */
 #define MV_JOINTS     4
@@ -125,7 +125,5 @@ typedef struct {
 } nmv_context_counts;
 
 void vp9_inc_mv(const MV *mv, nmv_context_counts *mvctx);
-
-void vp9_counts_process(nmv_context_counts *NMVcount, int usehp);
 
 #endif  // VP9_COMMON_VP9_ENTROPYMV_H_

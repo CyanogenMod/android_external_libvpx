@@ -40,14 +40,15 @@ static unsigned int do_16x16_motion_iteration(VP9_COMP *cpi,
       (cpi->speed < 8 ? (cpi->speed > 5 ? 1 : 0) : 2);
   step_param = MIN(step_param, (cpi->sf.max_step_search_steps - 2));
 
-  vp9_clamp_mv_min_max(x, ref_mv);
+  vp9_clamp_mv_min_max(x, &ref_mv->as_mv);
 
   ref_full.as_mv.col = ref_mv->as_mv.col >> 3;
   ref_full.as_mv.row = ref_mv->as_mv.row >> 3;
 
   /*cpi->sf.search_method == HEX*/
-  best_err = vp9_hex_search(x, &ref_full, dst_mv, step_param, x->errorperbit,
-                            &v_fn_ptr, NULL, NULL, NULL, NULL, ref_mv);
+  best_err = vp9_hex_search(x, &ref_full, step_param, x->errorperbit,
+                            0, &v_fn_ptr,
+                            0, ref_mv, dst_mv);
 
   // Try sub-pixel MC
   // if (bestsme > error_thresh && bestsme < INT_MAX)
@@ -58,7 +59,7 @@ static unsigned int do_16x16_motion_iteration(VP9_COMP *cpi,
         x,
         dst_mv, ref_mv,
         x->errorperbit, &v_fn_ptr,
-        NULL, NULL,
+        0, cpi->sf.subpel_iters_per_step, NULL, NULL,
         & distortion, &sse);
   }
 
@@ -144,7 +145,7 @@ static int find_best_16x16_intra(VP9_COMP *cpi,
   for (mode = DC_PRED; mode <= TM_PRED; mode++) {
     unsigned int err;
 
-    xd->mode_info_context->mbmi.mode = mode;
+    xd->this_mi->mbmi.mode = mode;
     vp9_predict_intra_block(xd, 0, 2, TX_16X16, mode,
                             x->plane[0].src.buf, x->plane[0].src.stride,
                             xd->plane[0].dst.buf, xd->plane[0].dst.stride);
@@ -240,9 +241,7 @@ static void update_mbgraph_frame_stats(VP9_COMP *cpi,
   int mb_col, mb_row, offset = 0;
   int mb_y_offset = 0, arf_y_offset = 0, gld_y_offset = 0;
   int_mv arf_top_mv, gld_top_mv;
-  MODE_INFO mi_local;
-
-  vp9_zero(mi_local);
+  MODE_INFO mi_local = { { 0 } };
 
   // Set up limit values for motion vectors to prevent them extending outside the UMV borders
   arf_top_mv.as_int = 0;
@@ -254,7 +253,7 @@ static void update_mbgraph_frame_stats(VP9_COMP *cpi,
   xd->plane[0].dst.stride  = buf->y_stride;
   xd->plane[0].pre[0].stride  = buf->y_stride;
   xd->plane[1].dst.stride = buf->uv_stride;
-  xd->mode_info_context = &mi_local;
+  xd->this_mi = &mi_local;
   mi_local.mbmi.sb_type = BLOCK_16X16;
   mi_local.mbmi.ref_frame[0] = LAST_FRAME;
   mi_local.mbmi.ref_frame[1] = NONE;
@@ -308,7 +307,7 @@ static void update_mbgraph_frame_stats(VP9_COMP *cpi,
 static void separate_arf_mbs(VP9_COMP *cpi) {
   VP9_COMMON *const cm = &cpi->common;
   int mb_col, mb_row, offset, i;
-  int ncnt[4];
+  int ncnt[4] = { 0 };
   int n_frames = cpi->mbgraph_n_frames;
 
   int *arf_not_zz;
@@ -344,7 +343,6 @@ static void separate_arf_mbs(VP9_COMP *cpi) {
     }
   }
 
-  vpx_memset(ncnt, 0, sizeof(ncnt));
   for (offset = 0, mb_row = 0; mb_row < cm->mb_rows;
        offset += cm->mb_cols, mb_row++) {
     for (mb_col = 0; mb_col < cm->mb_cols; mb_col++) {

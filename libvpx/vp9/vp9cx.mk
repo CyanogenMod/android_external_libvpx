@@ -64,7 +64,7 @@ VP9_CX_SRCS-$(CONFIG_INTERNAL_STATS) += encoder/vp9_ssim.c
 VP9_CX_SRCS-yes += encoder/vp9_tokenize.c
 VP9_CX_SRCS-yes += encoder/vp9_treewriter.c
 VP9_CX_SRCS-yes += encoder/vp9_variance_c.c
-ifeq ($(CONFIG_POSTPROC),yes)
+ifeq ($(CONFIG_VP9_POSTPROC),yes)
 VP9_CX_SRCS-$(CONFIG_INTERNAL_STATS) += common/vp9_postproc.h
 VP9_CX_SRCS-$(CONFIG_INTERNAL_STATS) += common/vp9_postproc.c
 endif
@@ -78,18 +78,18 @@ VP9_CX_SRCS-$(ARCH_X86)$(ARCH_X86_64) += encoder/x86/vp9_mcomp_x86.h
 VP9_CX_SRCS-$(HAVE_MMX) += encoder/x86/vp9_variance_mmx.c
 VP9_CX_SRCS-$(HAVE_MMX) += encoder/x86/vp9_variance_impl_mmx.asm
 VP9_CX_SRCS-$(HAVE_MMX) += encoder/x86/vp9_sad_mmx.asm
-VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_variance_sse2.c
 VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_variance_impl_sse2.asm
-VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_sad_sse2.asm
 VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_sad4d_sse2.asm
-VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_subpel_variance.asm
 VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_subpel_variance_impl_sse2.asm
 VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_temporal_filter_apply_sse2.asm
 VP9_CX_SRCS-$(HAVE_SSE3) += encoder/x86/vp9_sad_sse3.asm
 
 ifeq ($(USE_X86INC),yes)
 VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_error_sse2.asm
+VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_sad_sse2.asm
 VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_subtract_sse2.asm
+VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_variance_sse2.c
+VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_subpel_variance.asm
 endif
 
 ifeq ($(ARCH_X86_64),yes)
@@ -100,5 +100,6 @@ VP9_CX_SRCS-$(HAVE_SSE4_1) += encoder/x86/vp9_sad_sse4.asm
 VP9_CX_SRCS-$(ARCH_X86_64) += encoder/x86/vp9_ssim_opt.asm
 
 VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_dct_sse2.c
+VP9_CX_SRCS-$(HAVE_SSE2) += encoder/x86/vp9_dct32x32_sse2.c
 
 VP9_CX_SRCS-yes := $(filter-out $(VP9_CX_SRCS_REMOVE-yes),$(VP9_CX_SRCS-yes))
