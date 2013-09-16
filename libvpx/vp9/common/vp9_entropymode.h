@@ -16,8 +16,8 @@
 
 #define SUBMVREF_COUNT 5
 #define TX_SIZE_CONTEXTS 2
-#define VP9_MODE_UPDATE_PROB  252
-#define VP9_SWITCHABLE_FILTERS 3   // number of switchable filters
+#define MODE_UPDATE_PROB  252
+#define SWITCHABLE_FILTERS 3   // number of switchable filters
 
 // #define MODE_STATS
 
@@ -35,37 +35,32 @@ struct tx_counts {
   unsigned int p8x8[TX_SIZE_CONTEXTS][TX_SIZES - 2];
 };
 
-extern const vp9_prob vp9_kf_uv_mode_prob[VP9_INTRA_MODES][VP9_INTRA_MODES - 1];
-extern const vp9_prob vp9_kf_y_mode_prob[VP9_INTRA_MODES][VP9_INTRA_MODES]
-                                        [VP9_INTRA_MODES - 1];
+extern const vp9_prob vp9_kf_uv_mode_prob[INTRA_MODES][INTRA_MODES - 1];
+extern const vp9_prob vp9_kf_y_mode_prob[INTRA_MODES][INTRA_MODES]
+                                        [INTRA_MODES - 1];
 
 extern const vp9_tree_index vp9_intra_mode_tree[];
 extern const vp9_tree_index vp9_inter_mode_tree[];
 
-extern struct vp9_token vp9_intra_mode_encodings[VP9_INTRA_MODES];
-extern struct vp9_token vp9_inter_mode_encodings[VP9_INTER_MODES];
+extern struct vp9_token vp9_intra_mode_encodings[INTRA_MODES];
+extern struct vp9_token vp9_inter_mode_encodings[INTER_MODES];
 
 // probability models for partition information
 extern const vp9_tree_index vp9_partition_tree[];
 extern struct vp9_token vp9_partition_encodings[PARTITION_TYPES];
 
-extern const INTERPOLATIONFILTERTYPE vp9_switchable_interp
-                 [VP9_SWITCHABLE_FILTERS];
-
-extern const int vp9_switchable_interp_map[SWITCHABLE + 1];
-
 extern const vp9_tree_index vp9_switchable_interp_tree
-                 [2 * (VP9_SWITCHABLE_FILTERS - 1)];
+                 [2 * (SWITCHABLE_FILTERS - 1)];
 
-extern struct vp9_token vp9_switchable_interp_encodings[VP9_SWITCHABLE_FILTERS];
+extern struct vp9_token vp9_switchable_interp_encodings[SWITCHABLE_FILTERS];
 
 void vp9_entropy_mode_init();
 
-void vp9_setup_past_independence(struct VP9Common *cm, MACROBLOCKD *xd);
+void vp9_setup_past_independence(struct VP9Common *cm);
 
-void vp9_init_mbmode_probs(struct VP9Common *x);
+void vp9_init_mbmode_probs(struct VP9Common *cm);
 
-void vp9_adapt_mode_probs(struct VP9Common *);
+void vp9_adapt_mode_probs(struct VP9Common *cm);
 
 void tx_counts_to_branch_counts_32x32(unsigned int *tx_count_32x32p,
                                       unsigned int (*ct_32x32p)[2]);

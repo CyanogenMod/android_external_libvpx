@@ -377,7 +377,7 @@ static const vp9_prob modelcoefprobs_pareto8[COEFPROB_MODELS][MODEL_NODES] = {
 
 static void extend_model_to_full_distribution(vp9_prob p,
                                               vp9_prob *tree_probs) {
-  const int l = ((p - 1) / 2);
+  const int l = (p - 1) / 2;
   const vp9_prob (*model)[MODEL_NODES] = modelcoefprobs_pareto8;
   if (p & 1) {
     vpx_memcpy(tree_probs + UNCONSTRAINED_NODES,
@@ -436,11 +436,11 @@ const vp9_extra_bit vp9_extra_bits[12] = {
 
 #include "vp9/common/vp9_default_coef_probs.h"
 
-void vp9_default_coef_probs(VP9_COMMON *pc) {
-  vp9_copy(pc->fc.coef_probs[TX_4X4], default_coef_probs_4x4);
-  vp9_copy(pc->fc.coef_probs[TX_8X8], default_coef_probs_8x8);
-  vp9_copy(pc->fc.coef_probs[TX_16X16], default_coef_probs_16x16);
-  vp9_copy(pc->fc.coef_probs[TX_32X32], default_coef_probs_32x32);
+void vp9_default_coef_probs(VP9_COMMON *cm) {
+  vp9_copy(cm->fc.coef_probs[TX_4X4], default_coef_probs_4x4);
+  vp9_copy(cm->fc.coef_probs[TX_8X8], default_coef_probs_8x8);
+  vp9_copy(cm->fc.coef_probs[TX_16X16], default_coef_probs_16x16);
+  vp9_copy(cm->fc.coef_probs[TX_32X32], default_coef_probs_32x32);
 }
 
 // Neighborhood 5-tuples for various scans and blocksizes,
@@ -622,7 +622,6 @@ static void adapt_coef_probs(VP9_COMMON *cm, TX_SIZE tx_size,
   int t, i, j, k, l;
   unsigned int branch_ct[UNCONSTRAINED_NODES][2];
   vp9_prob coef_probs[UNCONSTRAINED_NODES];
-  int entropy_nodes_adapt = UNCONSTRAINED_NODES;
 
   for (i = 0; i < BLOCK_TYPES; ++i)
     for (j = 0; j < REF_TYPES; ++j)
@@ -635,7 +634,7 @@ static void adapt_coef_probs(VP9_COMMON *cm, TX_SIZE tx_size,
                                            0);
           branch_ct[0][1] = eob_branch_count[i][j][k][l] - branch_ct[0][0];
           coef_probs[0] = get_binary_prob(branch_ct[0][0], branch_ct[0][1]);
-          for (t = 0; t < entropy_nodes_adapt; ++t)
+          for (t = 0; t < UNCONSTRAINED_NODES; ++t)
             dst_coef_probs[i][j][k][l][t] = merge_probs(
                 pre_coef_probs[i][j][k][l][t], coef_probs[t],
                 branch_ct[t], count_sat, update_factor);

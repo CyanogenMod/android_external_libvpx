@@ -66,52 +66,72 @@
 
     vld1.s16        {q0}, [r5]              ; filter_x
 
-    add             r8, r1, r1, lsl #1      ; src_stride * 3
-    add             r8, r8, #4              ; src_stride * 3 + 4
-    rsb             r8, r8, #0              ; reset for src
+    sub             r8, r1, r1, lsl #2      ; -src_stride * 3
+    add             r8, r8, #4              ; -src_stride * 3 + 4
 
-    add             r4, r3, r3, lsl #1      ; dst_stride * 3
-    sub             r4, r4, #4              ; dst_stride * 3 - 4
-    rsb             r4, r4, #0              ; reset for dst
+    sub             r4, r3, r3, lsl #2      ; -dst_stride * 3
+    add             r4, r4, #4              ; -dst_stride * 3 + 4
 
-    sub             r9, r1, #8              ; post increment for src load
-
-    rsb             r1, r6, r1, lsl #2      ; reset src for outer loop
+    rsb             r9, r6, r1, lsl #2      ; reset src for outer loop
+    sub             r9, r9, #7
     rsb             r12, r6, r3, lsl #2     ; reset dst for outer loop
 
     mov             r10, r6                 ; w loop counter
 
-loop_horiz
-    vld1.8          {d24}, [r0]!
-    vld3.u8         {d28[0], d29[0], d30[0]}, [r0], r9
-
-    vld1.8          {d25}, [r0]!
-    vld3.u8         {d28[1], d29[1], d30[1]}, [r0], r9
-
-    vld1.8          {d26}, [r0]!
-    vld3.u8         {d28[2], d29[2], d30[2]}, [r0], r9
-
-    vld1.8          {d27}, [r0]!
-    vld3.u8         {d28[3], d29[3], d30[3]}, [r0], r8
+loop_horiz_v
+    vld1.8          {d24}, [r0], r1
+    vld1.8          {d25}, [r0], r1
+    vld1.8          {d26}, [r0], r1
+    vld1.8          {d27}, [r0], r8
 
     vtrn.16         q12, q13
     vtrn.8          d24, d25
     vtrn.8          d26, d27
 
-    ; extract to s16
+    pld             [r0, r1, lsl #2]
+
     vmovl.u8        q8, d24
     vmovl.u8        q9, d25
     vmovl.u8        q10, d26
     vmovl.u8        q11, d27
-    vtrn.32         d28, d29 ; only the first half is populated
+
+    ; save a few instructions in the inner loop
+    vswp            d17, d18
+    vmov            d23, d21
+
+    add             r0, r0, #3
+
+loop_horiz
+    add             r5, r0, #64
+
+    vld1.32         {d28[]}, [r0], r1
+    vld1.32         {d29[]}, [r0], r1
+    vld1.32         {d31[]}, [r0], r1
+    vld1.32         {d30[]}, [r0], r8
+
+    pld             [r5]
+
+    vtrn.16         d28, d31
+    vtrn.16         d29, d30
+    vtrn.8          d28, d29
+    vtrn.8          d31, d30
+
+    pld             [r5, r1]
+
+    ; extract to s16
+    vtrn.32         q14, q15
     vmovl.u8        q12, d28
-    vmovl.u8        q13, d30
+    vmovl.u8        q13, d29
+
+    pld             [r5, r1, lsl #1]
 
     ; src[] * filter_x
-    MULTIPLY_BY_Q0 q1, d16, d18, d20, d22, d17, d19, d21, d23
-    MULTIPLY_BY_Q0 q2, d18, d20, d22, d17, d19, d21, d23, d24
-    MULTIPLY_BY_Q0 q14, d20, d22, d17, d19, d21, d23, d24, d25
-    MULTIPLY_BY_Q0 q15, d22, d17, d19, d21, d23, d24, d25, d26
+    MULTIPLY_BY_Q0  q1,  d16, d17, d20, d22, d18, d19, d23, d24
+    MULTIPLY_BY_Q0  q2,  d17, d20, d22, d18, d19, d23, d24, d26
+    MULTIPLY_BY_Q0  q14, d20, d22, d18, d19, d23, d24, d26, d27
+    MULTIPLY_BY_Q0  q15, d22, d18, d19, d23, d24, d26, d27, d25
+
+    pld             [r5, -r8]
 
     ; += 64 >> 7
     vqrshrun.s32    d2, q1, #7
@@ -128,20 +148,25 @@ loop_horiz
     vtrn.32         d2, d3
     vtrn.8          d2, d3
 
-    vst1.u32        {d2[0]}, [r2], r3
-    vst1.u32        {d3[0]}, [r2], r3
-    vst1.u32        {d2[1]}, [r2], r3
-    vst1.u32        {d3[1]}, [r2], r4
+    vst1.u32        {d2[0]}, [r2@32], r3
+    vst1.u32        {d3[0]}, [r2@32], r3
+    vst1.u32        {d2[1]}, [r2@32], r3
+    vst1.u32        {d3[1]}, [r2@32], r4
+
+    vmov            q8,  q9
+    vmov            d20, d23
+    vmov            q11, q12
+    vmov            q9,  q13
 
     subs            r6, r6, #4              ; w -= 4
     bgt             loop_horiz
 
     ; outer loop
     mov             r6, r10                 ; restore w counter
-    add             r0, r0, r1              ; src += src_stride * 4 - w
+    add             r0, r0, r9              ; src += src_stride * 4 - w
     add             r2, r2, r12             ; dst += dst_stride * 4 - w
     subs            r7, r7, #4              ; h -= 4
-    bgt loop_horiz
+    bgt loop_horiz_v
 
     pop             {r4-r10, pc}
 
@@ -152,59 +177,72 @@ loop_horiz
     cmp             r12, #16
     bne             vp9_convolve8_vert_c
 
-    push            {r4-r10, lr}
+    push            {r4-r8, lr}
 
     ; adjust for taps
     sub             r0, r0, r1
     sub             r0, r0, r1, lsl #1
 
-    ldr             r7, [sp, #40]           ; filter_y
-    ldr             r8, [sp, #48]           ; w
-    ldr             r9, [sp, #52]           ; h
+    ldr             r4, [sp, #32]           ; filter_y
+    ldr             r6, [sp, #40]           ; w
+    ldr             lr, [sp, #44]           ; h
 
-    vld1.s16        {q0}, [r7]              ; filter_y
+    vld1.s16        {q0}, [r4]              ; filter_y
 
-    mov             r5, r1, lsl #1          ; src_stride * 2
-    add             r5, r5, r1, lsl #3      ; src_stride * 10
-    sub             r5, r5, #4              ; src_stride * 10 + 4
-    rsb             r5, r5, #0              ; reset for src
+    lsl             r1, r1, #1
+    lsl             r3, r3, #1
 
-    add             r6, r3, r3, lsl #1      ; dst_stride * 3
-    sub             r6, r6, #4              ; dst_stride * 3 - 4
-    rsb             r6, r6, #0              ; reset for dst
+loop_vert_h
+    mov             r4, r0
+    add             r7, r0, r1, asr #1
+    mov             r5, r2
+    add             r8, r2, r3, asr #1
+    mov             r12, lr                 ; h loop counter
 
-    rsb             r7, r8, r1, lsl #2      ; reset src for outer loop
-    rsb             r12, r8, r3, lsl #2     ; reset dst for outer loop
+    vld1.u32        {d16[0]}, [r4], r1
+    vld1.u32        {d16[1]}, [r7], r1
+    vld1.u32        {d18[0]}, [r4], r1
+    vld1.u32        {d18[1]}, [r7], r1
+    vld1.u32        {d20[0]}, [r4], r1
+    vld1.u32        {d20[1]}, [r7], r1
+    vld1.u32        {d22[0]}, [r4], r1
 
-    mov             r10, r8                 ; w loop counter
-
-loop_vert
-    ; always process a 4x4 block at a time
-    vld1.u32        {d16[0]}, [r0], r1
-    vld1.u32        {d16[1]}, [r0], r1
-    vld1.u32        {d18[0]}, [r0], r1
-    vld1.u32        {d18[1]}, [r0], r1
-    vld1.u32        {d20[0]}, [r0], r1
-    vld1.u32        {d20[1]}, [r0], r1
-    vld1.u32        {d22[0]}, [r0], r1
-    vld1.u32        {d22[1]}, [r0], r1
-    vld1.u32        {d24[0]}, [r0], r1
-    vld1.u32        {d24[1]}, [r0], r1
-    vld1.u32        {d26[0]}, [r0], r5
-
-    ; extract to s16
     vmovl.u8        q8, d16
     vmovl.u8        q9, d18
     vmovl.u8        q10, d20
     vmovl.u8        q11, d22
+
+loop_vert
+    ; always process a 4x4 block at a time
+    vld1.u32        {d24[0]}, [r7], r1
+    vld1.u32        {d26[0]}, [r4], r1
+    vld1.u32        {d26[1]}, [r7], r1
+    vld1.u32        {d24[1]}, [r4], r1
+
+    ; extract to s16
     vmovl.u8        q12, d24
     vmovl.u8        q13, d26
 
+    pld             [r5]
+    pld             [r8]
+
     ; src[] * filter_y
-    MULTIPLY_BY_Q0 q1, d16, d17, d18, d19, d20, d21, d22, d23
-    MULTIPLY_BY_Q0 q2, d17, d18, d19, d20, d21, d22, d23, d24
-    MULTIPLY_BY_Q0 q14, d18, d19, d20, d21, d22, d23, d24, d25
-    MULTIPLY_BY_Q0 q15, d19, d20, d21, d22, d23, d24, d25, d26
+    MULTIPLY_BY_Q0  q1,  d16, d17, d18, d19, d20, d21, d22, d24
+
+    pld             [r5, r3]
+    pld             [r8, r3]
+
+    MULTIPLY_BY_Q0  q2,  d17, d18, d19, d20, d21, d22, d24, d26
+
+    pld             [r7]
+    pld             [r4]
+
+    MULTIPLY_BY_Q0  q14, d18, d19, d20, d21, d22, d24, d26, d27
+
+    pld             [r7, r1]
+    pld             [r4, r1]
+
+    MULTIPLY_BY_Q0  q15, d19, d20, d21, d22, d24, d26, d27, d25
 
     ; += 64 >> 7
     vqrshrun.s32    d2, q1, #7
@@ -216,22 +254,27 @@ loop_vert
     vqmovn.u16      d2, q1
     vqmovn.u16      d3, q2
 
-    vst1.u32        {d2[0]}, [r2], r3
-    vst1.u32        {d2[1]}, [r2], r3
-    vst1.u32        {d3[0]}, [r2], r3
-    vst1.u32        {d3[1]}, [r2], r6
+    vst1.u32        {d2[0]}, [r5@32], r3
+    vst1.u32        {d2[1]}, [r8@32], r3
+    vst1.u32        {d3[0]}, [r5@32], r3
+    vst1.u32        {d3[1]}, [r8@32], r3
 
-    subs            r8, r8, #4              ; w -= 4
+    vmov            q8, q10
+    vmov            d18, d22
+    vmov            d19, d24
+    vmov            q10, q13
+    vmov            d22, d25
+
+    subs            r12, r12, #4            ; h -= 4
     bgt             loop_vert
 
     ; outer loop
-    mov             r8, r10                 ; restore w counter
-    add             r0, r0, r7              ; src += 4 * src_stride - w
-    add             r2, r2, r12             ; dst += 4 * dst_stride - w
-    subs            r9, r9, #4              ; h -= 4
-    bgt             loop_vert
+    add             r0, r0, #4
+    add             r2, r2, #4
+    subs            r6, r6, #4              ; w -= 4
+    bgt             loop_vert_h
 
-    pop             {r4-r10, pc}
+    pop             {r4-r8, pc}
 
     ENDP
     END

@@ -36,160 +36,160 @@ void vp9_idct_add_c(int16_t *input, uint8_t *dest, int stride, int eob);
 void vp9_idct_add_32x32_c(int16_t *q, uint8_t *dst, int stride, int eob);
 #define vp9_idct_add_32x32 vp9_idct_add_32x32_c
 
-void vp9_d27_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
-#define vp9_d27_predictor_4x4 vp9_d27_predictor_4x4_c
+void vp9_d207_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_d207_predictor_4x4 vp9_d207_predictor_4x4_c
 
-void vp9_d45_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d45_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d45_predictor_4x4 vp9_d45_predictor_4x4_c
 
-void vp9_d63_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d63_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d63_predictor_4x4 vp9_d63_predictor_4x4_c
 
-void vp9_h_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_h_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_h_predictor_4x4 vp9_h_predictor_4x4_c
 
-void vp9_d117_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d117_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d117_predictor_4x4 vp9_d117_predictor_4x4_c
 
-void vp9_d135_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d135_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d135_predictor_4x4 vp9_d135_predictor_4x4_c
 
-void vp9_d153_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d153_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d153_predictor_4x4 vp9_d153_predictor_4x4_c
 
-void vp9_v_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_v_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_v_predictor_4x4 vp9_v_predictor_4x4_c
 
-void vp9_tm_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_tm_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_tm_predictor_4x4 vp9_tm_predictor_4x4_c
 
-void vp9_dc_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_predictor_4x4 vp9_dc_predictor_4x4_c
 
-void vp9_dc_top_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_top_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_top_predictor_4x4 vp9_dc_top_predictor_4x4_c
 
-void vp9_dc_left_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_left_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_left_predictor_4x4 vp9_dc_left_predictor_4x4_c
 
-void vp9_dc_128_predictor_4x4_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_128_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_128_predictor_4x4 vp9_dc_128_predictor_4x4_c
 
-void vp9_d27_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
-#define vp9_d27_predictor_8x8 vp9_d27_predictor_8x8_c
+void vp9_d207_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_d207_predictor_8x8 vp9_d207_predictor_8x8_c
 
-void vp9_d45_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d45_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d45_predictor_8x8 vp9_d45_predictor_8x8_c
 
-void vp9_d63_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d63_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d63_predictor_8x8 vp9_d63_predictor_8x8_c
 
-void vp9_h_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_h_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_h_predictor_8x8 vp9_h_predictor_8x8_c
 
-void vp9_d117_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d117_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d117_predictor_8x8 vp9_d117_predictor_8x8_c
 
-void vp9_d135_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d135_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d135_predictor_8x8 vp9_d135_predictor_8x8_c
 
-void vp9_d153_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d153_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d153_predictor_8x8 vp9_d153_predictor_8x8_c
 
-void vp9_v_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_v_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_v_predictor_8x8 vp9_v_predictor_8x8_c
 
-void vp9_tm_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_tm_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_tm_predictor_8x8 vp9_tm_predictor_8x8_c
 
-void vp9_dc_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_predictor_8x8 vp9_dc_predictor_8x8_c
 
-void vp9_dc_top_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_top_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_top_predictor_8x8 vp9_dc_top_predictor_8x8_c
 
-void vp9_dc_left_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_left_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_left_predictor_8x8 vp9_dc_left_predictor_8x8_c
 
-void vp9_dc_128_predictor_8x8_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_128_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_128_predictor_8x8 vp9_dc_128_predictor_8x8_c
 
-void vp9_d27_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
-#define vp9_d27_predictor_16x16 vp9_d27_predictor_16x16_c
+void vp9_d207_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_d207_predictor_16x16 vp9_d207_predictor_16x16_c
 
-void vp9_d45_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d45_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d45_predictor_16x16 vp9_d45_predictor_16x16_c
 
-void vp9_d63_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d63_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d63_predictor_16x16 vp9_d63_predictor_16x16_c
 
-void vp9_h_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_h_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_h_predictor_16x16 vp9_h_predictor_16x16_c
 
-void vp9_d117_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d117_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d117_predictor_16x16 vp9_d117_predictor_16x16_c
 
-void vp9_d135_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d135_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d135_predictor_16x16 vp9_d135_predictor_16x16_c
 
-void vp9_d153_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d153_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d153_predictor_16x16 vp9_d153_predictor_16x16_c
 
-void vp9_v_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_v_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_v_predictor_16x16 vp9_v_predictor_16x16_c
 
-void vp9_tm_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_tm_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_tm_predictor_16x16 vp9_tm_predictor_16x16_c
 
-void vp9_dc_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_predictor_16x16 vp9_dc_predictor_16x16_c
 
-void vp9_dc_top_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_top_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_top_predictor_16x16 vp9_dc_top_predictor_16x16_c
 
-void vp9_dc_left_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_left_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_left_predictor_16x16 vp9_dc_left_predictor_16x16_c
 
-void vp9_dc_128_predictor_16x16_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_128_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_128_predictor_16x16 vp9_dc_128_predictor_16x16_c
 
-void vp9_d27_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
-#define vp9_d27_predictor_32x32 vp9_d27_predictor_32x32_c
+void vp9_d207_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_d207_predictor_32x32 vp9_d207_predictor_32x32_c
 
-void vp9_d45_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d45_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d45_predictor_32x32 vp9_d45_predictor_32x32_c
 
-void vp9_d63_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d63_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d63_predictor_32x32 vp9_d63_predictor_32x32_c
 
-void vp9_h_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_h_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_h_predictor_32x32 vp9_h_predictor_32x32_c
 
-void vp9_d117_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d117_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d117_predictor_32x32 vp9_d117_predictor_32x32_c
 
-void vp9_d135_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d135_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d135_predictor_32x32 vp9_d135_predictor_32x32_c
 
-void vp9_d153_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_d153_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d153_predictor_32x32 vp9_d153_predictor_32x32_c
 
-void vp9_v_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_v_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_v_predictor_32x32 vp9_v_predictor_32x32_c
 
-void vp9_tm_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_tm_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_tm_predictor_32x32 vp9_tm_predictor_32x32_c
 
-void vp9_dc_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_predictor_32x32 vp9_dc_predictor_32x32_c
 
-void vp9_dc_top_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_top_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_top_predictor_32x32 vp9_dc_top_predictor_32x32_c
 
-void vp9_dc_left_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_left_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_left_predictor_32x32 vp9_dc_left_predictor_32x32_c
 
-void vp9_dc_128_predictor_32x32_c(uint8_t *ypred_ptr, ptrdiff_t y_stride, uint8_t *yabove_row, uint8_t *yleft_col);
+void vp9_dc_128_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_128_predictor_32x32 vp9_dc_128_predictor_32x32_c
 
 void vp9_add_constant_residual_8x8_c(const int16_t diff, uint8_t *dest, int stride);
@@ -299,12 +299,6 @@ void vp9_short_iwalsh4x4_1_add_c(int16_t *input, uint8_t *dest, int dest_stride)
 
 void vp9_short_iwalsh4x4_add_c(int16_t *input, uint8_t *dest, int dest_stride);
 #define vp9_short_iwalsh4x4_add vp9_short_iwalsh4x4_add_c
-
-unsigned int vp9_sad32x3_c(const uint8_t *src_ptr, int  src_stride, const uint8_t *ref_ptr, int ref_stride, int max_sad);
-#define vp9_sad32x3 vp9_sad32x3_c
-
-unsigned int vp9_sad3x32_c(const uint8_t *src_ptr, int  src_stride, const uint8_t *ref_ptr, int ref_stride, int max_sad);
-#define vp9_sad3x32 vp9_sad3x32_c
 
 void vp9_rtcd(void);
 #include "vpx_config.h"

@@ -46,7 +46,8 @@ extern "C"
   typedef enum {
     USAGE_STREAM_FROM_SERVER    = 0x0,
     USAGE_LOCAL_FILE_PLAYBACK   = 0x1,
-    USAGE_CONSTRAINED_QUALITY   = 0x2
+    USAGE_CONSTRAINED_QUALITY   = 0x2,
+    USAGE_CONSTANT_QUALITY      = 0x3,
   } END_USAGE;
 
 
@@ -130,6 +131,8 @@ extern "C"
     // END DATARATE CONTROL OPTIONS
     // ----------------------------------------------------------------
 
+    // Spatial scalability
+    int ss_number_layers;
 
     // these parameters aren't to be used in final build don't use!!!
     int play_alternate;
@@ -209,6 +212,13 @@ extern "C"
 
   int vp9_set_internal_size(VP9_PTR comp,
                             VPX_SCALING horiz_mode, VPX_SCALING vert_mode);
+
+  int vp9_set_size_literal(VP9_PTR comp, unsigned int width,
+                           unsigned int height);
+
+  int vp9_switch_layer(VP9_PTR comp, int layer);
+
+  void vp9_set_svc(VP9_PTR comp, int use_svc);
 
   int vp9_get_quantizer(VP9_PTR c);
 
