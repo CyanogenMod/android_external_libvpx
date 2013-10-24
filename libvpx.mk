@@ -36,6 +36,10 @@ libvpx_codec_srcs := $(shell cat $(libvpx_config_dir)/libvpx_srcs.txt)
 
 LOCAL_CFLAGS := -DHAVE_CONFIG_H=vpx_config.h
 
+# Want arm, not thumb, optimized
+LOCAL_ARM_MODE := arm
+LOCAL_CFLAGS += -O3
+
 LOCAL_MODULE := libvpx
 
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
