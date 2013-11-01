@@ -5760,7 +5760,7 @@ long Tracks::ParseTrackEntry(
 
         if (id == 0x60)  // VideoSettings ID
         {
-            if (size <= 0)
+            if (size < 0)
                 return E_FILE_FORMAT_INVALID;
 
             v.start = start;
@@ -5768,7 +5768,7 @@ long Tracks::ParseTrackEntry(
         }
         else if (id == 0x61)  // AudioSettings ID
         {
-            if (size <= 0)
+            if (size < 0)
                 return E_FILE_FORMAT_INVALID;
 
             a.start = start;
@@ -5776,7 +5776,7 @@ long Tracks::ParseTrackEntry(
         }
         else if (id == 0x2D80) // ContentEncodings ID
         {
-            if (size <= 0)
+            if (size < 0)
                 return E_FILE_FORMAT_INVALID;
 
             e.start = start;

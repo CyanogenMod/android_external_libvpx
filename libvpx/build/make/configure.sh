@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 ##
 ##  configure.sh
 ##
@@ -75,7 +75,7 @@ Options:
 
 Build options:
   --help                      print this message
-  --log=yes|no|FILE           file configure log is written to [config.err]
+  --log=yes|no|FILE           file configure log is written to [config.log]
   --target=TARGET             target platform tuple [generic-gnu]
   --cpu=CPU                   optimize for a specific cpu rather than a family
   --extra-cflags=ECFLAGS      add ECFLAGS to CFLAGS [$CFLAGS]
@@ -88,6 +88,7 @@ Build options:
   ${toggle_debug}             enable/disable debug mode
   ${toggle_gprof}             enable/disable gprof profiling instrumentation
   ${toggle_gcov}              enable/disable gcov coverage instrumentation
+  ${toggle_thumb}             enable/disable building arm assembly in thumb mode
 
 Install options:
   ${toggle_install_docs}      control whether docs are installed
@@ -197,11 +198,11 @@ add_extralibs() {
 #
 # Boolean Manipulation Functions
 #
-enable(){
+enable_feature(){
     set_all yes $*
 }
 
-disable(){
+disable_feature(){
     set_all no $*
 }
 
@@ -218,7 +219,7 @@ soft_enable() {
     for var in $*; do
         if ! disabled $var; then
             log_echo "  enabling $var"
-            enable $var
+            enable_feature $var
         fi
     done
 }
@@ -227,7 +228,7 @@ soft_disable() {
     for var in $*; do
         if ! enabled $var; then
             log_echo "  disabling $var"
-            disable $var
+            disable_feature $var
         fi
     done
 }
@@ -250,10 +251,10 @@ tolower(){
 # Temporary File Functions
 #
 source_path=${0%/*}
-enable source_path_used
+enable_feature source_path_used
 if test -z "$source_path" -o "$source_path" = "." ; then
     source_path="`pwd`"
-    disable source_path_used
+    disable_feature source_path_used
 fi
 
 if test ! -z "$TMPDIR" ; then
@@ -263,20 +264,23 @@ elif test ! -z "$TEMPDIR" ; then
 else
     TMPDIRx="/tmp"
 fi
-TMP_H="${TMPDIRx}/vpx-conf-$$-${RANDOM}.h"
-TMP_C="${TMPDIRx}/vpx-conf-$$-${RANDOM}.c"
-TMP_O="${TMPDIRx}/vpx-conf-$$-${RANDOM}.o"
-TMP_X="${TMPDIRx}/vpx-conf-$$-${RANDOM}.x"
-TMP_ASM="${TMPDIRx}/vpx-conf-$$-${RANDOM}.asm"
+RAND=$(awk 'BEGIN { srand(); printf "%d\n",(rand() * 32768)}')
+TMP_H="${TMPDIRx}/vpx-conf-$$-${RAND}.h"
+TMP_C="${TMPDIRx}/vpx-conf-$$-${RAND}.c"
+TMP_CC="${TMPDIRx}/vpx-conf-$$-${RAND}.cc"
+TMP_O="${TMPDIRx}/vpx-conf-$$-${RAND}.o"
+TMP_X="${TMPDIRx}/vpx-conf-$$-${RAND}.x"
+TMP_ASM="${TMPDIRx}/vpx-conf-$$-${RAND}.asm"
 
 clean_temp_files() {
-    rm -f ${TMP_C} ${TMP_H} ${TMP_O} ${TMP_X} ${TMP_ASM}
+    rm -f ${TMP_C} ${TMP_CC} ${TMP_H} ${TMP_O} ${TMP_X} ${TMP_ASM}
 }
 
 #
 # Toolchain Check Functions
 #
 check_cmd() {
+    enabled external_build && return
     log "$@"
     "$@" >>${logfile} 2>&1
 }
@@ -290,9 +294,9 @@ check_cc() {
 
 check_cxx() {
     log check_cxx "$@"
-    cat >${TMP_C}
-    log_file ${TMP_C}
-    check_cmd ${CXX} ${CXXFLAGS} "$@" -c -o ${TMP_O} ${TMP_C}
+    cat >${TMP_CC}
+    log_file ${TMP_CC}
+    check_cmd ${CXX} ${CXXFLAGS} "$@" -c -o ${TMP_O} ${TMP_CC}
 }
 
 check_cpp() {
@@ -313,8 +317,8 @@ check_header(){
     header=$1
     shift
     var=`echo $header | sed 's/[^A-Za-z0-9_]/_/g'`
-    disable $var
-    check_cpp "$@" <<EOF && enable $var
+    disable_feature $var
+    check_cpp "$@" <<EOF && enable_feature $var
 #include "$header"
 int x;
 EOF
@@ -414,6 +418,8 @@ SRC_PATH_BARE=$source_path
 BUILD_PFX=${BUILD_PFX}
 TOOLCHAIN=${toolchain}
 ASM_CONVERSION=${asm_conversion_cmd:-${source_path}/build/make/ads2gas.pl}
+GEN_VCPROJ=${gen_vcproj_cmd}
+MSVS_ARCH_DIR=${msvs_arch_dir}
 
 CC=${CC}
 CXX=${CXX}
@@ -431,14 +437,15 @@ ASFLAGS = ${ASFLAGS}
 extralibs = ${extralibs}
 AS_SFX    = ${AS_SFX:-.asm}
 EXE_SFX   = ${EXE_SFX}
+VCPROJ_SFX = ${VCPROJ_SFX}
 RTCD_OPTIONS = ${RTCD_OPTIONS}
 EOF
 
     if enabled rvct; then cat >> $1 << EOF
-fmt_deps = sed -e 's;^__image.axf;\$(dir \$@)\$(notdir \$<).o \$@;' #hide
+fmt_deps = sed -e 's;^__image.axf;\${@:.d=.o} \$@;' #hide
 EOF
     else cat >> $1 << EOF
-fmt_deps = sed -e 's;^\([a-zA-Z0-9_]*\)\.o;\$(dir \$@)\1\$(suffix \$<).o \$@;'
+fmt_deps = sed -e 's;^\([a-zA-Z0-9_]*\)\.o;\${@:.d=.o} \$@;'
 EOF
     fi
 
@@ -459,6 +466,7 @@ write_common_target_config_h() {
 #ifndef VPX_CONFIG_H
 #define VPX_CONFIG_H
 #define RESTRICT    ${RESTRICT}
+#define INLINE      ${INLINE}
 EOF
     print_config_h ARCH   "${TMP_H}" ${ARCH_LIST}
     print_config_h HAVE   "${TMP_H}" ${HAVE_LIST}
@@ -472,7 +480,7 @@ process_common_cmdline() {
     for opt in "$@"; do
         optval="${opt#*=}"
         case "$opt" in
-        --child) enable child
+        --child) enable_feature child
         ;;
         --log*)
         logging="$optval"
@@ -484,7 +492,7 @@ process_common_cmdline() {
         ;;
         --target=*) toolchain="${toolchain:-${optval}}"
         ;;
-        --force-target=*) toolchain="${toolchain:-${optval}}"; enable force_toolchain
+        --force-target=*) toolchain="${toolchain:-${optval}}"; enable_feature force_toolchain
         ;;
         --cpu)
         ;;
@@ -504,7 +512,7 @@ process_common_cmdline() {
           echo "${CMDLINE_SELECT}" | grep "^ *$option\$" >/dev/null ||
             die_unknown $opt
         fi
-        $action $option
+        ${action}_feature $option
         ;;
         --require-?*)
         eval `echo "$opt" | sed 's/--/action=/;s/-/ option=/;s/-/_/g'`
@@ -516,11 +524,11 @@ process_common_cmdline() {
         ;;
         --force-enable-?*|--force-disable-?*)
         eval `echo "$opt" | sed 's/--force-/action=/;s/-/ option=/;s/-/_/g'`
-        $action $option
+        ${action}_feature $option
         ;;
         --libc=*)
         [ -d "${optval}" ] || die "Not a directory: ${optval}"
-        disable builtin_libc
+        disable_feature builtin_libc
         alt_libc="${optval}"
         ;;
         --as=*)
@@ -596,8 +604,13 @@ process_common_toolchain() {
             armv6*)
                 tgt_isa=armv6
                 ;;
+            armv7*-hardfloat*)
+                tgt_isa=armv7
+                float_abi=hard
+                ;;
             armv7*)
                 tgt_isa=armv7
+                float_abi=softfp
                 ;;
             armv5te*)
                 tgt_isa=armv5te
@@ -641,6 +654,13 @@ process_common_toolchain() {
                 tgt_isa=x86_64
                 tgt_os=darwin12
                 ;;
+            *darwin13*)
+                tgt_isa=x86_64
+                tgt_os=darwin13
+                ;;
+            x86_64*mingw32*)
+                tgt_os=win64
+                ;;
             *mingw32*|*cygwin*)
                 [ -z "$tgt_isa" ] && tgt_isa=x86
                 tgt_os=win32
@@ -677,13 +697,13 @@ process_common_toolchain() {
 
     # Mark the specific ISA requested as enabled
     soft_enable ${tgt_isa}
-    enable ${tgt_os}
-    enable ${tgt_cc}
+    enable_feature ${tgt_os}
+    enable_feature ${tgt_cc}
 
     # Enable the architecture family
     case ${tgt_isa} in
-        arm*) enable arm;;
-        mips*) enable mips;;
+        arm*) enable_feature arm;;
+        mips*) enable_feature mips;;
     esac
 
     # PIC is probably what we want when building shared libs
@@ -736,13 +756,17 @@ process_common_toolchain() {
             add_cflags  "-mmacosx-version-min=10.8"
             add_ldflags "-mmacosx-version-min=10.8"
             ;;
+        *-darwin13-*)
+            add_cflags  "-mmacosx-version-min=10.9"
+            add_ldflags "-mmacosx-version-min=10.9"
+            ;;
     esac
 
     # Handle Solaris variants. Solaris 10 needs -lposix4
     case ${toolchain} in
         sparc-solaris-*)
             add_extralibs -lposix4
-            disable fast_unaligned
+            disable_feature fast_unaligned
             ;;
         *-solaris-*)
             add_extralibs -lposix4
@@ -767,6 +791,7 @@ process_common_toolchain() {
             ;;
         armv5te)
             soft_enable edsp
+            disable_feature fast_unaligned
             ;;
         esac
 
@@ -781,9 +806,16 @@ process_common_toolchain() {
             arch_int=${arch_int%%te}
             check_add_asflags --defsym ARCHITECTURE=${arch_int}
             tune_cflags="-mtune="
-            if [ ${tgt_isa} == "armv7" ]; then
-                check_add_cflags  -march=armv7-a -mfloat-abi=softfp
-                check_add_asflags -march=armv7-a -mfloat-abi=softfp
+            if [ ${tgt_isa} = "armv7" ]; then
+                if [ -z "${float_abi}" ]; then
+                    check_cpp <<EOF && float_abi=hard || float_abi=softfp
+#ifndef __ARM_PCS_VFP
+#error "not hardfp"
+#endif
+EOF
+                fi
+                check_add_cflags  -march=armv7-a -mfloat-abi=${float_abi}
+                check_add_asflags -march=armv7-a -mfloat-abi=${float_abi}
 
                 if enabled neon
                 then
@@ -801,6 +833,18 @@ process_common_toolchain() {
 
             enabled debug && add_asflags -g
             asm_conversion_cmd="${source_path}/build/make/ads2gas.pl"
+            if enabled thumb; then
+                asm_conversion_cmd="$asm_conversion_cmd -thumb"
+                check_add_cflags -mthumb
+                check_add_asflags -mthumb -mimplicit-it=always
+            fi
+            ;;
+        vs*)
+            asm_conversion_cmd="${source_path}/build/make/ads2armasm_ms.pl"
+            AS_SFX=.s
+            msvs_arch_dir=arm-msvs
+            disable_feature multithread
+            disable_feature unit_tests
             ;;
         rvct)
             CC=armcc
@@ -812,7 +856,7 @@ process_common_toolchain() {
             tune_cflags="--cpu="
             tune_asflags="--cpu="
             if [ -z "${tune_cpu}" ]; then
-                if [ ${tgt_isa} == "armv7" ]; then
+                if [ ${tgt_isa} = "armv7" ]; then
                     if enabled neon
                     then
                         check_add_cflags --fpu=softvfp+vfpv3
@@ -837,8 +881,8 @@ process_common_toolchain() {
 
         case ${tgt_os} in
         none*)
-            disable multithread
-            disable os_support
+            disable_feature multithread
+            disable_feature os_support
             ;;
 
         android*)
@@ -870,9 +914,9 @@ process_common_toolchain() {
             # Cortex-A8 implementations (NDK Dev Guide)
             add_ldflags "-Wl,--fix-cortex-a8"
 
-            enable pic
+            enable_feature pic
             soft_enable realtime_only
-            if [ ${tgt_isa} == "armv7" ]; then
+            if [ ${tgt_isa} = "armv7" ]; then
                 soft_enable runtime_cpu_detect
             fi
             if enabled runtime_cpu_detect; then
@@ -906,7 +950,7 @@ process_common_toolchain() {
             add_ldflags -arch_only ${tgt_isa}
 
             if [ -z "${alt_libc}" ]; then
-                alt_libc=${SDK_PATH}/SDKs/iPhoneOS5.1.sdk
+                alt_libc=${SDK_PATH}/SDKs/iPhoneOS6.0.sdk
             fi
 
             add_cflags  "-isysroot ${alt_libc}"
@@ -926,7 +970,7 @@ process_common_toolchain() {
          ;;
 
         linux*)
-            enable linux
+            enable_feature linux
             if enabled rvct; then
                 # Check if we have CodeSourcery GCC in PATH. Needed for
                 # libraries
@@ -957,14 +1001,14 @@ process_common_toolchain() {
         tune_cflags="-mtune="
         if enabled dspr2; then
             check_add_cflags -mips32r2 -mdspr2
-            disable fast_unaligned
+            disable_feature fast_unaligned
         fi
         check_add_cflags -march=${tgt_isa}
         check_add_asflags -march=${tgt_isa}
         check_add_asflags -KPIC
     ;;
     ppc*)
-        enable ppc
+        enable_feature ppc
         bits=${tgt_isa##ppc}
         link_with_cc=gcc
         setup_gnu_toolchain
@@ -994,13 +1038,6 @@ process_common_toolchain() {
 #error "not x32"
 #endif
 EOF
-        soft_enable runtime_cpu_detect
-        soft_enable mmx
-        soft_enable sse
-        soft_enable sse2
-        soft_enable sse3
-        soft_enable ssse3
-        soft_enable sse4_1
 
         case  ${tgt_os} in
             win*)
@@ -1042,17 +1079,32 @@ EOF
                 add_ldflags -m${bits}
                 link_with_cc=gcc
                 tune_cflags="-march="
-            setup_gnu_toolchain
+                setup_gnu_toolchain
                 #for 32 bit x86 builds, -O3 did not turn on this flag
-                enabled optimizations && check_add_cflags -fomit-frame-pointer
+                enabled optimizations && disabled gprof && check_add_cflags -fomit-frame-pointer
             ;;
             vs*)
                 # When building with Microsoft Visual Studio the assembler is
                 # invoked directly. Checking at configure time is unnecessary.
                 # Skip the check by setting AS arbitrarily
                 AS=msvs
+                msvs_arch_dir=x86-msvs
             ;;
         esac
+
+        soft_enable runtime_cpu_detect
+        soft_enable mmx
+        soft_enable sse
+        soft_enable sse2
+        soft_enable sse3
+        soft_enable ssse3
+        # We can't use 'check_cflags' until the compiler is configured and CC is
+        # populated.
+        if enabled gcc && ! disabled sse4_1 && ! check_cflags -msse4; then
+            RTCD_OPTIONS="${RTCD_OPTIONS}--disable-sse4_1 "
+        else
+            soft_enable sse4_1
+        fi
 
         case "${AS}" in
             auto|"")
@@ -1069,12 +1121,14 @@ EOF
             win32)
                 add_asflags -f win32
                 enabled debug && add_asflags -g cv8
+                EXE_SFX=.exe
             ;;
             win64)
                 add_asflags -f x64
                 enabled debug && add_asflags -g cv8
+                EXE_SFX=.exe
             ;;
-            linux*|solaris*)
+            linux*|solaris*|android*)
                 add_asflags -f elf${bits}
                 enabled debug && [ "${AS}" = yasm ] && add_asflags -g dwarf2
                 enabled debug && [ "${AS}" = nasm ] && add_asflags -g
@@ -1102,7 +1156,7 @@ EOF
     ;;
     universal*|*-gcc|generic-gnu)
         link_with_cc=gcc
-        enable gcc
+        enable_feature gcc
     setup_gnu_toolchain
     ;;
     esac
@@ -1136,6 +1190,12 @@ EOF
         fi
     fi
 
+    # default use_x86inc to yes if pic is no or 64bit or we are not on darwin
+    echo "  checking here for x86inc \"${tgt_isa}\" \"$pic\" "
+    if [ ${tgt_isa} = x86_64 -o ! "$pic" = "yes" -o "${tgt_os#darwin}" = "${tgt_os}"  ]; then
+      soft_enable use_x86inc
+    fi
+
     # Position Independent Code (PIC) support, for building relocatable
     # shared objects
     enabled gcc && enabled pic && check_add_cflags -fPIC
@@ -1145,14 +1205,22 @@ EOF
     enabled linux && check_add_cflags -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
 
     # Check for strip utility variant
-    ${STRIP} -V 2>/dev/null | grep GNU >/dev/null && enable gnu_strip
+    ${STRIP} -V 2>/dev/null | grep GNU >/dev/null && enable_feature gnu_strip
 
     # Try to determine target endianness
     check_cc <<EOF
     unsigned int e = 'O'<<24 | '2'<<16 | 'B'<<8 | 'E';
 EOF
     [ -f "${TMP_O}" ] && od -A n -t x1 "${TMP_O}" | tr -d '\n' |
-        grep '4f *32 *42 *45' >/dev/null 2>&1 && enable big_endian
+        grep '4f *32 *42 *45' >/dev/null 2>&1 && enable_feature big_endian
+
+    # Try to find which inline keywords are supported
+    check_cc <<EOF && INLINE="inline"
+    static inline function() {}
+EOF
+    check_cc <<EOF && INLINE="__inline__ __attribute__((always_inline))"
+    static __attribute__((always_inline)) function() {}
+EOF
 
     # Almost every platform uses pthreads.
     if enabled multithread; then
@@ -1169,14 +1237,11 @@ EOF
             if enabled dspr2; then
                 if enabled big_endian; then
                     echo "dspr2 optimizations are available only for little endian platforms"
-                    disable dspr2
+                    disable_feature dspr2
                 fi
             fi
         ;;
     esac
-
-    # for sysconf(3) and friends.
-    check_header unistd.h
 
     # glibc needs these
     if enabled linux; then
@@ -1223,8 +1288,8 @@ print_config_h() {
 
 print_webm_license() {
     local destination=$1
-    local prefix=$2
-    local suffix=$3
+    local prefix="$2"
+    local suffix="$3"
     shift 3
     cat <<EOF > ${destination}
 ${prefix} Copyright (c) 2011 The WebM project authors. All Rights Reserved.${suffix}
@@ -1245,8 +1310,8 @@ process_detect() {
     true;
 }
 
-enable logging
-logfile="config.err"
+enable_feature logging
+logfile="config.log"
 self=$0
 process() {
     cmdline_args="$@"

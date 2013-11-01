@@ -11,10 +11,12 @@
 
 #include <string.h>
 #include "test/acm_random.h"
+#include "test/clear_system_state.h"
+#include "test/register_state_check.h"
 #include "third_party/googletest/src/include/gtest/gtest.h"
 extern "C" {
-#include "vpx_config.h"
-#include "vpx_rtcd.h"
+#include "./vpx_config.h"
+#include "./vp8_rtcd.h"
 #include "vp8/common/blockd.h"
 #include "vpx_mem/vpx_mem.h"
 }
@@ -24,6 +26,13 @@ namespace {
 using libvpx_test::ACMRandom;
 
 class IntraPredBase {
+ public:
+  virtual ~IntraPredBase() {}
+
+  virtual void TearDown() {
+    libvpx_test::ClearSystemState();
+  }
+
  protected:
   void SetupMacroblock(uint8_t *data, int block_size, int stride,
                        int num_planes) {
@@ -97,9 +106,9 @@ class IntraPredBase {
           for (int y = 0; y < block_size_; y++)
             sum += data_ptr_[p][y * stride_ - 1];
         expected = (sum + (1 << (shift - 1))) >> shift;
-      } else
+      } else {
         expected = 0x80;
-
+      }
       // check that all subsequent lines are equal to the first
       for (int y = 1; y < block_size_; ++y)
         ASSERT_EQ(0, memcmp(data_ptr_[p], &data_ptr_[p][y * stride_],
@@ -246,8 +255,10 @@ class IntraPredYTest : public ::testing::TestWithParam<intra_pred_y_fn_t>,
 
   virtual void Predict(MB_PREDICTION_MODE mode) {
     mb_.mode_info_context->mbmi.mode = mode;
-    pred_fn_(&mb_, data_ptr_[0] - kStride, data_ptr_[0] - 1, kStride,
-             data_ptr_[0], kStride);
+    REGISTER_STATE_CHECK(pred_fn_(&mb_,
+                                  data_ptr_[0] - kStride,
+                                  data_ptr_[0] - 1, kStride,
+                                  data_ptr_[0], kStride));
   }
 
   intra_pred_y_fn_t pred_fn_;

@@ -26,6 +26,7 @@ Options:
     --help                      Print this message
     --exe                       Generate a project for building an Application
     --lib                       Generate a project for creating a static library
+    --dll                       Generate a project for creating a dll
     --static-crt                Use the static C runtime (/MT)
     --target=isa-os-cc          Target specifier (required)
     --out=filename              Write output to a file [stdout]
@@ -142,7 +143,9 @@ generate_filter() {
             if [ "${f##*.}" == "$pat" ]; then
                 unset file_list[i]
 
+                objf=$(echo ${f%.*}.obj | sed -e 's/^[\./]\+//g' -e 's,/,_,g')
                 open_tag File RelativePath="./$f"
+
                 if [ "$pat" == "asm" ] && $asm_use_custom_step; then
                     for plat in "${platforms[@]}"; do
                         for cfg in Debug Release; do
@@ -152,14 +155,27 @@ generate_filter() {
                             tag Tool \
                                 Name="VCCustomBuildTool" \
                                 Description="Assembling \$(InputFileName)" \
-                                CommandLine="$(eval echo \$asm_${cfg}_cmdline)" \
-                                Outputs="\$(InputName).obj" \
+                                CommandLine="$(eval echo \$asm_${cfg}_cmdline) -o \$(IntDir)$objf" \
+                                Outputs="\$(IntDir)$objf" \
 
                             close_tag FileConfiguration
                         done
                     done
                 fi
+                if [ "$pat" == "c" ] || [ "$pat" == "cc" ] ; then
+                    for plat in "${platforms[@]}"; do
+                        for cfg in Debug Release; do
+                            open_tag FileConfiguration \
+                                Name="${cfg}|${plat}" \
 
+                            tag Tool \
+                                Name="VCCLCompilerTool" \
+                                ObjectFile="\$(IntDir)$objf" \
+
+                            close_tag FileConfiguration
+                        done
+                    done
+                fi
                 close_tag File
 
                 break
@@ -189,6 +205,8 @@ for opt in "$@"; do
         --module-def=*) link_opts="${link_opts} ModuleDefinitionFile=${optval}"
         ;;
         --exe) proj_kind="exe"
+        ;;
+        --dll) proj_kind="dll"
         ;;
         --lib) proj_kind="lib"
         ;;
@@ -242,10 +260,15 @@ uses_asm=${uses_asm:-false}
 case "${vs_ver:-8}" in
     7) vs_ver_id="7.10"
        asm_use_custom_step=$uses_asm
+       warn_64bit='Detect64BitPortabilityProblems=true'
     ;;
     8) vs_ver_id="8.00"
+       asm_use_custom_step=$uses_asm
+       warn_64bit='Detect64BitPortabilityProblems=true'
     ;;
     9) vs_ver_id="9.00"
+       asm_use_custom_step=$uses_asm
+       warn_64bit='Detect64BitPortabilityProblems=false'
     ;;
 esac
 
@@ -284,10 +307,11 @@ esac
 case "$target" in
     x86_64*)
         platforms[0]="x64"
+        asm_Debug_cmdline="yasm -Xvc -g cv8 -f \$(PlatformName) ${yasmincs} &quot;\$(InputPath)&quot;"
+        asm_Release_cmdline="yasm -Xvc -f \$(PlatformName) ${yasmincs} &quot;\$(InputPath)&quot;"
     ;;
     x86*)
         platforms[0]="Win32"
-        # these are only used by vs7
         asm_Debug_cmdline="yasm -Xvc -g cv8 -f \$(PlatformName) ${yasmincs} &quot;\$(InputPath)&quot;"
         asm_Release_cmdline="yasm -Xvc -f \$(PlatformName) ${yasmincs} &quot;\$(InputPath)&quot;"
     ;;
@@ -298,6 +322,8 @@ esac
 generate_vcproj() {
     case "$proj_kind" in
         exe) vs_ConfigurationType=1
+        ;;
+        dll) vs_ConfigurationType=2
         ;;
         *)   vs_ConfigurationType=4
         ;;
@@ -317,13 +343,6 @@ generate_vcproj() {
         tag Platform Name="$plat"
     done
     close_tag Platforms
-
-    open_tag ToolFiles
-    case "$target" in
-        x86*) $uses_asm && tag ToolFile RelativePath="$self_dirname/../x86-msvs/yasm.rules"
-        ;;
-    esac
-    close_tag ToolFiles
 
     open_tag Configurations
     for plat in "${platforms[@]}"; do
@@ -346,8 +365,8 @@ generate_vcproj() {
                             PreprocessorDefinitions="WIN32;DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;_CRT_SECURE_NO_DEPRECATE" \
                             RuntimeLibrary="$debug_runtime" \
                             WarningLevel="3" \
-                            Detect64BitPortabilityProblems="true" \
                             DebugInformationFormat="1" \
+                            $warn_64bit \
                     ;;
                     vpx)
                         tag Tool \
@@ -362,8 +381,8 @@ generate_vcproj() {
                             RuntimeLibrary="$debug_runtime" \
                             UsePrecompiledHeader="0" \
                             WarningLevel="3" \
-                            DebugInformationFormat="1" \
-                            Detect64BitPortabilityProblems="true" \
+                            DebugInformationFormat="2" \
+                            $warn_64bit \
 
                         $uses_asm && tag Tool Name="YASM"  IncludePaths="$incs" Debug="true"
                     ;;
@@ -376,8 +395,8 @@ generate_vcproj() {
                             RuntimeLibrary="$debug_runtime" \
                             UsePrecompiledHeader="0" \
                             WarningLevel="3" \
-                            DebugInformationFormat="1" \
-                            Detect64BitPortabilityProblems="true" \
+                            DebugInformationFormat="2" \
+                            $warn_64bit \
 
                         $uses_asm && tag Tool Name="YASM"  IncludePaths="$incs" Debug="true"
                     ;;
@@ -454,8 +473,8 @@ generate_vcproj() {
                             RuntimeLibrary="$release_runtime" \
                             UsePrecompiledHeader="0" \
                             WarningLevel="3" \
-                            Detect64BitPortabilityProblems="true" \
                             DebugInformationFormat="0" \
+                            $warn_64bit \
                     ;;
                     vpx)
                         tag Tool \
@@ -472,7 +491,7 @@ generate_vcproj() {
                             UsePrecompiledHeader="0" \
                             WarningLevel="3" \
                             DebugInformationFormat="0" \
-                            Detect64BitPortabilityProblems="true" \
+                            $warn_64bit \
 
                         $uses_asm && tag Tool Name="YASM"  IncludePaths="$incs"
                     ;;
@@ -487,7 +506,7 @@ generate_vcproj() {
                             UsePrecompiledHeader="0" \
                             WarningLevel="3" \
                             DebugInformationFormat="0" \
-                            Detect64BitPortabilityProblems="true" \
+                            $warn_64bit \
 
                         $uses_asm && tag Tool Name="YASM"  IncludePaths="$incs"
                     ;;

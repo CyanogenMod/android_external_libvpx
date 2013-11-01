@@ -7,17 +7,23 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
+#include "third_party/googletest/src/include/gtest/gtest.h"
+#include "test/codec_factory.h"
 #include "test/encode_test_driver.h"
 #include "test/i420_video_source.h"
-#include "third_party/googletest/src/include/gtest/gtest.h"
+#include "test/util.h"
+
 namespace {
 
 class DatarateTest : public ::libvpx_test::EncoderTest,
-    public ::testing::TestWithParam<enum libvpx_test::TestMode> {
+    public ::libvpx_test::CodecTestWithParam<libvpx_test::TestMode> {
+ public:
+  DatarateTest() : EncoderTest(GET_PARAM(0)) {}
+
  protected:
   virtual void SetUp() {
     InitializeConfig();
-    SetMode(GetParam());
+    SetMode(GET_PARAM(1));
     ResetModel();
   }
 
@@ -28,10 +34,6 @@ class DatarateTest : public ::libvpx_test::EncoderTest,
     first_drop_ = 0;
     bits_total_ = 0;
     duration_ = 0.0;
-  }
-
-  virtual bool Continue() const {
-    return !HasFatalFailure() && !abort_;
   }
 
   virtual void PreEncodeFrameHook(::libvpx_test::VideoSource *video,
@@ -73,7 +75,7 @@ class DatarateTest : public ::libvpx_test::EncoderTest,
     bits_in_buffer_model_ -= frame_size_in_bits;
 
     // Update the running total of bits for end of test datarate checks.
-    bits_total_ += frame_size_in_bits ;
+    bits_total_ += frame_size_in_bits;
 
     // If first drop not set and we have a drop set it to this time.
     if (!first_drop_ && duration > 1)
@@ -174,5 +176,6 @@ TEST_P(DatarateTest, ChangingDropFrameThresh) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(AllModes, DatarateTest, ALL_TEST_MODES);
+VP8_INSTANTIATE_TEST_CASE(DatarateTest, ALL_TEST_MODES);
+
 }  // namespace

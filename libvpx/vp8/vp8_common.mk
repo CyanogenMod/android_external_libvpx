@@ -14,7 +14,6 @@ VP8_COMMON_SRCS-yes += common/ppflags.h
 VP8_COMMON_SRCS-yes += common/onyx.h
 VP8_COMMON_SRCS-yes += common/onyxd.h
 VP8_COMMON_SRCS-yes += common/alloccommon.c
-VP8_COMMON_SRCS-yes += common/asm_com_offsets.c
 VP8_COMMON_SRCS-yes += common/blockd.c
 VP8_COMMON_SRCS-yes += common/coefupdateprobs.h
 VP8_COMMON_SRCS-yes += common/debugmodes.c
@@ -191,3 +190,5 @@ VP8_COMMON_SRCS-$(HAVE_NEON)  += common/arm/neon/variance_neon$(ASM)
 VP8_COMMON_SRCS-$(HAVE_NEON)  += common/arm/neon/vp8_subpixelvariance8x8_neon$(ASM)
 VP8_COMMON_SRCS-$(HAVE_NEON)  += common/arm/neon/vp8_subpixelvariance16x16_neon$(ASM)
 VP8_COMMON_SRCS-$(HAVE_NEON)  += common/arm/neon/vp8_subpixelvariance16x16s_neon$(ASM)
+
+$(eval $(call rtcd_h_template,vp8_rtcd,vp8/common/rtcd_defs.sh))

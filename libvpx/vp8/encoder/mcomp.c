@@ -18,7 +18,7 @@
 #include <math.h>
 #include "vp8/common/findnearmv.h"
 
-#ifdef ENTROPY_STATS
+#ifdef VP8_ENTROPY_STATS
 static int mv_ref_ct [31] [4] [2];
 static int mv_mode_cts [4] [2];
 #endif
@@ -233,19 +233,18 @@ int vp8_find_best_sub_pixel_step_iteratively(MACROBLOCK *x, BLOCK *b, BLOCKD *d,
 
 #if ARCH_X86 || ARCH_X86_64
     MACROBLOCKD *xd = &x->e_mbd;
-    unsigned char *y0 = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
+    unsigned char *y_0 = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
     unsigned char *y;
-    int buf_r1, buf_r2, buf_c1, buf_c2;
+    int buf_r1, buf_r2, buf_c1;
 
     /* Clamping to avoid out-of-range data access */
     buf_r1 = ((bestmv->as_mv.row - 3) < x->mv_row_min)?(bestmv->as_mv.row - x->mv_row_min):3;
     buf_r2 = ((bestmv->as_mv.row + 3) > x->mv_row_max)?(x->mv_row_max - bestmv->as_mv.row):3;
     buf_c1 = ((bestmv->as_mv.col - 3) < x->mv_col_min)?(bestmv->as_mv.col - x->mv_col_min):3;
-    buf_c2 = ((bestmv->as_mv.col + 3) > x->mv_col_max)?(x->mv_col_max - bestmv->as_mv.col):3;
     y_stride = 32;
 
     /* Copy to intermediate buffer before searching. */
-    vfp->copymem(y0 - buf_c1 - pre_stride*buf_r1, pre_stride, xd->y_buf, y_stride, 16+buf_r1+buf_r2);
+    vfp->copymem(y_0 - buf_c1 - pre_stride*buf_r1, pre_stride, xd->y_buf, y_stride, 16+buf_r1+buf_r2);
     y = xd->y_buf + y_stride*buf_r1 +buf_c1;
 #else
     unsigned char *y = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
@@ -376,12 +375,12 @@ int vp8_find_best_sub_pixel_step(MACROBLOCK *x, BLOCK *b, BLOCKD *d,
 
 #if ARCH_X86 || ARCH_X86_64
     MACROBLOCKD *xd = &x->e_mbd;
-    unsigned char *y0 = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
+    unsigned char *y_0 = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
     unsigned char *y;
 
     y_stride = 32;
     /* Copy 18 rows x 32 cols area to intermediate buffer before searching. */
-     vfp->copymem(y0 - 1 - pre_stride, pre_stride, xd->y_buf, y_stride, 18);
+     vfp->copymem(y_0 - 1 - pre_stride, pre_stride, xd->y_buf, y_stride, 18);
      y = xd->y_buf + y_stride + 1;
 #else
      unsigned char *y = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
@@ -687,12 +686,12 @@ int vp8_find_best_half_pixel_step(MACROBLOCK *x, BLOCK *b, BLOCKD *d,
 
 #if ARCH_X86 || ARCH_X86_64
     MACROBLOCKD *xd = &x->e_mbd;
-    unsigned char *y0 = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
+    unsigned char *y_0 = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
     unsigned char *y;
 
     y_stride = 32;
     /* Copy 18 rows x 32 cols area to intermediate buffer before searching. */
-    vfp->copymem(y0 - 1 - pre_stride, pre_stride, xd->y_buf, y_stride, 18);
+    vfp->copymem(y_0 - 1 - pre_stride, pre_stride, xd->y_buf, y_stride, 18);
     y = xd->y_buf + y_stride + 1;
 #else
     unsigned char *y = base_pre + d->offset + (bestmv->as_mv.row) * pre_stride + bestmv->as_mv.col;
@@ -1913,7 +1912,7 @@ int vp8_refining_search_sadx4(MACROBLOCK *x, BLOCK *b, BLOCKD *d,
            + mv_err_cost(&this_mv, center_mv, mvcost, x->errorperbit);
 }
 
-#ifdef ENTROPY_STATS
+#ifdef VP8_ENTROPY_STATS
 void print_mode_context(void)
 {
     FILE *f = fopen("modecont.c", "w");
@@ -1966,8 +1965,8 @@ void print_mode_context(void)
     fclose(f);
 }
 
-/* MV ref count ENTROPY_STATS stats code */
-#ifdef ENTROPY_STATS
+/* MV ref count VP8_ENTROPY_STATS stats code */
+#ifdef VP8_ENTROPY_STATS
 void init_mv_ref_counts()
 {
     vpx_memset(mv_ref_ct, 0, sizeof(mv_ref_ct));
@@ -2021,6 +2020,6 @@ void accum_mv_refs(MB_PREDICTION_MODE m, const int ct[4])
     }
 }
 
-#endif/* END MV ref count ENTROPY_STATS stats code */
+#endif/* END MV ref count VP8_ENTROPY_STATS stats code */
 
 #endif

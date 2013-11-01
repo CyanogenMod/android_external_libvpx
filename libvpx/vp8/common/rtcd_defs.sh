@@ -1,6 +1,8 @@
-common_forward_decls() {
+vp8_common_forward_decls() {
 cat <<EOF
-#include "vp8/common/blockd.h"
+/*
+ * VP8
+ */
 
 struct blockd;
 struct macroblockd;
@@ -14,7 +16,14 @@ union int_mv;
 struct yv12_buffer_config;
 EOF
 }
-forward_decls common_forward_decls
+forward_decls vp8_common_forward_decls
+
+#
+# system state
+#
+prototype void vp8_clear_system_state ""
+specialize vp8_clear_system_state mmx
+vp8_clear_system_state_mmx=vpx_reset_mmx_state
 
 #
 # Dequant
@@ -146,7 +155,7 @@ specialize vp8_build_intra_predictors_mby_s sse2 ssse3
 prototype void vp8_build_intra_predictors_mbuv_s "struct macroblockd *x, unsigned char * uabove_row, unsigned char * vabove_row,  unsigned char *uleft, unsigned char *vleft, int left_stride, unsigned char * upred_ptr, unsigned char * vpred_ptr, int pred_stride"
 specialize vp8_build_intra_predictors_mbuv_s sse2 ssse3
 
-prototype void vp8_intra4x4_predict "unsigned char *Above, unsigned char *yleft, int left_stride, B_PREDICTION_MODE b_mode, unsigned char *dst, int dst_stride, unsigned char top_left"
+prototype void vp8_intra4x4_predict "unsigned char *Above, unsigned char *yleft, int left_stride, int b_mode, unsigned char *dst, int dst_stride, unsigned char top_left"
 specialize vp8_intra4x4_predict media
 vp8_intra4x4_predict_media=vp8_intra4x4_predict_armv6
 
@@ -442,8 +451,9 @@ vp8_short_walsh4x4_media=vp8_short_walsh4x4_armv6
 # Quantizer
 #
 prototype void vp8_regular_quantize_b "struct block *, struct blockd *"
-specialize vp8_regular_quantize_b sse2 sse4_1
-vp8_regular_quantize_b_sse4_1=vp8_regular_quantize_b_sse4
+specialize vp8_regular_quantize_b sse2 #sse4_1
+# TODO(johann) Update sse4 implementation and re-enable
+#vp8_regular_quantize_b_sse4_1=vp8_regular_quantize_b_sse4
 
 prototype void vp8_fast_quantize_b "struct block *, struct blockd *"
 specialize vp8_fast_quantize_b sse2 ssse3 media neon
@@ -530,39 +540,3 @@ fi
 
 # End of encoder only functions
 fi
-
-# Scaler functions
-if [ "CONFIG_SPATIAL_RESAMPLING" != "yes" ]; then
-    prototype void vp8_horizontal_line_4_5_scale "const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width"
-    prototype void vp8_vertical_band_4_5_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_last_vertical_band_4_5_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_horizontal_line_2_3_scale "const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width"
-    prototype void vp8_vertical_band_2_3_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_last_vertical_band_2_3_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_horizontal_line_3_5_scale "const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width"
-    prototype void vp8_vertical_band_3_5_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_last_vertical_band_3_5_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_horizontal_line_3_4_scale "const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width"
-    prototype void vp8_vertical_band_3_4_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_last_vertical_band_3_4_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_horizontal_line_1_2_scale "const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width"
-    prototype void vp8_vertical_band_1_2_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_last_vertical_band_1_2_scale "unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_horizontal_line_5_4_scale "const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width"
-    prototype void vp8_vertical_band_5_4_scale "unsigned char *source, unsigned int src_pitch, unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_horizontal_line_5_3_scale "const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width"
-    prototype void vp8_vertical_band_5_3_scale "unsigned char *source, unsigned int src_pitch, unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_horizontal_line_2_1_scale "const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width"
-    prototype void vp8_vertical_band_2_1_scale "unsigned char *source, unsigned int src_pitch, unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-    prototype void vp8_vertical_band_2_1_scale_i "unsigned char *source, unsigned int src_pitch, unsigned char *dest, unsigned int dest_pitch, unsigned int dest_width"
-fi
-
-prototype void vp8_yv12_extend_frame_borders "struct yv12_buffer_config *ybf"
-specialize vp8_yv12_extend_frame_borders neon
-
-prototype void vp8_yv12_copy_frame "struct yv12_buffer_config *src_ybc, struct yv12_buffer_config *dst_ybc"
-specialize vp8_yv12_copy_frame neon
-
-prototype void vp8_yv12_copy_y "struct yv12_buffer_config *src_ybc, struct yv12_buffer_config *dst_ybc"
-specialize vp8_yv12_copy_y neon
-

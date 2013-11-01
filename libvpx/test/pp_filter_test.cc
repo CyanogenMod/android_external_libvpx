@@ -7,10 +7,12 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
+#include "test/clear_system_state.h"
+#include "test/register_state_check.h"
 #include "third_party/googletest/src/include/gtest/gtest.h"
 extern "C" {
-#include "vpx_config.h"
-#include "vpx_rtcd.h"
+#include "./vpx_config.h"
+#include "./vp8_rtcd.h"
 #include "vpx/vpx_integer.h"
 #include "vpx_mem/vpx_mem.h"
 }
@@ -26,7 +28,12 @@ typedef void (*post_proc_func_t)(unsigned char *src_ptr,
 namespace {
 
 class Vp8PostProcessingFilterTest
-    : public ::testing::TestWithParam<post_proc_func_t> {};
+    : public ::testing::TestWithParam<post_proc_func_t> {
+ public:
+  virtual void TearDown() {
+    libvpx_test::ClearSystemState();
+  }
+};
 
 // Test routine for the VP8 post-processing function
 // vp8_post_proc_down_and_across_mb_row_c.
@@ -56,7 +63,8 @@ TEST_P(Vp8PostProcessingFilterTest, FilterOutputCheck) {
   // Pointers to top-left pixel of block in the input and output images.
   uint8_t *const src_image_ptr = src_image + (input_stride << 1);
   uint8_t *const dst_image_ptr = dst_image + 8;
-  uint8_t *const flimits = reinterpret_cast<uint8_t *>(vpx_memalign(16, block_width));
+  uint8_t *const flimits =
+      reinterpret_cast<uint8_t *>(vpx_memalign(16, block_width));
   (void)vpx_memset(flimits, 255, block_width);
 
   // Initialize pixels in the input:
@@ -74,8 +82,8 @@ TEST_P(Vp8PostProcessingFilterTest, FilterOutputCheck) {
   // Initialize pixels in the output to 99.
   (void)vpx_memset(dst_image, 99, output_size);
 
-  GetParam()(src_image_ptr, dst_image_ptr, input_stride,
-             output_stride, block_width, flimits, 16);
+  REGISTER_STATE_CHECK(GetParam()(src_image_ptr, dst_image_ptr, input_stride,
+                                  output_stride, block_width, flimits, 16));
 
   static const uint8_t expected_data[block_height] = {
     4, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 4

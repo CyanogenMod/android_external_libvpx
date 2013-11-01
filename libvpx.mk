@@ -60,14 +60,12 @@ LOCAL_SRC_FILES += $(libvpx_target)/vpx_config.c
 # used yet but are included in the comments for future reference.
 
 libvpx_asm_offsets_intermediates := \
-    vp8/common/asm_com_offsets.intermediate \
-    vp8/decoder/asm_dec_offsets.intermediate \
-    vp8/encoder/asm_enc_offsets.intermediate \
+    vp8/encoder/vp8_asm_enc_offsets.intermediate \
+    vpx_scale/vpx_scale_asm_offsets.intermediate \
 
 libvpx_asm_offsets_files := \
-    vp8/common/asm_com_offsets.asm \
-    vp8/decoder/asm_dec_offsets.asm \
-    vp8/encoder/asm_enc_offsets.asm \
+    vp8/encoder/vp8_asm_enc_offsets.asm \
+    vpx_scale/vpx_scale_asm_offsets.asm \
 
 # Build the S files with inline assembly.
 COMPILE_TO_S := $(addprefix $(libvpx_intermediates)/, $(libvpx_asm_offsets_intermediates))
@@ -107,6 +105,7 @@ LOCAL_C_INCLUDES := \
     $(libvpx_intermediates)/vp8/common \
     $(libvpx_intermediates)/vp8/decoder \
     $(libvpx_intermediates)/vp8/encoder \
+    $(libvpx_intermediates)/vpx_scale \
 
 libvpx_target :=
 libvpx_asm :=

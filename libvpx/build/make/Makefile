@@ -74,7 +74,7 @@ HOSTCC?=gcc
 TGT_ISA:=$(word 1, $(subst -, ,$(TOOLCHAIN)))
 TGT_OS:=$(word 2, $(subst -, ,$(TOOLCHAIN)))
 TGT_CC:=$(word 3, $(subst -, ,$(TOOLCHAIN)))
-quiet:=$(if $(verbose),,yes)
+quiet:=$(if $(or $(verbose), $(V)),, yes)
 qexec=$(if $(quiet),@)
 
 # Cancel built-in implicit rules
@@ -102,6 +102,18 @@ install::
 test::
 .PHONY: testdata
 testdata::
+
+# Add compiler flags for intrinsic files
+$(BUILD_PFX)%_mmx.c.d: CFLAGS += -mmmx
+$(BUILD_PFX)%_mmx.c.o: CFLAGS += -mmmx
+$(BUILD_PFX)%_sse2.c.d: CFLAGS += -msse2
+$(BUILD_PFX)%_sse2.c.o: CFLAGS += -msse2
+$(BUILD_PFX)%_sse3.c.d: CFLAGS += -msse3
+$(BUILD_PFX)%_sse3.c.o: CFLAGS += -msse3
+$(BUILD_PFX)%_ssse3.c.d: CFLAGS += -mssse3
+$(BUILD_PFX)%_ssse3.c.o: CFLAGS += -mssse3
+$(BUILD_PFX)%_sse4.c.d: CFLAGS += -msse4.1
+$(BUILD_PFX)%_sse4.c.o: CFLAGS += -msse4.1
 
 $(BUILD_PFX)%.c.d: %.c
 	$(if $(quiet),@echo "    [DEP] $@")
@@ -253,9 +265,24 @@ $(1):
 	$(if $(quiet),@echo "    [LD] $$@")
 	$(qexec)$$(LD) -shared $$(LDFLAGS) \
             -Wl,--no-undefined -Wl,-soname,$$(SONAME) \
-            -Wl,--version-script,$$(SO_VERSION_SCRIPT) -o $$@ \
-            $$(filter %.o,$$?) $$(extralibs)
+            -Wl,--version-script,$$(EXPORTS_FILE) -o $$@ \
+            $$(filter %.o,$$^) $$(extralibs)
 endef
+
+define dl_template
+# Not using a pattern rule here because we don't want to generate empty
+# archives when they are listed as a dependency in files not responsible
+# for creating them.
+$(1):
+	$(if $(quiet),@echo "    [LD] $$@")
+	$(qexec)$$(LD) -dynamiclib $$(LDFLAGS) \
+	    -exported_symbols_list $$(EXPORTS_FILE) \
+        -Wl,-headerpad_max_install_names,-compatibility_version,1.0,-current_version,$$(VERSION_MAJOR) \
+        -o $$@ \
+        $$(filter %.o,$$^) $$(extralibs)
+endef
+
+
 
 define lipo_lib_template
 $(1): $(addsuffix /$(1),$(FAT_ARCHS))
@@ -321,6 +348,7 @@ LIBS=$(call enabled,LIBS)
 	@touch $@
 $(foreach lib,$(filter %_g.a,$(LIBS)),$(eval $(call archive_template,$(lib))))
 $(foreach lib,$(filter %so.$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH),$(LIBS)),$(eval $(call so_template,$(lib))))
+$(foreach lib,$(filter %$(VERSION_MAJOR).dylib,$(LIBS)),$(eval $(call dl_template,$(lib))))
 
 INSTALL-LIBS=$(call cond_enabled,CONFIG_INSTALL_LIBS,INSTALL-LIBS)
 ifeq ($(MAKECMDGOALS),dist)
@@ -360,10 +388,14 @@ ifneq ($(call enabled,DIST-SRCS),)
     DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_sln.sh
     DIST-SRCS-$(CONFIG_MSVS)  += build/x86-msvs/yasm.rules
     DIST-SRCS-$(CONFIG_MSVS)  += build/x86-msvs/obj_int_extract.bat
+    DIST-SRCS-$(CONFIG_MSVS)  += build/arm-msvs/obj_int_extract.bat
     DIST-SRCS-$(CONFIG_RVCT) += build/make/armlink_adapter.sh
-    # Include obj_int_extract if we use offsets from asm_*_offsets
+    # Include obj_int_extract if we use offsets from *_asm_*_offsets
     DIST-SRCS-$(ARCH_ARM)$(ARCH_X86)$(ARCH_X86_64)    += build/make/obj_int_extract.c
     DIST-SRCS-$(ARCH_ARM)    += build/make/ads2gas.pl
+    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2gas_apple.pl
+    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2armasm_ms.pl
+    DIST-SRCS-$(ARCH_ARM)    += build/make/thumb.pm
     DIST-SRCS-yes            += $(target:-$(TOOLCHAIN)=).mk
 endif
 INSTALL-SRCS := $(call cond_enabled,CONFIG_INSTALL_SRCS,INSTALL-SRCS)

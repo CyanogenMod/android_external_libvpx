@@ -12,11 +12,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "test/acm_random.h"
+#include "test/clear_system_state.h"
+#include "test/register_state_check.h"
 #include "test/util.h"
 #include "third_party/googletest/src/include/gtest/gtest.h"
 extern "C" {
 #include "./vpx_config.h"
-#include "./vpx_rtcd.h"
+#include "./vp8_rtcd.h"
 #include "vpx/vpx_integer.h"
 #include "vpx_mem/vpx_mem.h"
 }
@@ -47,6 +49,10 @@ class SixtapPredictTest : public PARAMS(int, int, sixtap_predict_fn_t) {
     dst_c_ = NULL;
   }
 
+  virtual void TearDown() {
+    libvpx_test::ClearSystemState();
+  }
+
  protected:
   // Make test arrays big enough for 16x16 functions. Six-tap filters
   // need 5 extra pixels outside of the macroblock.
@@ -60,9 +66,9 @@ class SixtapPredictTest : public PARAMS(int, int, sixtap_predict_fn_t) {
     width_ = GET_PARAM(0);
     height_ = GET_PARAM(1);
     sixtap_predict_ = GET_PARAM(2);
-    memset(src_, 0, sizeof(src_));
-    memset(dst_, 0, sizeof(dst_));
-    memset(dst_c_, 0, sizeof(dst_c_));
+    memset(src_, 0, kSrcSize);
+    memset(dst_, 0, kDstSize);
+    memset(dst_c_, 0, kDstSize);
   }
 
   int width_;
@@ -136,8 +142,8 @@ TEST_P(SixtapPredictTest, TestWithPresetData) {
 
   uint8_t *src = const_cast<uint8_t*>(test_data);
 
-  sixtap_predict_(&src[kSrcStride * 2 + 2 + 1], kSrcStride,
-                  2, 2, dst_, kDstStride);
+  REGISTER_STATE_CHECK(sixtap_predict_(&src[kSrcStride * 2 + 2 + 1], kSrcStride,
+                                       2, 2, dst_, kDstStride));
 
   for (int i = 0; i < height_; ++i)
     for (int j = 0; j < width_; ++j)
@@ -162,8 +168,9 @@ TEST_P(SixtapPredictTest, TestWithRandomData) {
                                 xoffset, yoffset, dst_c_, kDstStride);
 
       // Run test.
-      sixtap_predict_(&src_[kSrcStride * 2 + 2 + 1], kSrcStride,
-                      xoffset, yoffset, dst_, kDstStride);
+      REGISTER_STATE_CHECK(
+          sixtap_predict_(&src_[kSrcStride * 2 + 2 + 1], kSrcStride,
+                          xoffset, yoffset, dst_, kDstStride));
 
       for (int i = 0; i < height_; ++i)
         for (int j = 0; j < width_; ++j)

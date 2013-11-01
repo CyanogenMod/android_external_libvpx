@@ -214,7 +214,9 @@ THREAD_FUNCTION thread_encoding_proc(void *p_data)
                          * vp8cx_encode_inter_macroblock()) back into the
                          * global segmentation map
                          */
-                        if (cpi->cyclic_refresh_mode_enabled && xd->segmentation_enabled)
+                        if ((cpi->current_layer == 0) &&
+                            (cpi->cyclic_refresh_mode_enabled &&
+                             xd->segmentation_enabled))
                         {
                             const MB_MODE_INFO * mbmi = &xd->mode_info_context->mbmi;
                             cpi->segmentation_map[map_index + mb_col] = mbmi->segment_id;
@@ -416,13 +418,23 @@ static void setup_mbby_copy(MACROBLOCK *mbdst, MACROBLOCK *mbsrc)
             zd->block[i].dequant = zd->dequant_uv;
         zd->block[24].dequant = zd->dequant_y2;
 #endif
+
+
+        vpx_memcpy(z->rd_threshes, x->rd_threshes, sizeof(x->rd_threshes));
+        vpx_memcpy(z->rd_thresh_mult, x->rd_thresh_mult,
+                   sizeof(x->rd_thresh_mult));
+
+        z->zbin_over_quant = x->zbin_over_quant;
+        z->zbin_mode_boost_enabled = x->zbin_mode_boost_enabled;
+        z->zbin_mode_boost = x->zbin_mode_boost;
+
+        vpx_memset(z->error_bins, 0, sizeof(z->error_bins));
     }
 }
 
 void vp8cx_init_mbrthread_data(VP8_COMP *cpi,
                                MACROBLOCK *x,
                                MB_ROW_COMP *mbr_ei,
-                               int mb_row,
                                int count
                               )
 {
@@ -430,7 +442,6 @@ void vp8cx_init_mbrthread_data(VP8_COMP *cpi,
     VP8_COMMON *const cm = & cpi->common;
     MACROBLOCKD *const xd = & x->e_mbd;
     int i;
-    (void) mb_row;
 
     for (i = 0; i < count; i++)
     {
@@ -478,6 +489,8 @@ void vp8cx_init_mbrthread_data(VP8_COMP *cpi,
         vp8_zero(mb->MVcount);
         mb->prediction_error = 0;
         mb->intra_error = 0;
+        vp8_zero(mb->count_mb_ref_frame_usage);
+        mb->mbs_tested_so_far = 0;
     }
 }
 

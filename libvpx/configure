@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 ##
 ##  configure
 ##
@@ -34,9 +34,11 @@ Advanced options:
   ${toggle_md5}                   support for output of checksum data
   ${toggle_static_msvcrt}         use static MSVCRT (VS builds only)
   ${toggle_vp8}                   VP8 codec support
+  ${toggle_vp9}                   VP9 codec support
   ${toggle_internal_stats}        output of encoder internal stats for debug, if supported (encoders)
   ${toggle_mem_tracker}           track memory usage
   ${toggle_postproc}              postprocessing
+  ${toggle_vp9_postproc}          vp9 specific postprocessing
   ${toggle_multithread}           multithreaded encoding and decoding
   ${toggle_spatial_resampling}    spatial sampling (scaling) support
   ${toggle_realtime_only}         enable this option while building for real-time encoding
@@ -97,6 +99,7 @@ all_platforms="${all_platforms} armv7-darwin-gcc"    #neon Cortex-A8
 all_platforms="${all_platforms} armv7-linux-rvct"    #neon Cortex-A8
 all_platforms="${all_platforms} armv7-linux-gcc"     #neon Cortex-A8
 all_platforms="${all_platforms} armv7-none-rvct"     #neon Cortex-A8
+all_platforms="${all_platforms} armv7-win32-vs11"
 all_platforms="${all_platforms} mips32-linux-gcc"
 all_platforms="${all_platforms} ppc32-darwin8-gcc"
 all_platforms="${all_platforms} ppc32-darwin9-gcc"
@@ -105,6 +108,7 @@ all_platforms="${all_platforms} ppc64-darwin8-gcc"
 all_platforms="${all_platforms} ppc64-darwin9-gcc"
 all_platforms="${all_platforms} ppc64-linux-gcc"
 all_platforms="${all_platforms} sparc-solaris-gcc"
+all_platforms="${all_platforms} x86-android-gcc"
 all_platforms="${all_platforms} x86-darwin8-gcc"
 all_platforms="${all_platforms} x86-darwin8-icc"
 all_platforms="${all_platforms} x86-darwin9-gcc"
@@ -112,6 +116,7 @@ all_platforms="${all_platforms} x86-darwin9-icc"
 all_platforms="${all_platforms} x86-darwin10-gcc"
 all_platforms="${all_platforms} x86-darwin11-gcc"
 all_platforms="${all_platforms} x86-darwin12-gcc"
+all_platforms="${all_platforms} x86-darwin13-gcc"
 all_platforms="${all_platforms} x86-linux-gcc"
 all_platforms="${all_platforms} x86-linux-icc"
 all_platforms="${all_platforms} x86-os2-gcc"
@@ -120,21 +125,27 @@ all_platforms="${all_platforms} x86-win32-gcc"
 all_platforms="${all_platforms} x86-win32-vs7"
 all_platforms="${all_platforms} x86-win32-vs8"
 all_platforms="${all_platforms} x86-win32-vs9"
+all_platforms="${all_platforms} x86-win32-vs10"
+all_platforms="${all_platforms} x86-win32-vs11"
 all_platforms="${all_platforms} x86_64-darwin9-gcc"
 all_platforms="${all_platforms} x86_64-darwin10-gcc"
 all_platforms="${all_platforms} x86_64-darwin11-gcc"
 all_platforms="${all_platforms} x86_64-darwin12-gcc"
+all_platforms="${all_platforms} x86_64-darwin13-gcc"
 all_platforms="${all_platforms} x86_64-linux-gcc"
 all_platforms="${all_platforms} x86_64-linux-icc"
 all_platforms="${all_platforms} x86_64-solaris-gcc"
 all_platforms="${all_platforms} x86_64-win64-gcc"
 all_platforms="${all_platforms} x86_64-win64-vs8"
 all_platforms="${all_platforms} x86_64-win64-vs9"
+all_platforms="${all_platforms} x86_64-win64-vs10"
+all_platforms="${all_platforms} x86_64-win64-vs11"
 all_platforms="${all_platforms} universal-darwin8-gcc"
 all_platforms="${all_platforms} universal-darwin9-gcc"
 all_platforms="${all_platforms} universal-darwin10-gcc"
 all_platforms="${all_platforms} universal-darwin11-gcc"
 all_platforms="${all_platforms} universal-darwin12-gcc"
+all_platforms="${all_platforms} universal-darwin13-gcc"
 all_platforms="${all_platforms} generic-gnu"
 
 # all_targets is a list of all targets that can be configured
@@ -143,7 +154,7 @@ all_targets="libs examples docs"
 
 # all targets available are enabled, by default.
 for t in ${all_targets}; do
-    [ -f ${source_path}/${t}.mk ] && enable ${t}
+    [ -f ${source_path}/${t}.mk ] && enable_feature ${t}
 done
 
 # check installed doxygen version
@@ -154,41 +165,46 @@ if [ ${doxy_major:-0} -ge 1 ]; then
     doxy_minor=${doxy_version%%.*}
     doxy_patch=${doxy_version##*.}
 
-    [ $doxy_major -gt 1 ] && enable doxygen
-    [ $doxy_minor -gt 5 ] && enable doxygen
-    [ $doxy_minor -eq 5 ] && [ $doxy_patch -ge 3 ] && enable doxygen
+    [ $doxy_major -gt 1 ] && enable_feature doxygen
+    [ $doxy_minor -gt 5 ] && enable_feature doxygen
+    [ $doxy_minor -eq 5 ] && [ $doxy_patch -ge 3 ] && enable_feature doxygen
 fi
 
 # install everything except the sources, by default. sources will have
 # to be enabled when doing dist builds, since that's no longer a common
 # case.
-enabled doxygen && php -v >/dev/null 2>&1 && enable install_docs
-enable install_bins
-enable install_libs
+enabled doxygen && php -v >/dev/null 2>&1 && enable_feature install_docs
+enable_feature install_bins
+enable_feature install_libs
 
-enable static
-enable optimizations
-enable fast_unaligned #allow unaligned accesses, if supported by hw
-enable md5
-enable spatial_resampling
-enable multithread
-enable os_support
-enable temporal_denoising
+enable_feature static
+enable_feature optimizations
+enable_feature fast_unaligned #allow unaligned accesses, if supported by hw
+enable_feature md5
+enable_feature spatial_resampling
+enable_feature multithread
+enable_feature os_support
+enable_feature temporal_denoising
 
-[ -d ${source_path}/../include ] && enable alt_tree_layout
-for d in vp8; do
-    [ -d ${source_path}/${d} ] && disable alt_tree_layout;
+[ -d ${source_path}/../include ] && enable_feature alt_tree_layout
+for d in vp8 vp9; do
+    [ -d ${source_path}/${d} ] && disable_feature alt_tree_layout;
 done
 
 if ! enabled alt_tree_layout; then
 # development environment
 [ -d ${source_path}/vp8 ] && CODECS="${CODECS} vp8_encoder vp8_decoder"
+[ -d ${source_path}/vp9 ] && CODECS="${CODECS} vp9_encoder vp9_decoder"
 else
 # customer environment
 [ -f ${source_path}/../include/vpx/vp8cx.h ] && CODECS="${CODECS} vp8_encoder"
 [ -f ${source_path}/../include/vpx/vp8dx.h ] && CODECS="${CODECS} vp8_decoder"
-[ -f ${source_path}/../include/vpx/vp8cx.h ] || disable vp8_encoder
-[ -f ${source_path}/../include/vpx/vp8dx.h ] || disable vp8_decoder
+[ -f ${source_path}/../include/vpx/vp9cx.h ] && CODECS="${CODECS} vp9_encoder"
+[ -f ${source_path}/../include/vpx/vp9dx.h ] && CODECS="${CODECS} vp9_decoder"
+[ -f ${source_path}/../include/vpx/vp8cx.h ] || disable_feature vp8_encoder
+[ -f ${source_path}/../include/vpx/vp8dx.h ] || disable_feature vp8_decoder
+[ -f ${source_path}/../include/vpx/vp9cx.h ] || disable_feature vp9_encoder
+[ -f ${source_path}/../include/vpx/vp9dx.h ] || disable_feature vp9_decoder
 
 [ -f ${source_path}/../lib/*/*mt.lib ] && soft_enable static_msvcrt
 fi
@@ -230,12 +246,19 @@ HAVE_LIST="
     sys_mman_h
     unistd_h
 "
+EXPERIMENT_LIST="
+    oneshotq
+    multiple_arf
+    non420
+    alpha
+"
 CONFIG_LIST="
     external_build
     install_docs
     install_bins
     install_libs
     install_srcs
+    use_x86inc
     debug
     gprof
     gcov
@@ -257,6 +280,7 @@ CONFIG_LIST="
     dc_recon
     runtime_cpu_detect
     postproc
+    vp9_postproc
     multithread
     internal_stats
     ${CODECS}
@@ -276,8 +300,12 @@ CONFIG_LIST="
     unit_tests
     multi_res_encoding
     temporal_denoising
+    experimental
+    decrypt
+    ${EXPERIMENT_LIST}
 "
 CMDLINE_SELECT="
+    external_build
     extra_warnings
     werror
     install_docs
@@ -288,9 +316,11 @@ CMDLINE_SELECT="
     gprof
     gcov
     pic
+    use_x86inc
     optimizations
     ccache
     runtime_cpu_detect
+    thumb
 
     libs
     examples
@@ -305,6 +335,7 @@ CMDLINE_SELECT="
     dequant_tokens
     dc_recon
     postproc
+    vp9_postproc
     multithread
     internal_stats
     ${CODECS}
@@ -322,13 +353,27 @@ CMDLINE_SELECT="
     unit_tests
     multi_res_encoding
     temporal_denoising
+    experimental
+    decrypt
 "
 
 process_cmdline() {
     for opt do
         optval="${opt#*=}"
         case "$opt" in
-        --disable-codecs) for c in ${CODECS}; do disable $c; done ;;
+        --disable-codecs) for c in ${CODECS}; do disable_feature $c; done ;;
+        --enable-?*|--disable-?*)
+        eval `echo "$opt" | sed 's/--/action=/;s/-/ option=/;s/-/_/g'`
+        if echo "${EXPERIMENT_LIST}" | grep "^ *$option\$" >/dev/null; then
+            if enabled experimental; then
+                ${action}_feature $option
+            else
+                log_echo "Ignoring $opt -- not in experimental mode."
+            fi
+        else
+            process_common_cmdline $opt
+        fi
+        ;;
         *) process_common_cmdline "$opt"
         ;;
         esac
@@ -342,8 +387,8 @@ post_process_cmdline() {
     # If the codec family is enabled, enable all components of that family.
     log_echo "Configuring selected codecs"
     for c in ${CODECS}; do
-        disabled ${c%%_*} && disable ${c}
-        enabled ${c%%_*} && enable ${c}
+        disabled ${c%%_*} && disable_feature ${c}
+        enabled ${c%%_*} && enable_feature ${c}
     done
 
     # Enable all detected codecs, if they haven't been disabled
@@ -351,12 +396,12 @@ post_process_cmdline() {
 
     # Enable the codec family if any component of that family is enabled
     for c in ${CODECS}; do
-        enabled $c && enable ${c%_*}
+        enabled $c && enable_feature ${c%_*}
     done
 
     # Set the {en,de}coders variable if any algorithm in that class is enabled
     for c in ${CODECS}; do
-        enabled ${c} && enable ${c##*_}s
+        enabled ${c} && enable_feature ${c##*_}s
     done
 }
 
@@ -396,7 +441,7 @@ process_targets() {
     done
     enabled debug_libs && DIST_DIR="${DIST_DIR}-debug"
     enabled codec_srcs && DIST_DIR="${DIST_DIR}-src"
-    ! enabled postproc && DIST_DIR="${DIST_DIR}-nopost"
+    ! enabled postproc && ! enabled vp9_postproc && DIST_DIR="${DIST_DIR}-nopost"
     ! enabled multithread && DIST_DIR="${DIST_DIR}-nomt"
     ! enabled install_docs && DIST_DIR="${DIST_DIR}-nodocs"
     DIST_DIR="${DIST_DIR}-${tgt_isa}-${tgt_os}"
@@ -464,15 +509,16 @@ process_detect() {
             fi
         fi
     fi
-    if [ -z "$CC" ]; then
+    if [ -z "$CC" ] || enabled external_build; then
         echo "Bypassing toolchain for environment detection."
-        enable external_build
+        enable_feature external_build
         check_header() {
             log fake_check_header "$@"
             header=$1
             shift
             var=`echo $header | sed 's/[^A-Za-z0-9_]/_/g'`
-            disable $var
+            disable_feature $var
+            # Headers common to all environments
             case $header in
                 stdio.h)
                     true;
@@ -483,7 +529,26 @@ process_detect() {
                         [ -f "${d##-I}/$header" ] && result=true && break
                     done
                     ${result:-true}
-            esac && enable $var
+            esac && enable_feature $var
+
+            # Specialize windows and POSIX environments.
+            case $toolchain in
+                *-win*-*)
+                    case $header-$toolchain in
+                        stdint*-gcc) true;;
+                        *) false;;
+                    esac && enable_feature $var
+                    ;;
+                *)
+                    case $header in
+                        stdint.h) true;;
+                        pthread.h) true;;
+                        sys/mman.h) true;;
+                        unistd.h) true;;
+                        *) false;;
+                    esac && enable_feature $var
+            esac
+            enabled $var
         }
         check_ld() {
             true
@@ -497,8 +562,9 @@ EOF
     check_header stdint.h
     check_header pthread.h
     check_header sys/mman.h
+    check_header unistd.h # for sysconf(3) and friends.
 
-    check_header vpx/vpx_integer.h -I${source_path} && enable vpx_ports
+    check_header vpx/vpx_integer.h -I${source_path} && enable_feature vpx_ports
 }
 
 process_toolchain() {
@@ -537,10 +603,14 @@ process_toolchain() {
         check_add_cflags -Wpointer-arith
         check_add_cflags -Wtype-limits
         check_add_cflags -Wcast-qual
+        check_add_cflags -Wvla
         check_add_cflags -Wimplicit-function-declaration
         check_add_cflags -Wuninitialized
         check_add_cflags -Wunused-variable
-        check_add_cflags -Wunused-but-set-variable
+        case ${CC} in
+          *clang*) ;;
+          *) check_add_cflags -Wunused-but-set-variable ;;
+        esac
         enabled extra_warnings || check_add_cflags -Wno-unused-function
     fi
 
@@ -576,16 +646,31 @@ process_toolchain() {
     # ccache only really works on gcc toolchains
     enabled gcc || soft_disable ccache
     if enabled mips; then
-        enable dequant_tokens
-        enable dc_recon
+        enable_feature dequant_tokens
+        enable_feature dc_recon
+    fi
+
+    if enabled internal_stats; then
+        enable_feature vp9_postproc
     fi
 
     # Enable the postbuild target if building for visual studio.
     case "$tgt_cc" in
-        vs*) enable msvs
-             enable solution
+        vs*) enable_feature msvs
+             enable_feature solution
              vs_version=${tgt_cc##vs}
+             case $vs_version in
+             [789])
+                 VCPROJ_SFX=vcproj
+                 gen_vcproj_cmd=${source_path}/build/make/gen_msvs_proj.sh
+                 ;;
+             10|11)
+                 VCPROJ_SFX=vcxproj
+                 gen_vcproj_cmd=${source_path}/build/make/gen_msvs_vcxproj.sh
+                 ;;
+             esac
              all_targets="${all_targets} solution"
+             INLINE="__forceinline"
         ;;
     esac
 
@@ -596,7 +681,7 @@ process_toolchain() {
         enabled postproc || die "postproc_visualizer requires postproc to be enabled"
     fi
 
-    # Enable unit tests if we have a working C++ compiler
+    # Enable unit tests by default if we have a working C++ compiler.
     case "$toolchain" in
         *-vs*)
             soft_enable unit_tests
@@ -604,8 +689,20 @@ process_toolchain() {
         *-android-*)
             # GTestLog must be modified to use Android logging utilities.
         ;;
-        *)
+        *-darwin-*)
+            # iOS/ARM builds do not work with gtest. This does not match
+            # x86 targets.
+        ;;
+        *-win*)
+            # Some mingw toolchains don't have pthread available by default.
+            # Treat these more like visual studio where threading in gtest
+            # would be disabled for the same reason.
             check_cxx "$@" <<EOF && soft_enable unit_tests
+int z;
+EOF
+        ;;
+        *)
+            enabled pthread_h && check_cxx "$@" <<EOF && soft_enable unit_tests
 int z;
 EOF
         ;;
