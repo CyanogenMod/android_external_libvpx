@@ -74,8 +74,8 @@ void reference_32x32_dct_2d(const int16_t input[kNumCoeffs],
   }
 }
 
-typedef void (*fwd_txfm_t)(int16_t *in, int16_t *out, int stride);
-typedef void (*inv_txfm_t)(int16_t *in, uint8_t *dst, int stride);
+typedef void (*fwd_txfm_t)(const int16_t *in, int16_t *out, int stride);
+typedef void (*inv_txfm_t)(const int16_t *in, uint8_t *out, int stride);
 
 class Trans32x32Test : public PARAMS(fwd_txfm_t, inv_txfm_t, int) {
  public:
@@ -113,8 +113,7 @@ TEST_P(Trans32x32Test, AccuracyCheck) {
       test_input_block[j] = src[j] - dst[j];
     }
 
-    const int pitch = 64;
-    REGISTER_STATE_CHECK(fwd_txfm_(test_input_block, test_temp_block, pitch));
+    REGISTER_STATE_CHECK(fwd_txfm_(test_input_block, test_temp_block, 32));
     REGISTER_STATE_CHECK(inv_txfm_(test_temp_block, dst, 32));
 
     for (int j = 0; j < kNumCoeffs; ++j) {
@@ -150,9 +149,9 @@ TEST_P(Trans32x32Test, CoeffCheck) {
     for (int j = 0; j < kNumCoeffs; ++j)
       input_block[j] = rnd.Rand8() - rnd.Rand8();
 
-    const int pitch = 64;
-    vp9_short_fdct32x32_c(input_block, output_ref_block, pitch);
-    REGISTER_STATE_CHECK(fwd_txfm_(input_block, output_block, pitch));
+    const int stride = 32;
+    vp9_fdct32x32_c(input_block, output_ref_block, stride);
+    REGISTER_STATE_CHECK(fwd_txfm_(input_block, output_block, stride));
 
     if (version_ == 0) {
       for (int j = 0; j < kNumCoeffs; ++j)
@@ -188,9 +187,9 @@ TEST_P(Trans32x32Test, MemCheck) {
       for (int j = 0; j < kNumCoeffs; ++j)
         input_extreme_block[j] = -255;
 
-    const int pitch = 64;
-    vp9_short_fdct32x32_c(input_extreme_block, output_ref_block, pitch);
-    REGISTER_STATE_CHECK(fwd_txfm_(input_extreme_block, output_block, pitch));
+    const int stride = 32;
+    vp9_fdct32x32_c(input_extreme_block, output_ref_block, stride);
+    REGISTER_STATE_CHECK(fwd_txfm_(input_extreme_block, output_block, stride));
 
     // The minimum quant value is 4.
     for (int j = 0; j < kNumCoeffs; ++j) {
@@ -247,16 +246,16 @@ using std::tr1::make_tuple;
 INSTANTIATE_TEST_CASE_P(
     C, Trans32x32Test,
     ::testing::Values(
-        make_tuple(&vp9_short_fdct32x32_c, &vp9_short_idct32x32_add_c, 0),
-        make_tuple(&vp9_short_fdct32x32_rd_c, &vp9_short_idct32x32_add_c, 1)));
+        make_tuple(&vp9_fdct32x32_c, &vp9_idct32x32_1024_add_c, 0),
+        make_tuple(&vp9_fdct32x32_rd_c, &vp9_idct32x32_1024_add_c, 1)));
 
 #if HAVE_SSE2
 INSTANTIATE_TEST_CASE_P(
     SSE2, Trans32x32Test,
     ::testing::Values(
-        make_tuple(&vp9_short_fdct32x32_sse2,
-                   &vp9_short_idct32x32_add_sse2, 0),
-        make_tuple(&vp9_short_fdct32x32_rd_sse2,
-                   &vp9_short_idct32x32_add_sse2, 1)));
+        make_tuple(&vp9_fdct32x32_sse2,
+                   &vp9_idct32x32_1024_add_sse2, 0),
+        make_tuple(&vp9_fdct32x32_rd_sse2,
+                   &vp9_idct32x32_1024_add_sse2, 1)));
 #endif
 }  // namespace

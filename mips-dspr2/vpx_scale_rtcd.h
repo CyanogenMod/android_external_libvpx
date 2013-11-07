@@ -40,10 +40,12 @@ void vpx_yv12_copy_y_c(const struct yv12_buffer_config *src_ybc, struct yv12_buf
 #define vpx_yv12_copy_y vpx_yv12_copy_y_c
 
 void vp9_extend_frame_borders_c(struct yv12_buffer_config *ybf, int subsampling_x, int subsampling_y);
-#define vp9_extend_frame_borders vp9_extend_frame_borders_c
+void vp9_extend_frame_borders_dspr2(struct yv12_buffer_config *ybf, int subsampling_x, int subsampling_y);
+#define vp9_extend_frame_borders vp9_extend_frame_borders_dspr2
 
 void vp9_extend_frame_inner_borders_c(struct yv12_buffer_config *ybf, int subsampling_x, int subsampling_y);
-#define vp9_extend_frame_inner_borders vp9_extend_frame_inner_borders_c
+void vp9_extend_frame_inner_borders_dspr2(struct yv12_buffer_config *ybf, int subsampling_x, int subsampling_y);
+#define vp9_extend_frame_inner_borders vp9_extend_frame_inner_borders_dspr2
 
 void vpx_scale_rtcd(void);
 #include "vpx_config.h"
@@ -53,8 +55,14 @@ static void setup_rtcd_internal(void)
 {
 
 #if HAVE_DSPR2
+#if CONFIG_VP8
 void dsputil_static_init();
 dsputil_static_init();
+#endif
+#if CONFIG_VP9
+void vp9_dsputil_static_init();
+vp9_dsputil_static_init();
+#endif
 #endif
 }
 #endif
