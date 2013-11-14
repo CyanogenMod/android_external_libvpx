@@ -7,13 +7,13 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#include "vp9/common/vp9_convolve.h"
 
 #include <assert.h>
 
 #include "./vpx_config.h"
 #include "./vp9_rtcd.h"
 #include "vp9/common/vp9_common.h"
+#include "vp9/common/vp9_convolve.h"
 #include "vp9/common/vp9_filter.h"
 #include "vpx/vpx_integer.h"
 #include "vpx_ports/mem.h"
@@ -35,7 +35,7 @@ static void convolve_horiz_c(const uint8_t *src, ptrdiff_t src_stride,
 
   for (y = 0; y < h; ++y) {
     /* Initial phase offset */
-    int x_q4 = (filter_x0 - filter_x_base) / taps;
+    int x_q4 = (int)(filter_x0 - filter_x_base) / taps;
 
     for (x = 0; x < w; ++x) {
       /* Per-pixel src offset */
@@ -76,7 +76,7 @@ static void convolve_avg_horiz_c(const uint8_t *src, ptrdiff_t src_stride,
 
   for (y = 0; y < h; ++y) {
     /* Initial phase offset */
-    int x_q4 = (filter_x0 - filter_x_base) / taps;
+    int x_q4 = (int)(filter_x0 - filter_x_base) / taps;
 
     for (x = 0; x < w; ++x) {
       /* Per-pixel src offset */
@@ -118,7 +118,7 @@ static void convolve_vert_c(const uint8_t *src, ptrdiff_t src_stride,
 
   for (x = 0; x < w; ++x) {
     /* Initial phase offset */
-    int y_q4 = (filter_y0 - filter_y_base) / taps;
+    int y_q4 = (int)(filter_y0 - filter_y_base) / taps;
 
     for (y = 0; y < h; ++y) {
       /* Per-pixel src offset */
@@ -160,7 +160,7 @@ static void convolve_avg_vert_c(const uint8_t *src, ptrdiff_t src_stride,
 
   for (x = 0; x < w; ++x) {
     /* Initial phase offset */
-    int y_q4 = (filter_y0 - filter_y_base) / taps;
+    int y_q4 = (int)(filter_y0 - filter_y_base) / taps;
 
     for (y = 0; y < h; ++y) {
       /* Per-pixel src offset */
@@ -282,7 +282,7 @@ void vp9_convolve_copy_c(const uint8_t *src, ptrdiff_t src_stride,
   int r;
 
   for (r = h; r > 0; --r) {
-    memcpy(dst, src, w);
+    vpx_memcpy(dst, src, w);
     src += src_stride;
     dst += dst_stride;
   }
