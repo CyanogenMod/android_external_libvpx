@@ -51,7 +51,7 @@ extern const vp9_tree_index vp9_coefmodel_tree[];
 extern struct vp9_token vp9_coef_encodings[MAX_ENTROPY_TOKENS];
 
 typedef struct {
-  vp9_tree_index *tree;
+  const vp9_tree_index *tree;
   const vp9_prob *prob;
   int len;
   int base_val;
@@ -120,17 +120,15 @@ static INLINE void reset_skip_context(MACROBLOCKD *xd, BLOCK_SIZE bsize) {
 
 // This is the index in the scan order beyond which all coefficients for
 // 8x8 transform and above are in the top band.
-// For 4x4 blocks the index is less but to keep things common the lookup
-// table for 4x4 is padded out to this index.
+// This macro is currently unused but may be used by certain implementations
 #define MAXBAND_INDEX 21
 
-extern const uint8_t vp9_coefband_trans_8x8plus[MAXBAND_INDEX + 1];
-extern const uint8_t vp9_coefband_trans_4x4[MAXBAND_INDEX + 1];
+extern const uint8_t vp9_coefband_trans_8x8plus[1024];
+extern const uint8_t vp9_coefband_trans_4x4[16];
 
-
-static int get_coef_band(const uint8_t * band_translate, int coef_index) {
-  return (coef_index > MAXBAND_INDEX)
-    ? (COEF_BANDS-1) : band_translate[coef_index];
+static const uint8_t *get_band_translate(TX_SIZE tx_size) {
+  return tx_size == TX_4X4 ? vp9_coefband_trans_4x4
+                           : vp9_coefband_trans_8x8plus;
 }
 
 // 128 lists of probabilities are stored for the following ONE node probs:
@@ -179,11 +177,6 @@ static int get_entropy_context(TX_SIZE tx_size, const ENTROPY_CONTEXT *a,
   }
 
   return combine_entropy_contexts(above_ec, left_ec);
-}
-
-static const uint8_t *get_band_translate(TX_SIZE tx_size) {
-  return tx_size == TX_4X4 ? vp9_coefband_trans_4x4
-                           : vp9_coefband_trans_8x8plus;
 }
 
 static void get_scan(const MACROBLOCKD *xd, TX_SIZE tx_size,

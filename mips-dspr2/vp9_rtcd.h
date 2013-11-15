@@ -34,7 +34,8 @@ void vp9_d63_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *ab
 #define vp9_d63_predictor_4x4 vp9_d63_predictor_4x4_c
 
 void vp9_h_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
-#define vp9_h_predictor_4x4 vp9_h_predictor_4x4_c
+void vp9_h_predictor_4x4_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_h_predictor_4x4 vp9_h_predictor_4x4_dspr2
 
 void vp9_d117_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d117_predictor_4x4 vp9_d117_predictor_4x4_c
@@ -49,10 +50,12 @@ void vp9_v_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *abov
 #define vp9_v_predictor_4x4 vp9_v_predictor_4x4_c
 
 void vp9_tm_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
-#define vp9_tm_predictor_4x4 vp9_tm_predictor_4x4_c
+void vp9_tm_predictor_4x4_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_tm_predictor_4x4 vp9_tm_predictor_4x4_dspr2
 
 void vp9_dc_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
-#define vp9_dc_predictor_4x4 vp9_dc_predictor_4x4_c
+void vp9_dc_predictor_4x4_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_dc_predictor_4x4 vp9_dc_predictor_4x4_dspr2
 
 void vp9_dc_top_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_top_predictor_4x4 vp9_dc_top_predictor_4x4_c
@@ -73,7 +76,8 @@ void vp9_d63_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *ab
 #define vp9_d63_predictor_8x8 vp9_d63_predictor_8x8_c
 
 void vp9_h_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
-#define vp9_h_predictor_8x8 vp9_h_predictor_8x8_c
+void vp9_h_predictor_8x8_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_h_predictor_8x8 vp9_h_predictor_8x8_dspr2
 
 void vp9_d117_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d117_predictor_8x8 vp9_d117_predictor_8x8_c
@@ -88,10 +92,12 @@ void vp9_v_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *abov
 #define vp9_v_predictor_8x8 vp9_v_predictor_8x8_c
 
 void vp9_tm_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
-#define vp9_tm_predictor_8x8 vp9_tm_predictor_8x8_c
+void vp9_tm_predictor_8x8_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_tm_predictor_8x8 vp9_tm_predictor_8x8_dspr2
 
 void vp9_dc_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
-#define vp9_dc_predictor_8x8 vp9_dc_predictor_8x8_c
+void vp9_dc_predictor_8x8_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_dc_predictor_8x8 vp9_dc_predictor_8x8_dspr2
 
 void vp9_dc_top_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_top_predictor_8x8 vp9_dc_top_predictor_8x8_c
@@ -112,7 +118,8 @@ void vp9_d63_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *
 #define vp9_d63_predictor_16x16 vp9_d63_predictor_16x16_c
 
 void vp9_h_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
-#define vp9_h_predictor_16x16 vp9_h_predictor_16x16_c
+void vp9_h_predictor_16x16_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_h_predictor_16x16 vp9_h_predictor_16x16_dspr2
 
 void vp9_d117_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_d117_predictor_16x16 vp9_d117_predictor_16x16_c
@@ -130,7 +137,8 @@ void vp9_tm_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *a
 #define vp9_tm_predictor_16x16 vp9_tm_predictor_16x16_c
 
 void vp9_dc_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
-#define vp9_dc_predictor_16x16 vp9_dc_predictor_16x16_c
+void vp9_dc_predictor_16x16_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vp9_dc_predictor_16x16 vp9_dc_predictor_16x16_dspr2
 
 void vp9_dc_top_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vp9_dc_top_predictor_16x16 vp9_dc_top_predictor_16x16_c
@@ -181,22 +189,28 @@ void vp9_dc_128_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_
 #define vp9_dc_128_predictor_32x32 vp9_dc_128_predictor_32x32_c
 
 void vp9_mb_lpf_vertical_edge_w_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh);
-#define vp9_mb_lpf_vertical_edge_w vp9_mb_lpf_vertical_edge_w_c
+void vp9_mb_lpf_vertical_edge_w_dspr2(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh);
+#define vp9_mb_lpf_vertical_edge_w vp9_mb_lpf_vertical_edge_w_dspr2
 
 void vp9_mbloop_filter_vertical_edge_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
-#define vp9_mbloop_filter_vertical_edge vp9_mbloop_filter_vertical_edge_c
+void vp9_mbloop_filter_vertical_edge_dspr2(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
+#define vp9_mbloop_filter_vertical_edge vp9_mbloop_filter_vertical_edge_dspr2
 
 void vp9_loop_filter_vertical_edge_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
-#define vp9_loop_filter_vertical_edge vp9_loop_filter_vertical_edge_c
+void vp9_loop_filter_vertical_edge_dspr2(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
+#define vp9_loop_filter_vertical_edge vp9_loop_filter_vertical_edge_dspr2
 
 void vp9_mb_lpf_horizontal_edge_w_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
-#define vp9_mb_lpf_horizontal_edge_w vp9_mb_lpf_horizontal_edge_w_c
+void vp9_mb_lpf_horizontal_edge_w_dspr2(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
+#define vp9_mb_lpf_horizontal_edge_w vp9_mb_lpf_horizontal_edge_w_dspr2
 
 void vp9_mbloop_filter_horizontal_edge_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
-#define vp9_mbloop_filter_horizontal_edge vp9_mbloop_filter_horizontal_edge_c
+void vp9_mbloop_filter_horizontal_edge_dspr2(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
+#define vp9_mbloop_filter_horizontal_edge vp9_mbloop_filter_horizontal_edge_dspr2
 
 void vp9_loop_filter_horizontal_edge_c(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
-#define vp9_loop_filter_horizontal_edge vp9_loop_filter_horizontal_edge_c
+void vp9_loop_filter_horizontal_edge_dspr2(uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count);
+#define vp9_loop_filter_horizontal_edge vp9_loop_filter_horizontal_edge_dspr2
 
 void vp9_blend_mb_inner_c(uint8_t *y, uint8_t *u, uint8_t *v, int y1, int u1, int v1, int alpha, int stride);
 #define vp9_blend_mb_inner vp9_blend_mb_inner_c
@@ -276,7 +290,8 @@ void vp9_idct32x32_1024_add_dspr2(const int16_t *input, uint8_t *dest, int dest_
 #define vp9_idct32x32_1024_add vp9_idct32x32_1024_add_dspr2
 
 void vp9_idct32x32_34_add_c(const int16_t *input, uint8_t *dest, int dest_stride);
-#define vp9_idct32x32_34_add vp9_idct32x32_34_add_c
+void vp9_idct32x32_34_add_dspr2(const int16_t *input, uint8_t *dest, int dest_stride);
+#define vp9_idct32x32_34_add vp9_idct32x32_34_add_dspr2
 
 void vp9_idct32x32_1_add_c(const int16_t *input, uint8_t *dest, int dest_stride);
 void vp9_idct32x32_1_add_dspr2(const int16_t *input, uint8_t *dest, int dest_stride);

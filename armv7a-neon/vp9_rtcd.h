@@ -285,7 +285,8 @@ void vp9_idct32x32_34_add_c(const int16_t *input, uint8_t *dest, int dest_stride
 #define vp9_idct32x32_34_add vp9_idct32x32_34_add_c
 
 void vp9_idct32x32_1_add_c(const int16_t *input, uint8_t *dest, int dest_stride);
-#define vp9_idct32x32_1_add vp9_idct32x32_1_add_c
+void vp9_idct32x32_1_add_neon(const int16_t *input, uint8_t *dest, int dest_stride);
+#define vp9_idct32x32_1_add vp9_idct32x32_1_add_neon
 
 void vp9_iht4x4_16_add_c(const int16_t *input, uint8_t *dest, int dest_stride, int tx_type);
 void vp9_iht4x4_16_add_neon(const int16_t *input, uint8_t *dest, int dest_stride, int tx_type);

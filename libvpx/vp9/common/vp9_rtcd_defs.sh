@@ -41,7 +41,7 @@ prototype void vp9_d63_predictor_4x4 "uint8_t *dst, ptrdiff_t y_stride, const ui
 specialize vp9_d63_predictor_4x4 $ssse3_x86inc
 
 prototype void vp9_h_predictor_4x4 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
-specialize vp9_h_predictor_4x4 $ssse3_x86inc
+specialize vp9_h_predictor_4x4 $ssse3_x86inc dspr2
 
 prototype void vp9_d117_predictor_4x4 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
 specialize vp9_d117_predictor_4x4
@@ -56,10 +56,10 @@ prototype void vp9_v_predictor_4x4 "uint8_t *dst, ptrdiff_t y_stride, const uint
 specialize vp9_v_predictor_4x4 $sse_x86inc
 
 prototype void vp9_tm_predictor_4x4 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
-specialize vp9_tm_predictor_4x4 $sse_x86inc
+specialize vp9_tm_predictor_4x4 $sse_x86inc dspr2
 
 prototype void vp9_dc_predictor_4x4 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
-specialize vp9_dc_predictor_4x4 $sse_x86inc
+specialize vp9_dc_predictor_4x4 $sse_x86inc dspr2
 
 prototype void vp9_dc_top_predictor_4x4 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
 specialize vp9_dc_top_predictor_4x4
@@ -80,7 +80,7 @@ prototype void vp9_d63_predictor_8x8 "uint8_t *dst, ptrdiff_t y_stride, const ui
 specialize vp9_d63_predictor_8x8 $ssse3_x86inc
 
 prototype void vp9_h_predictor_8x8 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
-specialize vp9_h_predictor_8x8 $ssse3_x86inc
+specialize vp9_h_predictor_8x8 $ssse3_x86inc dspr2
 
 prototype void vp9_d117_predictor_8x8 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
 specialize vp9_d117_predictor_8x8
@@ -95,10 +95,10 @@ prototype void vp9_v_predictor_8x8 "uint8_t *dst, ptrdiff_t y_stride, const uint
 specialize vp9_v_predictor_8x8 $sse_x86inc
 
 prototype void vp9_tm_predictor_8x8 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
-specialize vp9_tm_predictor_8x8 $sse2_x86inc
+specialize vp9_tm_predictor_8x8 $sse2_x86inc dspr2
 
 prototype void vp9_dc_predictor_8x8 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
-specialize vp9_dc_predictor_8x8 $sse_x86inc
+specialize vp9_dc_predictor_8x8 $sse_x86inc dspr2
 
 prototype void vp9_dc_top_predictor_8x8 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
 specialize vp9_dc_top_predictor_8x8
@@ -119,7 +119,7 @@ prototype void vp9_d63_predictor_16x16 "uint8_t *dst, ptrdiff_t y_stride, const 
 specialize vp9_d63_predictor_16x16 $ssse3_x86inc
 
 prototype void vp9_h_predictor_16x16 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
-specialize vp9_h_predictor_16x16 $ssse3_x86inc
+specialize vp9_h_predictor_16x16 $ssse3_x86inc dspr2
 
 prototype void vp9_d117_predictor_16x16 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
 specialize vp9_d117_predictor_16x16
@@ -137,7 +137,7 @@ prototype void vp9_tm_predictor_16x16 "uint8_t *dst, ptrdiff_t y_stride, const u
 specialize vp9_tm_predictor_16x16 $sse2_x86inc
 
 prototype void vp9_dc_predictor_16x16 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
-specialize vp9_dc_predictor_16x16 $sse2_x86inc
+specialize vp9_dc_predictor_16x16 $sse2_x86inc dspr2
 
 prototype void vp9_dc_top_predictor_16x16 "uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left"
 specialize vp9_dc_top_predictor_16x16
@@ -191,22 +191,22 @@ specialize vp9_dc_128_predictor_32x32
 # Loopfilter
 #
 prototype void vp9_mb_lpf_vertical_edge_w "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh"
-specialize vp9_mb_lpf_vertical_edge_w sse2 neon
+specialize vp9_mb_lpf_vertical_edge_w sse2 neon dspr2
 
 prototype void vp9_mbloop_filter_vertical_edge "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count"
-specialize vp9_mbloop_filter_vertical_edge sse2 neon
+specialize vp9_mbloop_filter_vertical_edge sse2 neon dspr2
 
 prototype void vp9_loop_filter_vertical_edge "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count"
-specialize vp9_loop_filter_vertical_edge mmx neon
+specialize vp9_loop_filter_vertical_edge mmx neon dspr2
 
 prototype void vp9_mb_lpf_horizontal_edge_w "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count"
-specialize vp9_mb_lpf_horizontal_edge_w sse2 avx2 neon
+specialize vp9_mb_lpf_horizontal_edge_w sse2 avx2 neon dspr2
 
 prototype void vp9_mbloop_filter_horizontal_edge "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count"
-specialize vp9_mbloop_filter_horizontal_edge sse2 neon
+specialize vp9_mbloop_filter_horizontal_edge sse2 neon dspr2
 
 prototype void vp9_loop_filter_horizontal_edge "uint8_t *s, int pitch, const uint8_t *blimit, const uint8_t *limit, const uint8_t *thresh, int count"
-specialize vp9_loop_filter_horizontal_edge mmx neon
+specialize vp9_loop_filter_horizontal_edge mmx neon dspr2
 
 #
 # post proc
@@ -296,10 +296,10 @@ prototype void vp9_idct32x32_1024_add "const int16_t *input, uint8_t *dest, int 
 specialize vp9_idct32x32_1024_add sse2 neon dspr2
 
 prototype void vp9_idct32x32_34_add "const int16_t *input, uint8_t *dest, int dest_stride"
-specialize vp9_idct32x32_34_add sse2
+specialize vp9_idct32x32_34_add sse2 dspr2
 
 prototype void vp9_idct32x32_1_add "const int16_t *input, uint8_t *dest, int dest_stride"
-specialize vp9_idct32x32_1_add sse2 dspr2
+specialize vp9_idct32x32_1_add sse2 neon dspr2
 
 prototype void vp9_iht4x4_16_add "const int16_t *input, uint8_t *dest, int dest_stride, int tx_type"
 specialize vp9_iht4x4_16_add sse2 neon dspr2

@@ -27,6 +27,18 @@ typedef struct {
 typedef struct {
   MODE_INFO mic;
   uint8_t *zcoeff_blk;
+  int16_t *coeff[MAX_MB_PLANE][3];
+  int16_t *qcoeff[MAX_MB_PLANE][3];
+  int16_t *dqcoeff[MAX_MB_PLANE][3];
+  uint16_t *eobs[MAX_MB_PLANE][3];
+
+  // dual buffer pointers, 0: in use, 1: best in store
+  int16_t *coeff_pbuf[MAX_MB_PLANE][3];
+  int16_t *qcoeff_pbuf[MAX_MB_PLANE][3];
+  int16_t *dqcoeff_pbuf[MAX_MB_PLANE][3];
+  uint16_t *eobs_pbuf[MAX_MB_PLANE][3];
+
+  int is_coded;
   int num_4x4_blk;
   int skip;
   int_mv best_ref_mv;
@@ -57,7 +69,7 @@ typedef struct {
 
 struct macroblock_plane {
   DECLARE_ALIGNED(16, int16_t, src_diff[64 * 64]);
-  DECLARE_ALIGNED(16, int16_t, coeff[64 * 64]);
+  int16_t *coeff;
   struct buf_2d src;
 
   // Quantizer setings
@@ -81,6 +93,10 @@ struct macroblock {
 
   MACROBLOCKD e_mbd;
   int skip_block;
+  int select_txfm_size;
+  int skip_recode;
+  int skip_optimize;
+  int q_index;
 
   search_site *ss;
   int ss_count;
@@ -119,6 +135,11 @@ struct macroblock {
   int intra_uv_mode_cost[2][MB_MODE_COUNT];
   int y_mode_costs[INTRA_MODES][INTRA_MODES][INTRA_MODES];
   int switchable_interp_costs[SWITCHABLE_FILTER_CONTEXTS][SWITCHABLE_FILTERS];
+
+  unsigned char sb_index;   // index of 32x32 block inside the 64x64 block
+  unsigned char mb_index;   // index of 16x16 block inside the 32x32 block
+  unsigned char b_index;    // index of 8x8 block inside the 16x16 block
+  unsigned char ab_index;   // index of 4x4 block inside the 8x8 block
 
   // These define limits to motion vector components to prevent them
   // from extending outside the UMV borders
@@ -179,35 +200,33 @@ struct macroblock {
 // refactoring on organizing the temporary buffers, when recursive
 // partition down to 4x4 block size is enabled.
 static PICK_MODE_CONTEXT *get_block_context(MACROBLOCK *x, BLOCK_SIZE bsize) {
-  MACROBLOCKD *const xd = &x->e_mbd;
-
   switch (bsize) {
     case BLOCK_64X64:
       return &x->sb64_context;
     case BLOCK_64X32:
-      return &x->sb64x32_context[xd->sb_index];
+      return &x->sb64x32_context[x->sb_index];
     case BLOCK_32X64:
-      return &x->sb32x64_context[xd->sb_index];
+      return &x->sb32x64_context[x->sb_index];
     case BLOCK_32X32:
-      return &x->sb32_context[xd->sb_index];
+      return &x->sb32_context[x->sb_index];
     case BLOCK_32X16:
-      return &x->sb32x16_context[xd->sb_index][xd->mb_index];
+      return &x->sb32x16_context[x->sb_index][x->mb_index];
     case BLOCK_16X32:
-      return &x->sb16x32_context[xd->sb_index][xd->mb_index];
+      return &x->sb16x32_context[x->sb_index][x->mb_index];
     case BLOCK_16X16:
-      return &x->mb_context[xd->sb_index][xd->mb_index];
+      return &x->mb_context[x->sb_index][x->mb_index];
     case BLOCK_16X8:
-      return &x->sb16x8_context[xd->sb_index][xd->mb_index][xd->b_index];
+      return &x->sb16x8_context[x->sb_index][x->mb_index][x->b_index];
     case BLOCK_8X16:
-      return &x->sb8x16_context[xd->sb_index][xd->mb_index][xd->b_index];
+      return &x->sb8x16_context[x->sb_index][x->mb_index][x->b_index];
     case BLOCK_8X8:
-      return &x->sb8x8_context[xd->sb_index][xd->mb_index][xd->b_index];
+      return &x->sb8x8_context[x->sb_index][x->mb_index][x->b_index];
     case BLOCK_8X4:
-      return &x->sb8x4_context[xd->sb_index][xd->mb_index][xd->b_index];
+      return &x->sb8x4_context[x->sb_index][x->mb_index][x->b_index];
     case BLOCK_4X8:
-      return &x->sb4x8_context[xd->sb_index][xd->mb_index][xd->b_index];
+      return &x->sb4x8_context[x->sb_index][x->mb_index][x->b_index];
     case BLOCK_4X4:
-      return &x->ab4x4_context[xd->sb_index][xd->mb_index][xd->b_index];
+      return &x->ab4x4_context[x->sb_index][x->mb_index][x->b_index];
     default:
       assert(0);
       return NULL;
