@@ -48,12 +48,13 @@ static MB_PREDICTION_MODE read_intra_mode_uv(VP9_COMMON *cm, vp9_reader *r,
 }
 
 static MB_PREDICTION_MODE read_inter_mode(VP9_COMMON *cm, vp9_reader *r,
-                                          uint8_t context) {
-  const MB_PREDICTION_MODE mode = treed_read(r, vp9_inter_mode_tree,
-                                             cm->fc.inter_mode_probs[context]);
+                                          int ctx) {
+  const int mode = treed_read(r, vp9_inter_mode_tree,
+                              cm->fc.inter_mode_probs[ctx]);
   if (!cm->frame_parallel_decoding_mode)
-    ++cm->counts.inter_mode[context][inter_mode_offset(mode)];
-  return mode;
+    ++cm->counts.inter_mode[ctx][mode];
+
+  return NEARESTMV + mode;
 }
 
 static int read_segment_id(vp9_reader *r, const struct segmentation *seg) {
@@ -61,31 +62,28 @@ static int read_segment_id(vp9_reader *r, const struct segmentation *seg) {
 }
 
 static TX_SIZE read_selected_tx_size(VP9_COMMON *cm, MACROBLOCKD *xd,
-                                     BLOCK_SIZE bsize, vp9_reader *r) {
-  const uint8_t context = vp9_get_pred_context_tx_size(xd);
-  const vp9_prob *tx_probs = get_tx_probs(bsize, context, &cm->fc.tx_probs);
+                                     TX_SIZE max_tx_size, vp9_reader *r) {
+  const int ctx = vp9_get_pred_context_tx_size(xd);
+  const vp9_prob *tx_probs = get_tx_probs(max_tx_size, ctx, &cm->fc.tx_probs);
   TX_SIZE tx_size = vp9_read(r, tx_probs[0]);
-  if (tx_size != TX_4X4 && bsize >= BLOCK_16X16) {
+  if (tx_size != TX_4X4 && max_tx_size >= TX_16X16) {
     tx_size += vp9_read(r, tx_probs[1]);
-    if (tx_size != TX_8X8 && bsize >= BLOCK_32X32)
+    if (tx_size != TX_8X8 && max_tx_size >= TX_32X32)
       tx_size += vp9_read(r, tx_probs[2]);
   }
 
   if (!cm->frame_parallel_decoding_mode)
-    ++get_tx_counts(bsize, context, &cm->counts.tx)[tx_size];
+    ++get_tx_counts(max_tx_size, ctx, &cm->counts.tx)[tx_size];
   return tx_size;
 }
 
-static TX_SIZE read_tx_size(VP9_COMMON *const cm, MACROBLOCKD *const xd,
-                            TX_MODE tx_mode, BLOCK_SIZE bsize, int allow_select,
-                            vp9_reader *r) {
-  if (allow_select && tx_mode == TX_MODE_SELECT && bsize >= BLOCK_8X8) {
-    return read_selected_tx_size(cm, xd, bsize, r);
-  } else {
-    const TX_SIZE max_tx_size_block = max_txsize_lookup[bsize];
-    const TX_SIZE max_tx_size_txmode = tx_mode_to_biggest_tx_size[tx_mode];
-    return MIN(max_tx_size_block, max_tx_size_txmode);
-  }
+static TX_SIZE read_tx_size(VP9_COMMON *cm, MACROBLOCKD *xd, TX_MODE tx_mode,
+                            BLOCK_SIZE bsize, int allow_select, vp9_reader *r) {
+  const TX_SIZE max_tx_size = max_txsize_lookup[bsize];
+  if (allow_select && tx_mode == TX_MODE_SELECT && bsize >= BLOCK_8X8)
+    return read_selected_tx_size(cm, xd, max_tx_size, r);
+  else
+    return MIN(max_tx_size, tx_mode_to_biggest_tx_size[tx_mode]);
 }
 
 static void set_segment_id(VP9_COMMON *cm, BLOCK_SIZE bsize,
@@ -260,6 +258,16 @@ static INLINE void read_mv(vp9_reader *r, MV *mv, const MV *ref,
   mv->col = ref->col + diff.col;
 }
 
+static COMPPREDMODE_TYPE read_reference_mode(VP9_COMMON *cm,
+                                             const MACROBLOCKD *xd,
+                                             vp9_reader *r) {
+  const int ctx = vp9_get_pred_context_comp_inter_inter(cm, xd);
+  const int mode = vp9_read(r, cm->fc.comp_inter_prob[ctx]);
+  if (!cm->frame_parallel_decoding_mode)
+    ++cm->counts.comp_inter[ctx][mode];
+  return mode;  // SINGLE_PREDICTION_ONLY or COMP_PREDICTION_ONLY
+}
+
 // Read the referncence frame
 static void read_ref_frames(VP9_COMMON *const cm, MACROBLOCKD *const xd,
                             vp9_reader *r,
@@ -271,27 +279,20 @@ static void read_ref_frames(VP9_COMMON *const cm, MACROBLOCKD *const xd,
     ref_frame[0] = vp9_get_segdata(&cm->seg, segment_id, SEG_LVL_REF_FRAME);
     ref_frame[1] = NONE;
   } else {
-    const int comp_ctx = vp9_get_pred_context_comp_inter_inter(cm, xd);
-    int is_comp;
-
-    if (cm->comp_pred_mode == HYBRID_PREDICTION) {
-      is_comp = vp9_read(r, fc->comp_inter_prob[comp_ctx]);
-      if (!cm->frame_parallel_decoding_mode)
-        ++counts->comp_inter[comp_ctx][is_comp];
-    } else {
-      is_comp = cm->comp_pred_mode == COMP_PREDICTION_ONLY;
-    }
+    const COMPPREDMODE_TYPE mode = (cm->comp_pred_mode == HYBRID_PREDICTION)
+                                      ? read_reference_mode(cm, xd, r)
+                                      : cm->comp_pred_mode;
 
     // FIXME(rbultje) I'm pretty sure this breaks segmentation ref frame coding
-    if (is_comp) {
-      const int fix_ref_idx = cm->ref_frame_sign_bias[cm->comp_fixed_ref];
-      const int ref_ctx = vp9_get_pred_context_comp_ref_p(cm, xd);
-      const int b = vp9_read(r, fc->comp_ref_prob[ref_ctx]);
+    if (mode == COMP_PREDICTION_ONLY) {
+      const int idx = cm->ref_frame_sign_bias[cm->comp_fixed_ref];
+      const int ctx = vp9_get_pred_context_comp_ref_p(cm, xd);
+      const int bit = vp9_read(r, fc->comp_ref_prob[ctx]);
       if (!cm->frame_parallel_decoding_mode)
-        ++counts->comp_ref[ref_ctx][b];
-      ref_frame[fix_ref_idx] = cm->comp_fixed_ref;
-      ref_frame[!fix_ref_idx] = cm->comp_var_ref[b];
-    } else {
+        ++counts->comp_ref[ctx][bit];
+      ref_frame[idx] = cm->comp_fixed_ref;
+      ref_frame[!idx] = cm->comp_var_ref[bit];
+    } else if (mode == SINGLE_PREDICTION_ONLY) {
       const int ctx0 = vp9_get_pred_context_single_ref_p1(xd);
       const int bit0 = vp9_read(r, fc->single_ref_prob[ctx0][0]);
       if (!cm->frame_parallel_decoding_mode)
@@ -299,14 +300,16 @@ static void read_ref_frames(VP9_COMMON *const cm, MACROBLOCKD *const xd,
       if (bit0) {
         const int ctx1 = vp9_get_pred_context_single_ref_p2(xd);
         const int bit1 = vp9_read(r, fc->single_ref_prob[ctx1][1]);
-        ref_frame[0] = bit1 ? ALTREF_FRAME : GOLDEN_FRAME;
         if (!cm->frame_parallel_decoding_mode)
           ++counts->single_ref[ctx1][1][bit1];
+        ref_frame[0] = bit1 ? ALTREF_FRAME : GOLDEN_FRAME;
       } else {
         ref_frame[0] = LAST_FRAME;
       }
 
       ref_frame[1] = NONE;
+    } else {
+      assert(!"Invalid prediction mode.");
     }
   }
 }

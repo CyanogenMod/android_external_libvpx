@@ -215,6 +215,7 @@ vp9/common/arm/neon/vp9_mb_lpf_neon.asm.s
 vp9/common/arm/neon/vp9_save_reg_neon.asm.s
 vp9/common/arm/neon/vp9_short_idct16x16_1_add_neon.asm.s
 vp9/common/arm/neon/vp9_short_idct16x16_add_neon.asm.s
+vp9/common/arm/neon/vp9_short_idct32x32_1_add_neon.asm.s
 vp9/common/arm/neon/vp9_short_idct32x32_add_neon.asm.s
 vp9/common/arm/neon/vp9_short_idct4x4_1_add_neon.asm.s
 vp9/common/arm/neon/vp9_short_idct4x4_add_neon.asm.s

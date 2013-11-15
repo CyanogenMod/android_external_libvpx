@@ -169,10 +169,8 @@ static void update_mode(vp9_writer *w, int n, vp9_tree tree,
                         const unsigned int num_events[/* n */]) {
   int i = 0;
 
-  vp9_tree_probs_from_distribution(tree, bct, num_events, 0);
-  n--;
-
-  for (i = 0; i < n; ++i)
+  vp9_tree_probs_from_distribution(tree, bct, num_events);
+  for (i = 0; i < n - 1; ++i)
     vp9_cond_prob_diff_update(w, &Pcur[i], bct[i]);
 }
 
@@ -191,12 +189,14 @@ static void update_mbintra_mode_probs(VP9_COMP* const cpi,
 static void write_selected_tx_size(const VP9_COMP *cpi, MODE_INFO *m,
                                    TX_SIZE tx_size, BLOCK_SIZE bsize,
                                    vp9_writer *w) {
+  const TX_SIZE max_tx_size = max_txsize_lookup[bsize];
   const MACROBLOCKD *const xd = &cpi->mb.e_mbd;
-  const vp9_prob *tx_probs = get_tx_probs2(xd, &cpi->common.fc.tx_probs, m);
+  const vp9_prob *const tx_probs = get_tx_probs2(max_tx_size, xd,
+                                                 &cpi->common.fc.tx_probs);
   vp9_write(w, tx_size != TX_4X4, tx_probs[0]);
-  if (bsize >= BLOCK_16X16 && tx_size != TX_4X4) {
+  if (tx_size != TX_4X4 && max_tx_size >= TX_16X16) {
     vp9_write(w, tx_size != TX_8X8, tx_probs[1]);
-    if (bsize >= BLOCK_32X32 && tx_size != TX_8X8)
+    if (tx_size != TX_8X8 && max_tx_size >= TX_32X32)
       vp9_write(w, tx_size != TX_16X16, tx_probs[2]);
   }
 }
@@ -231,7 +231,7 @@ static void update_switchable_interp_probs(VP9_COMP *cpi, vp9_writer *w) {
   int i, j;
   for (j = 0; j < SWITCHABLE_FILTER_CONTEXTS; ++j) {
     vp9_tree_probs_from_distribution(vp9_switchable_interp_tree, branch_ct,
-                                     cm->counts.switchable_interp[j], 0);
+                                     cm->counts.switchable_interp[j]);
 
     for (i = 0; i < SWITCHABLE_FILTERS - 1; ++i)
       vp9_cond_prob_diff_update(w, &cm->fc.switchable_interp_prob[j][i],
@@ -250,7 +250,7 @@ static void update_inter_mode_probs(VP9_COMMON *cm, vp9_writer *w) {
   for (i = 0; i < INTER_MODE_CONTEXTS; ++i) {
     unsigned int branch_ct[INTER_MODES - 1][2];
     vp9_tree_probs_from_distribution(vp9_inter_mode_tree, branch_ct,
-                                     cm->counts.inter_mode[i], NEARESTMV);
+                                     cm->counts.inter_mode[i]);
 
     for (j = 0; j < INTER_MODES - 1; ++j)
       vp9_cond_prob_diff_update(w, &cm->fc.inter_mode_probs[i][j],
@@ -258,15 +258,15 @@ static void update_inter_mode_probs(VP9_COMMON *cm, vp9_writer *w) {
   }
 }
 
-static void pack_mb_tokens(vp9_writer* const bc,
+static void pack_mb_tokens(vp9_writer* const w,
                            TOKENEXTRA **tp,
                            const TOKENEXTRA *const stop) {
   TOKENEXTRA *p = *tp;
 
   while (p < stop && p->token != EOSB_TOKEN) {
     const int t = p->token;
-    const struct vp9_token *const a = vp9_coef_encodings + t;
-    const vp9_extra_bit *const b = vp9_extra_bits + t;
+    const struct vp9_token *const a = &vp9_coef_encodings[t];
+    const vp9_extra_bit *const b = &vp9_extra_bits[t];
     int i = 0;
     const vp9_prob *pp;
     int v = a->value;
@@ -289,7 +289,7 @@ static void pack_mb_tokens(vp9_writer* const bc,
 
     do {
       const int bb = (v >> --n) & 1;
-      vp9_write(bc, bb, pp[i >> 1]);
+      vp9_write(w, bb, pp[i >> 1]);
       i = vp9_coef_tree[i + bb];
     } while (n);
 
@@ -304,12 +304,12 @@ static void pack_mb_tokens(vp9_writer* const bc,
 
         do {
           const int bb = (v >> --n) & 1;
-          vp9_write(bc, bb, pb[i >> 1]);
+          vp9_write(w, bb, pb[i >> 1]);
           i = b->tree[i + bb];
         } while (n);
       }
 
-      vp9_write_bit(bc, e & 1);
+      vp9_write_bit(w, e & 1);
     }
     ++p;
   }
@@ -321,7 +321,7 @@ static void write_sb_mv_ref(vp9_writer *w, MB_PREDICTION_MODE mode,
                             const vp9_prob *p) {
   assert(is_inter_mode(mode));
   write_token(w, vp9_inter_mode_tree, p,
-              &vp9_inter_mode_encodings[inter_mode_offset(mode)]);
+              &vp9_inter_mode_encodings[INTER_OFFSET(mode)]);
 }
 
 
@@ -448,7 +448,7 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m, vp9_writer *bc) {
       if (bsize >= BLOCK_8X8) {
         write_sb_mv_ref(bc, mode, mv_ref_p);
         ++cm->counts.inter_mode[mi->mode_context[rf]]
-                               [inter_mode_offset(mode)];
+                               [INTER_OFFSET(mode)];
       }
     }
 
@@ -471,7 +471,7 @@ static void pack_inter_mode_mvs(VP9_COMP *cpi, MODE_INFO *m, vp9_writer *bc) {
           const MB_PREDICTION_MODE blockmode = m->bmi[j].as_mode;
           write_sb_mv_ref(bc, blockmode, mv_ref_p);
           ++cm->counts.inter_mode[mi->mode_context[rf]]
-                                 [inter_mode_offset(blockmode)];
+                                 [INTER_OFFSET(blockmode)];
 
           if (blockmode == NEWMV) {
 #ifdef ENTROPY_STATS
@@ -545,37 +545,33 @@ static void write_mb_modes_kf(const VP9_COMP *cpi, MODE_INFO **mi_8x8,
 }
 
 static void write_modes_b(VP9_COMP *cpi, const TileInfo *const tile,
-                          MODE_INFO **mi_8x8, vp9_writer *bc,
-                          TOKENEXTRA **tok, TOKENEXTRA *tok_end,
-                          int mi_row, int mi_col, int index) {
+                          vp9_writer *w, TOKENEXTRA **tok, TOKENEXTRA *tok_end,
+                          int mi_row, int mi_col) {
   VP9_COMMON *const cm = &cpi->common;
   MACROBLOCKD *const xd = &cpi->mb.e_mbd;
-  MODE_INFO *m = mi_8x8[0];
+  MODE_INFO *m;
 
-  if (m->mbmi.sb_type < BLOCK_8X8)
-    if (index > 0)
-      return;
-
-  xd->mi_8x8 = mi_8x8;
+  xd->mi_8x8 = cm->mi_grid_visible + (mi_row * cm->mode_info_stride + mi_col);
+  m = xd->mi_8x8[0];
 
   set_mi_row_col(xd, tile,
                  mi_row, num_8x8_blocks_high_lookup[m->mbmi.sb_type],
                  mi_col, num_8x8_blocks_wide_lookup[m->mbmi.sb_type],
                  cm->mi_rows, cm->mi_cols);
   if (frame_is_intra_only(cm)) {
-    write_mb_modes_kf(cpi, mi_8x8, bc);
+    write_mb_modes_kf(cpi, xd->mi_8x8, w);
 #ifdef ENTROPY_STATS
     active_section = 8;
 #endif
   } else {
-    pack_inter_mode_mvs(cpi, m, bc);
+    pack_inter_mode_mvs(cpi, m, w);
 #ifdef ENTROPY_STATS
     active_section = 1;
 #endif
   }
 
   assert(*tok < tok_end);
-  pack_mb_tokens(bc, tok, tok_end);
+  pack_mb_tokens(w, tok, tok_end);
 }
 
 static void write_partition(VP9_COMP *cpi, int hbs, int mi_row, int mi_col,
@@ -602,59 +598,50 @@ static void write_partition(VP9_COMP *cpi, int hbs, int mi_row, int mi_col,
 }
 
 static void write_modes_sb(VP9_COMP *cpi, const TileInfo *const tile,
-                           MODE_INFO **mi_8x8, vp9_writer *bc,
-                           TOKENEXTRA **tok, TOKENEXTRA *tok_end,
-                           int mi_row, int mi_col, BLOCK_SIZE bsize,
-                           int index) {
+                           vp9_writer *w, TOKENEXTRA **tok, TOKENEXTRA *tok_end,
+                           int mi_row, int mi_col, BLOCK_SIZE bsize) {
   VP9_COMMON *const cm = &cpi->common;
-  const int mis = cm->mode_info_stride;
-  int bsl = b_width_log2(bsize);
-  int bs = (1 << bsl) / 4;  // mode_info step for subsize
-  int n;
-  PARTITION_TYPE partition = PARTITION_NONE;
+  const int bsl = b_width_log2(bsize);
+  const int bs = (1 << bsl) / 4;
+  PARTITION_TYPE partition;
   BLOCK_SIZE subsize;
-  MODE_INFO *m = mi_8x8[0];
+  MODE_INFO *m = cm->mi_grid_visible[mi_row * cm->mode_info_stride + mi_col];
 
   if (mi_row >= cm->mi_rows || mi_col >= cm->mi_cols)
     return;
 
   partition = partition_lookup[bsl][m->mbmi.sb_type];
-
-  if (bsize < BLOCK_8X8) {
-    if (index > 0)
-      return;
-  } else {
-    write_partition(cpi, bs, mi_row, mi_col, partition, bsize, bc);
-  }
-
+  write_partition(cpi, bs, mi_row, mi_col, partition, bsize, w);
   subsize = get_subsize(bsize, partition);
-
-  switch (partition) {
-    case PARTITION_NONE:
-      write_modes_b(cpi, tile, mi_8x8, bc, tok, tok_end, mi_row, mi_col, 0);
-      break;
-    case PARTITION_HORZ:
-      write_modes_b(cpi, tile, mi_8x8, bc, tok, tok_end, mi_row, mi_col, 0);
-      if ((mi_row + bs) < cm->mi_rows)
-        write_modes_b(cpi, tile, mi_8x8 + bs * mis, bc, tok, tok_end,
-                      mi_row + bs, mi_col, 1);
-      break;
-    case PARTITION_VERT:
-      write_modes_b(cpi, tile, mi_8x8, bc, tok, tok_end, mi_row, mi_col, 0);
-      if ((mi_col + bs) < cm->mi_cols)
-        write_modes_b(cpi, tile, mi_8x8 + bs, bc, tok, tok_end,
-                      mi_row, mi_col + bs, 1);
-      break;
-    case PARTITION_SPLIT:
-      for (n = 0; n < 4; n++) {
-        const int j = n >> 1, i = n & 1;
-        write_modes_sb(cpi, tile, mi_8x8 + j * bs * mis + i * bs, bc,
-                       tok, tok_end,
-                       mi_row + j * bs, mi_col + i * bs, subsize, n);
-      }
-      break;
-    default:
-      assert(0);
+  if (subsize < BLOCK_8X8) {
+    write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col);
+  } else {
+    switch (partition) {
+      case PARTITION_NONE:
+        write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col);
+        break;
+      case PARTITION_HORZ:
+        write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col);
+        if (mi_row + bs < cm->mi_rows)
+          write_modes_b(cpi, tile, w, tok, tok_end, mi_row + bs, mi_col);
+        break;
+      case PARTITION_VERT:
+        write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col);
+        if (mi_col + bs < cm->mi_cols)
+          write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col + bs);
+        break;
+      case PARTITION_SPLIT:
+        write_modes_sb(cpi, tile, w, tok, tok_end, mi_row, mi_col, subsize);
+        write_modes_sb(cpi, tile, w, tok, tok_end, mi_row, mi_col + bs,
+                       subsize);
+        write_modes_sb(cpi, tile, w, tok, tok_end, mi_row + bs, mi_col,
+                       subsize);
+        write_modes_sb(cpi, tile, w, tok, tok_end, mi_row + bs, mi_col + bs,
+                       subsize);
+        break;
+      default:
+        assert(0);
+    }
   }
 
   // update partition context
@@ -665,25 +652,15 @@ static void write_modes_sb(VP9_COMP *cpi, const TileInfo *const tile,
 }
 
 static void write_modes(VP9_COMP *cpi, const TileInfo *const tile,
-                        vp9_writer* const bc,
-                        TOKENEXTRA **tok, TOKENEXTRA *tok_end) {
-  VP9_COMMON *const cm = &cpi->common;
-  const int mis = cm->mode_info_stride;
+                        vp9_writer *w, TOKENEXTRA **tok, TOKENEXTRA *tok_end) {
   int mi_row, mi_col;
-  MODE_INFO **mi_8x8 = cm->mi_grid_visible;
-  MODE_INFO **m_8x8;
-
-  mi_8x8 += tile->mi_col_start + tile->mi_row_start * mis;
 
   for (mi_row = tile->mi_row_start; mi_row < tile->mi_row_end;
-       mi_row += 8, mi_8x8 += 8 * mis) {
-    m_8x8 = mi_8x8;
-    vp9_zero(cpi->left_seg_context);
+       mi_row += MI_BLOCK_SIZE) {
+      vp9_zero(cpi->left_seg_context);
     for (mi_col = tile->mi_col_start; mi_col < tile->mi_col_end;
-         mi_col += MI_BLOCK_SIZE, m_8x8 += MI_BLOCK_SIZE) {
-      write_modes_sb(cpi, tile, m_8x8, bc, tok, tok_end, mi_row, mi_col,
-                     BLOCK_64X64, 0);
-    }
+         mi_col += MI_BLOCK_SIZE)
+      write_modes_sb(cpi, tile, w, tok, tok_end, mi_row, mi_col, BLOCK_64X64);
   }
 }
 
@@ -703,7 +680,7 @@ static void build_tree_distribution(VP9_COMP *cpi, TX_SIZE tx_size) {
             continue;
           vp9_tree_probs_from_distribution(vp9_coef_tree,
                                            coef_branch_ct[i][j][k][l],
-                                           coef_counts[i][j][k][l], 0);
+                                           coef_counts[i][j][k][l]);
           coef_branch_ct[i][j][k][l][0][1] = eob_branch_ct[i][j][k][l] -
                                              coef_branch_ct[i][j][k][l][0][0];
           for (m = 0; m < UNCONSTRAINED_NODES; ++m)
@@ -1217,7 +1194,7 @@ static size_t encode_tiles(VP9_COMP *cpi, uint8_t *data_ptr) {
     for (tile_col = 0; tile_col < tile_cols; tile_col++) {
       TileInfo tile;
 
-      vp9_tile_init(&tile, cm, 0, tile_col);
+      vp9_tile_init(&tile, cm, tile_row, tile_col);
       tok_end = tok[tile_row][tile_col] + cpi->tok_count[tile_row][tile_col];
 
       if (tile_col < tile_cols - 1 || tile_row < tile_rows - 1)
