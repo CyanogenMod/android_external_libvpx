@@ -13,14 +13,8 @@ ifeq ($(TARGET_ARCH),mips)
   ifneq ($(ARCH_HAS_BIGENDIAN),true)
     ifeq ($(ARCH_MIPS_DSP_REV),2)
       libvpx_target := mips-dspr2
-      LOCAL_CFLAGS += -DMIPS_DSP_REV=$(ARCH_MIPS_DSP_REV)
     else
       libvpx_target := mips
-      ifeq ($(ARCH_MIPS_DSP_REV),1)
-        LOCAL_CFLAGS += -DMIPS_DSP_REV=$(ARCH_MIPS_DSP_REV)
-      else
-        LOCAL_CFLAGS += -DMIPS_DSP_REV=0
-      endif #mips_dsp_rev1
     endif #mips_dsp_rev2
   endif #bigendian
 endif #mips
