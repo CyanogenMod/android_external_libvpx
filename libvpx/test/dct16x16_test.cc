@@ -21,7 +21,7 @@
 extern "C" {
 #include "vp9/common/vp9_entropy.h"
 #include "./vp9_rtcd.h"
-void vp9_short_idct16x16_add_c(int16_t *input, uint8_t *output, int pitch);
+void vp9_idct16x16_256_add_c(const int16_t *input, uint8_t *output, int pitch);
 }
 #include "vpx/vpx_integer.h"
 
@@ -257,16 +257,18 @@ void reference_16x16_dct_2d(int16_t input[256], double output[256]) {
   }
 }
 
-typedef void (*fdct_t)(int16_t *in, int16_t *out, int stride);
-typedef void (*idct_t)(int16_t *in, uint8_t *out, int stride);
-typedef void (*fht_t) (int16_t *in, int16_t *out, int stride, int tx_type);
-typedef void (*iht_t) (int16_t *in, uint8_t *dst, int stride, int tx_type);
+typedef void (*fdct_t)(const int16_t *in, int16_t *out, int stride);
+typedef void (*idct_t)(const int16_t *in, uint8_t *out, int stride);
+typedef void (*fht_t) (const int16_t *in, int16_t *out, int stride,
+                       int tx_type);
+typedef void (*iht_t) (const int16_t *in, uint8_t *out, int stride,
+                       int tx_type);
 
-void fdct16x16_ref(int16_t *in, int16_t *out, int stride, int tx_type) {
-  vp9_short_fdct16x16_c(in, out, stride);
+void fdct16x16_ref(const int16_t *in, int16_t *out, int stride, int tx_type) {
+  vp9_fdct16x16_c(in, out, stride);
 }
 
-void fht16x16_ref(int16_t *in, int16_t *out, int stride, int tx_type) {
+void fht16x16_ref(const int16_t *in, int16_t *out, int stride, int tx_type) {
   vp9_short_fht16x16_c(in, out, stride, tx_type);
 }
 
@@ -394,8 +396,7 @@ class Trans16x16TestBase {
       for (int j = 0; j < kNumCoeffs; ++j)
         coeff[j] = round(out_r[j]);
 
-      const int pitch = 32;
-      REGISTER_STATE_CHECK(RunInvTxfm(coeff, dst, pitch));
+      REGISTER_STATE_CHECK(RunInvTxfm(coeff, dst, 16));
 
       for (int j = 0; j < kNumCoeffs; ++j) {
         const uint32_t diff = dst[j] - src[j];
@@ -420,7 +421,7 @@ class Trans16x16DCT : public Trans16x16TestBase,
     fwd_txfm_ = GET_PARAM(0);
     inv_txfm_ = GET_PARAM(1);
     tx_type_  = GET_PARAM(2);
-    pitch_    = 32;
+    pitch_    = 16;
     fwd_txfm_ref = fdct16x16_ref;
   }
   virtual void TearDown() { libvpx_test::ClearSystemState(); }
@@ -430,7 +431,7 @@ class Trans16x16DCT : public Trans16x16TestBase,
     fwd_txfm_(in, out, stride);
   }
   void RunInvTxfm(int16_t *out, uint8_t *dst, int stride) {
-    inv_txfm_(out, dst, stride >> 1);
+    inv_txfm_(out, dst, stride);
   }
 
   fdct_t fwd_txfm_;
@@ -496,26 +497,27 @@ using std::tr1::make_tuple;
 INSTANTIATE_TEST_CASE_P(
     C, Trans16x16DCT,
     ::testing::Values(
-        make_tuple(&vp9_short_fdct16x16_c, &vp9_short_idct16x16_add_c, 0)));
+        make_tuple(&vp9_fdct16x16_c, &vp9_idct16x16_256_add_c, 0)));
 INSTANTIATE_TEST_CASE_P(
     C, Trans16x16HT,
     ::testing::Values(
-        make_tuple(&vp9_short_fht16x16_c, &vp9_short_iht16x16_add_c, 0),
-        make_tuple(&vp9_short_fht16x16_c, &vp9_short_iht16x16_add_c, 1),
-        make_tuple(&vp9_short_fht16x16_c, &vp9_short_iht16x16_add_c, 2),
-        make_tuple(&vp9_short_fht16x16_c, &vp9_short_iht16x16_add_c, 3)));
+        make_tuple(&vp9_short_fht16x16_c, &vp9_iht16x16_256_add_c, 0),
+        make_tuple(&vp9_short_fht16x16_c, &vp9_iht16x16_256_add_c, 1),
+        make_tuple(&vp9_short_fht16x16_c, &vp9_iht16x16_256_add_c, 2),
+        make_tuple(&vp9_short_fht16x16_c, &vp9_iht16x16_256_add_c, 3)));
 
 #if HAVE_SSE2
 INSTANTIATE_TEST_CASE_P(
     SSE2, Trans16x16DCT,
     ::testing::Values(
-        make_tuple(&vp9_short_fdct16x16_sse2, &vp9_short_idct16x16_add_c, 0)));
+        make_tuple(&vp9_fdct16x16_sse2,
+                   &vp9_idct16x16_256_add_sse2, 0)));
 INSTANTIATE_TEST_CASE_P(
     SSE2, Trans16x16HT,
     ::testing::Values(
-        make_tuple(&vp9_short_fht16x16_sse2, &vp9_short_iht16x16_add_sse2, 0),
-        make_tuple(&vp9_short_fht16x16_sse2, &vp9_short_iht16x16_add_sse2, 1),
-        make_tuple(&vp9_short_fht16x16_sse2, &vp9_short_iht16x16_add_sse2, 2),
-        make_tuple(&vp9_short_fht16x16_sse2, &vp9_short_iht16x16_add_sse2, 3)));
+        make_tuple(&vp9_short_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 0),
+        make_tuple(&vp9_short_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 1),
+        make_tuple(&vp9_short_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 2),
+        make_tuple(&vp9_short_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 3)));
 #endif
 }  // namespace

@@ -33,25 +33,8 @@
 #include "nestegg/include/nestegg/nestegg.h"
 #include "third_party/libyuv/include/libyuv/scale.h"
 
-#if CONFIG_OS_SUPPORT
-#if defined(_MSC_VER)
-#include <io.h>
-#define snprintf _snprintf
-#define isatty   _isatty
-#define fileno   _fileno
-#else
-#include <unistd.h>
-#endif
-#endif
-
-#ifndef PATH_MAX
-#define PATH_MAX 256
-#endif
-
 static const char *exec_name;
 
-#define VP8_FOURCC (0x00385056)
-#define VP9_FOURCC (0x00395056)
 static const struct {
   char const *name;
   const vpx_codec_iface_t *(*iface)(void);
@@ -59,10 +42,10 @@ static const struct {
   unsigned int             fourcc_mask;
 } ifaces[] = {
 #if CONFIG_VP8_DECODER
-  {"vp8",  vpx_codec_vp8_dx,   VP8_FOURCC, 0x00FFFFFF},
+  {"vp8",  vpx_codec_vp8_dx,   VP8_FOURCC_MASK, 0x00FFFFFF},
 #endif
 #if CONFIG_VP9_DECODER
-  {"vp9",  vpx_codec_vp9_dx,   VP9_FOURCC, 0x00FFFFFF},
+  {"vp9",  vpx_codec_vp9_dx,   VP9_FOURCC_MASK, 0x00FFFFFF},
 #endif
 };
 
@@ -143,7 +126,7 @@ static const arg_def_t *vp8_pp_args[] = {
 };
 #endif
 
-static void usage_exit() {
+void usage_exit() {
   int i;
 
   fprintf(stderr, "Usage: %s <options> filename\n\n"
@@ -176,14 +159,6 @@ static void usage_exit() {
             vpx_codec_iface_name(ifaces[i].iface()));
 
   exit(EXIT_FAILURE);
-}
-
-void die(const char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  fprintf(stderr, "\n");
-  usage_exit();
 }
 
 static unsigned int mem_get_le16(const void *vmem) {
@@ -501,6 +476,15 @@ webm_guess_framerate(struct input_ctx *input,
   unsigned int i;
   uint64_t     tstamp = 0;
 
+  /* Check to see if we can seek before we parse any data. */
+  if (nestegg_track_seek(input->nestegg_ctx, input->video_track, 0)) {
+    fprintf(stderr,
+            "WARNING: Failed to guess framerate (no Cues), set to 30fps.\n");
+    *fps_num = 30;
+    *fps_den = 1;
+    return 0;
+  }
+
   /* Guess the framerate. Read up to 1 second, or 50 video packets,
    * whichever comes first.
    */
@@ -566,9 +550,9 @@ file_is_webm(struct input_ctx *input,
 
   codec_id = nestegg_track_codec_id(input->nestegg_ctx, i);
   if (codec_id == NESTEGG_CODEC_VP8) {
-    *fourcc = VP8_FOURCC;
+    *fourcc = VP8_FOURCC_MASK;
   } else if (codec_id == NESTEGG_CODEC_VP9) {
-    *fourcc = VP9_FOURCC;
+    *fourcc = VP9_FOURCC_MASK;
   } else {
     fprintf(stderr, "Not VPx video, quitting.\n");
     exit(1);

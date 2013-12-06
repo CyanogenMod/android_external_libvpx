@@ -15,6 +15,8 @@ API_SRCS-$(CONFIG_VP8_ENCODER) += vp8.h
 API_SRCS-$(CONFIG_VP8_ENCODER) += vp8cx.h
 API_DOC_SRCS-$(CONFIG_VP8_ENCODER) += vp8.h
 API_DOC_SRCS-$(CONFIG_VP8_ENCODER) += vp8cx.h
+API_SRCS-$(CONFIG_VP9_ENCODER) += src/svc_encodeframe.c
+API_SRCS-$(CONFIG_VP9_ENCODER) += svc_context.h
 
 API_SRCS-$(CONFIG_VP8_DECODER) += vp8.h
 API_SRCS-$(CONFIG_VP8_DECODER) += vp8dx.h
@@ -35,7 +37,5 @@ API_SRCS-yes                += src/vpx_codec.c
 API_SRCS-yes                += src/vpx_image.c
 API_SRCS-yes                += vpx_codec.h
 API_SRCS-yes                += vpx_codec.mk
-API_SRCS-yes                += vpx_codec_impl_bottom.h
-API_SRCS-yes                += vpx_codec_impl_top.h
 API_SRCS-yes                += vpx_image.h
 API_SRCS-$(BUILD_LIBVPX)    += vpx_integer.h

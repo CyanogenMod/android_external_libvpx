@@ -25,8 +25,9 @@ static void tree2tok(struct vp9_token *const p, vp9_tree t,
     if (j <= 0) {
       p[-j].value = v;
       p[-j].len = l;
-    } else
+    } else {
       tree2tok(p, t, j, v, l);
+    }
   } while (++v & 1);
 }
 
@@ -34,42 +35,30 @@ void vp9_tokens_from_tree(struct vp9_token *p, vp9_tree t) {
   tree2tok(p, t, 0, 0, 0);
 }
 
-void vp9_tokens_from_tree_offset(struct vp9_token *p, vp9_tree t,
-                                 int offset) {
-  tree2tok(p - offset, t, 0, 0, 0);
-}
-
-static unsigned int convert_distribution(unsigned int i,
-                                         vp9_tree tree,
-                                         vp9_prob probs[],
+static unsigned int convert_distribution(unsigned int i, vp9_tree tree,
                                          unsigned int branch_ct[][2],
-                                         const unsigned int num_events[],
-                                         unsigned int tok0_offset) {
+                                         const unsigned int num_events[]) {
   unsigned int left, right;
 
-  if (tree[i] <= 0) {
-    left = num_events[-tree[i] - tok0_offset];
-  } else {
-    left = convert_distribution(tree[i], tree, probs, branch_ct,
-                                num_events, tok0_offset);
-  }
-  if (tree[i + 1] <= 0)
-    right = num_events[-tree[i + 1] - tok0_offset];
+  if (tree[i] <= 0)
+    left = num_events[-tree[i]];
   else
-    right = convert_distribution(tree[i + 1], tree, probs, branch_ct,
-                                 num_events, tok0_offset);
+    left = convert_distribution(tree[i], tree, branch_ct, num_events);
 
-  probs[i>>1] = get_binary_prob(left, right);
-  branch_ct[i>>1][0] = left;
-  branch_ct[i>>1][1] = right;
+  if (tree[i + 1] <= 0)
+    right = num_events[-tree[i + 1]];
+  else
+    right = convert_distribution(tree[i + 1], tree, branch_ct, num_events);
+
+  branch_ct[i >> 1][0] = left;
+  branch_ct[i >> 1][1] = right;
   return left + right;
 }
 
-void vp9_tree_probs_from_distribution(
-  vp9_tree tree,
-  vp9_prob probs          [ /* n-1 */ ],
-  unsigned int branch_ct       [ /* n-1 */ ] [2],
-  const unsigned int num_events[ /* n */ ],
-  unsigned int tok0_offset) {
-  convert_distribution(0, tree, probs, branch_ct, num_events, tok0_offset);
+void vp9_tree_probs_from_distribution(vp9_tree tree,
+                                      unsigned int branch_ct[/* n-1 */][2],
+                                      const unsigned int num_events[/* n */]) {
+  convert_distribution(0, tree, branch_ct, num_events);
 }
+
+

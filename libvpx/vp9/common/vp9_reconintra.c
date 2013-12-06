@@ -13,7 +13,7 @@
 #include "vpx_mem/vpx_mem.h"
 #include "vpx_ports/vpx_once.h"
 
-#include "vp9_rtcd.h"
+#include "./vp9_rtcd.h"
 
 #include "vp9/common/vp9_reconintra.h"
 #include "vp9/common/vp9_onyxc_int.h"
@@ -369,7 +369,7 @@ static void build_intra_predictors(const uint8_t *ref, int ref_stride,
   }
 }
 
-void vp9_predict_intra_block(MACROBLOCKD *xd, int block_idx, int bwl_in,
+void vp9_predict_intra_block(const MACROBLOCKD *xd, int block_idx, int bwl_in,
                             TX_SIZE tx_size, int mode,
                             const uint8_t *ref, int ref_stride,
                             uint8_t *dst, int dst_stride) {

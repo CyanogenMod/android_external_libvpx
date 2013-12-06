@@ -234,6 +234,8 @@ ARCH_EXT_LIST="
     sse3
     ssse3
     sse4_1
+    avx
+    avx2
 
     altivec
 "
@@ -247,7 +249,6 @@ HAVE_LIST="
     unistd_h
 "
 EXPERIMENT_LIST="
-    oneshotq
     multiple_arf
     non420
     alpha
@@ -422,7 +423,7 @@ process_targets() {
     fi
 
     # The write_common_config (config.mk) logic is deferred until after the
-    # recursive calls to configure complete, becuase we want our universal
+    # recursive calls to configure complete, because we want our universal
     # targets to be executed last.
     write_common_config_targets
     enabled universal && echo "FAT_ARCHS=${fat_bin_archs}" >> config.mk
@@ -608,7 +609,12 @@ process_toolchain() {
         check_add_cflags -Wuninitialized
         check_add_cflags -Wunused-variable
         case ${CC} in
-          *clang*) ;;
+          *clang*)
+              # libvpx and/or clang have issues with aliasing:
+              # https://code.google.com/p/webm/issues/detail?id=603
+              # work around them until they are fixed
+              check_add_cflags -fno-strict-aliasing
+          ;;
           *) check_add_cflags -Wunused-but-set-variable ;;
         esac
         enabled extra_warnings || check_add_cflags -Wno-unused-function
