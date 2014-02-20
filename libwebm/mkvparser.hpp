@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The WebM project authors. All Rights Reserved.
+// Copyright (c) 2012 The WebM project authors. All Rights Reserved.
 //
 // Use of this source code is governed by a BSD-style license
 // that can be found in the LICENSE file in the root of the source
@@ -83,10 +83,10 @@ public:
     const long long m_start;
     const long long m_size;
 
-    Block(long long start, long long size);
+    Block(long long start, long long size, long long discard_padding);
     ~Block();
 
-    long Parse(IMkvReader*);
+    long Parse(const Cluster*);
 
     long long GetTrackNumber() const;
     long long GetTimeCode(const Cluster*) const;  //absolute, but not scaled
@@ -110,6 +110,8 @@ public:
 
     const Frame& GetFrame(int frame_index) const;
 
+    long long GetDiscardPadding() const;
+
 private:
     long long m_track;   //Track::Number()
     short m_timecode;  //relative to cluster
@@ -118,6 +120,8 @@ private:
     Frame* m_frames;
     int m_frame_count;
 
+protected:
+    const long long m_discard_padding;
 };
 
 
@@ -178,7 +182,8 @@ public:
         long long block_size,  //size of block's payload
         long long prev,
         long long next,
-        long long duration);
+        long long duration,
+        long long discard_padding);
 
     long Parse();
 
@@ -187,14 +192,13 @@ public:
 
     long long GetPrevTimeCode() const;  //relative to block's time
     long long GetNextTimeCode() const;  //as above
-    long long GetDuration() const;
+    long long GetDurationTimeCode() const;
 
 private:
     Block m_block;
     const long long m_prev;
     const long long m_next;
     const long long m_duration;
-
 };
 
 ///////////////////////////////////////////////////////////////
@@ -203,6 +207,10 @@ private:
 // compressed with zlib or header stripping.
 class ContentEncoding {
 public:
+    enum {
+      kCTR = 1
+    };
+
     ContentEncoding();
     ~ContentEncoding();
 
@@ -213,6 +221,15 @@ public:
 
         unsigned long long algo;
         unsigned char* settings;
+        long long settings_len;
+    };
+
+    // ContentEncAESSettings element names
+    struct ContentEncAESSettings {
+      ContentEncAESSettings() : cipher_mode(kCTR) {}
+      ~ContentEncAESSettings() {}
+
+      unsigned long long cipher_mode;
     };
 
     // ContentEncryption element names
@@ -229,6 +246,8 @@ public:
         long long sig_key_id_len;
         unsigned long long sig_algo;
         unsigned long long sig_hash_algo;
+
+        ContentEncAESSettings aes_settings;
     };
 
     // Returns ContentCompression represented by |idx|. Returns NULL if |idx|
@@ -239,6 +258,15 @@ public:
     // element.
     unsigned long GetCompressionCount() const;
 
+    // Parses the ContentCompression element from |pReader|. |start| is the
+    // starting offset of the ContentCompression payload. |size| is the size in
+    // bytes of the ContentCompression payload. |compression| is where the parsed
+    // values will be stored.
+    long ParseCompressionEntry(long long start,
+                               long long size,
+                               IMkvReader* pReader,
+                               ContentCompression* compression);
+
     // Returns ContentEncryption represented by |idx|. Returns NULL if |idx|
     // is out of bounds.
     const ContentEncryption* GetEncryptionByIndex(unsigned long idx) const;
@@ -247,21 +275,30 @@ public:
     // element.
     unsigned long GetEncryptionCount() const;
 
+    // Parses the ContentEncAESSettings element from |pReader|. |start| is the
+    // starting offset of the ContentEncAESSettings payload. |size| is the
+    // size in bytes of the ContentEncAESSettings payload. |encryption| is
+    // where the parsed values will be stored.
+    long ParseContentEncAESSettingsEntry(long long start,
+                                         long long size,
+                                         IMkvReader* pReader,
+                                         ContentEncAESSettings* aes);
+
     // Parses the ContentEncoding element from |pReader|. |start| is the
     // starting offset of the ContentEncoding payload. |size| is the size in
     // bytes of the ContentEncoding payload. Returns true on success.
-    bool ParseContentEncodingEntry(long long start,
+    long ParseContentEncodingEntry(long long start,
                                    long long size,
-                                   IMkvReader* const pReader);
+                                   IMkvReader* pReader);
 
     // Parses the ContentEncryption element from |pReader|. |start| is the
     // starting offset of the ContentEncryption payload. |size| is the size in
     // bytes of the ContentEncryption payload. |encryption| is where the parsed
     // values will be stored.
-    void ParseEncryptionEntry(long long start,
+    long ParseEncryptionEntry(long long start,
                               long long size,
-                              IMkvReader* const pReader,
-                              ContentEncryption* const encryption);
+                              IMkvReader* pReader,
+                              ContentEncryption* encryption);
 
     unsigned long long encoding_order() const { return encoding_order_; }
     unsigned long long encoding_scope() const { return encoding_scope_; }
@@ -292,7 +329,20 @@ class Track
     Track& operator=(const Track&);
 
 public:
-    enum Type { kVideo = 1, kAudio = 2 };
+    class Info;
+    static long Create(
+        Segment*,
+        const Info&,
+        long long element_start,
+        long long element_size,
+        Track*&);
+
+    enum Type {
+        kVideo = 1,
+        kAudio = 2,
+        kSubtitle = 0x11,
+        kMetadata = 0x21
+     };
 
     Segment* const m_pSegment;
     const long long m_element_start;
@@ -303,10 +353,14 @@ public:
     long GetNumber() const;
     unsigned long long GetUid() const;
     const char* GetNameAsUTF8() const;
+    const char* GetLanguage() const;
     const char* GetCodecNameAsUTF8() const;
     const char* GetCodecId() const;
     const unsigned char* GetCodecPrivate(size_t&) const;
     bool GetLacing() const;
+    unsigned long long GetDefaultDuration() const;
+    unsigned long long GetCodecDelay() const;
+    unsigned long long GetSeekPreRoll() const;
 
     const BlockEntry* GetEOS() const;
 
@@ -323,33 +377,36 @@ public:
         ~Info();
         int Copy(Info&) const;
         void Clear();
-    private:
-        Info(const Info&);
-        Info& operator=(const Info&);
-    public:
         long type;
         long number;
         unsigned long long uid;
+        unsigned long long defaultDuration;
+        unsigned long long codecDelay;
+        unsigned long long seekPreRoll;
         char* nameAsUTF8;
+        char* language;
         char* codecId;
         char* codecNameAsUTF8;
         unsigned char* codecPrivate;
         size_t codecPrivateSize;
         bool lacing;
         Settings settings;
+
     private:
+        Info(const Info&);
+        Info& operator=(const Info&);
         int CopyStr(char* Info::*str, Info&) const;
     };
 
     long GetFirst(const BlockEntry*&) const;
     long GetNext(const BlockEntry* pCurr, const BlockEntry*& pNext) const;
-    virtual bool VetEntry(const BlockEntry*) const = 0;
-    virtual long Seek(long long time_ns, const BlockEntry*&) const = 0;
+    virtual bool VetEntry(const BlockEntry*) const;
+    virtual long Seek(long long time_ns, const BlockEntry*&) const;
 
     const ContentEncoding* GetContentEncodingByIndex(unsigned long idx) const;
     unsigned long GetContentEncodingCount() const;
 
-    void ParseContentEncodingsEntry(long long start, long long size);
+    long ParseContentEncodingsEntry(long long start, long long size);
 
 protected:
     Track(
@@ -429,8 +486,6 @@ public:
     double GetSamplingRate() const;
     long long GetChannels() const;
     long long GetBitDepth() const;
-    bool VetEntry(const BlockEntry*) const;
-    long Seek(long long time_ns, const BlockEntry*&) const;
 
 private:
     double m_rate;
@@ -477,6 +532,131 @@ private:
         long long element_start,
         long long element_size,
         Track*&) const;
+
+};
+
+
+class Chapters
+{
+    Chapters(const Chapters&);
+    Chapters& operator=(const Chapters&);
+
+public:
+    Segment* const m_pSegment;
+    const long long m_start;
+    const long long m_size;
+    const long long m_element_start;
+    const long long m_element_size;
+
+    Chapters(
+        Segment*,
+        long long payload_start,
+        long long payload_size,
+        long long element_start,
+        long long element_size);
+
+    ~Chapters();
+
+    long Parse();
+
+    class Atom;
+    class Edition;
+
+    class Display
+    {
+        friend class Atom;
+        Display();
+        Display(const Display&);
+        ~Display();
+        Display& operator=(const Display&);
+    public:
+        const char* GetString() const;
+        const char* GetLanguage() const;
+        const char* GetCountry() const;
+    private:
+        void Init();
+        void ShallowCopy(Display&) const;
+        void Clear();
+        long Parse(IMkvReader*, long long pos, long long size);
+
+        char* m_string;
+        char* m_language;
+        char* m_country;
+    };
+
+    class Atom
+    {
+        friend class Edition;
+        Atom();
+        Atom(const Atom&);
+        ~Atom();
+        Atom& operator=(const Atom&);
+    public:
+        unsigned long long GetUID() const;
+        const char* GetStringUID() const;
+
+        long long GetStartTimecode() const;
+        long long GetStopTimecode() const;
+
+        long long GetStartTime(const Chapters*) const;
+        long long GetStopTime(const Chapters*) const;
+
+        int GetDisplayCount() const;
+        const Display* GetDisplay(int index) const;
+    private:
+        void Init();
+        void ShallowCopy(Atom&) const;
+        void Clear();
+        long Parse(IMkvReader*, long long pos, long long size);
+        static long long GetTime(const Chapters*, long long timecode);
+
+        long ParseDisplay(IMkvReader*, long long pos, long long size);
+        bool ExpandDisplaysArray();
+
+        char* m_string_uid;
+        unsigned long long m_uid;
+        long long m_start_timecode;
+        long long m_stop_timecode;
+
+        Display* m_displays;
+        int m_displays_size;
+        int m_displays_count;
+    };
+
+    class Edition
+    {
+        friend class Chapters;
+        Edition();
+        Edition(const Edition&);
+        ~Edition();
+        Edition& operator=(const Edition&);
+    public:
+        int GetAtomCount() const;
+        const Atom* GetAtom(int index) const;
+    private:
+        void Init();
+        void ShallowCopy(Edition&) const;
+        void Clear();
+        long Parse(IMkvReader*, long long pos, long long size);
+
+        long ParseAtom(IMkvReader*, long long pos, long long size);
+        bool ExpandAtomsArray();
+
+        Atom* m_atoms;
+        int m_atoms_size;
+        int m_atoms_count;
+    };
+
+    int GetEditionCount() const;
+    const Edition* GetEdition(int index) const;
+
+private:
+    long ParseEdition(long long pos, long long size);
+    bool ExpandEditionsArray();
+
+    Edition* m_editions;
+    int m_editions_size;
+    int m_editions_count;
 
 };
 
@@ -771,8 +951,10 @@ private:
     long ParseSimpleBlock(long long, long long&, long&);
     long ParseBlockGroup(long long, long long&, long&);
 
-    long CreateBlock(long long id, long long pos, long long size);
-    long CreateBlockGroup(long long, long long);
+    long CreateBlock(long long id, long long pos, long long size,
+                     long long discard_padding);
+    long CreateBlockGroup(long long start_offset, long long size,
+                          long long discard_padding);
     long CreateSimpleBlock(long long, long long);
 
 };
@@ -781,8 +963,8 @@ private:
 class Segment
 {
     friend class Cues;
+    friend class Track;
     friend class VideoTrack;
-    friend class AudioTrack;
 
     Segment(const Segment&);
     Segment& operator=(const Segment&);
@@ -833,6 +1015,7 @@ public:
     const Tracks* GetTracks() const;
     const SegmentInfo* GetInfo() const;
     const Cues* GetCues() const;
+    const Chapters* GetChapters() const;
 
     long long GetDuration() const;
 
@@ -860,6 +1043,7 @@ private:
     SegmentInfo* m_pInfo;
     Tracks* m_pTracks;
     Cues* m_pCues;
+    Chapters* m_pChapters;
     Cluster** m_clusters;
     long m_clusterCount;         //number of entries for which m_index >= 0
     long m_clusterPreloadCount;  //number of entries for which m_index < 0
