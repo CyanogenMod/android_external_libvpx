@@ -4,7 +4,6 @@ $ rm -rf libvpx
 $ git clone http://git.chromium.org/webm/libvpx.git
 $ cd libvpx
 $ git checkout <branch>
-$ rm -rf .git*
 
 Enter the subdirectory for the relevant platform. For example, armv7-neon for
 armv7 targets with neon extensions. We disable many features. Some for
@@ -47,3 +46,7 @@ vpx_scale_rtcd.h
 vp8_rtcd.h
 vp9_rtcd.h
 vpx_version.h
+
+Remove the .git* from external/libvpx/libvpx:
+$ cd external/libvpx/libvpx
+$ rm -rf .git*

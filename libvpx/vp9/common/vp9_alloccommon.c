@@ -15,7 +15,6 @@
 #include "vp9/common/vp9_blockd.h"
 #include "vp9/common/vp9_entropymode.h"
 #include "vp9/common/vp9_entropymv.h"
-#include "vp9/common/vp9_findnearmv.h"
 #include "vp9/common/vp9_onyxc_int.h"
 #include "vp9/common/vp9_systemdependent.h"
 
@@ -34,8 +33,15 @@ void vp9_update_mode_info_border(VP9_COMMON *cm, MODE_INFO *mi) {
 void vp9_free_frame_buffers(VP9_COMMON *cm) {
   int i;
 
-  for (i = 0; i < NUM_YV12_BUFFERS; i++)
-    vp9_free_frame_buffer(&cm->yv12_fb[i]);
+  for (i = 0; i < FRAME_BUFFERS; i++) {
+    vp9_free_frame_buffer(&cm->frame_bufs[i].buf);
+
+    if (cm->frame_bufs[i].ref_count > 0 &&
+        cm->frame_bufs[i].raw_frame_buffer.data != NULL) {
+      cm->release_fb_cb(cm->cb_priv, &cm->frame_bufs[i].raw_frame_buffer);
+      cm->frame_bufs[i].ref_count = 0;
+    }
+  }
 
   vp9_free_frame_buffer(&cm->post_proc_buffer);
 
@@ -75,7 +81,6 @@ static void setup_mi(VP9_COMMON *cm) {
              cm->mode_info_stride * (cm->mi_rows + 1) *
              sizeof(*cm->mi_grid_base));
 
-  vp9_update_mode_info_border(cm, cm->mip);
   vp9_update_mode_info_border(cm, cm->prev_mip);
 }
 
@@ -87,7 +92,7 @@ int vp9_resize_frame_buffers(VP9_COMMON *cm, int width, int height) {
   int mi_size;
 
   if (vp9_realloc_frame_buffer(&cm->post_proc_buffer, width, height, ss_x, ss_y,
-                             VP9BORDERINPIXELS) < 0)
+                               VP9_DEC_BORDER_IN_PIXELS, NULL, NULL, NULL) < 0)
     goto fail;
 
   set_mb_mi(cm, aligned_width, aligned_height);
@@ -141,26 +146,23 @@ int vp9_alloc_frame_buffers(VP9_COMMON *cm, int width, int height) {
 
   vp9_free_frame_buffers(cm);
 
-  for (i = 0; i < NUM_YV12_BUFFERS; i++) {
-    cm->fb_idx_ref_cnt[i] = 0;
-    if (vp9_alloc_frame_buffer(&cm->yv12_fb[i], width, height, ss_x, ss_y,
-                               VP9BORDERINPIXELS) < 0)
+  for (i = 0; i < FRAME_BUFFERS; i++) {
+    cm->frame_bufs[i].ref_count = 0;
+    if (vp9_alloc_frame_buffer(&cm->frame_bufs[i].buf, width, height,
+                               ss_x, ss_y, VP9_ENC_BORDER_IN_PIXELS) < 0)
       goto fail;
   }
 
-  cm->new_fb_idx = NUM_YV12_BUFFERS - 1;
-  cm->fb_idx_ref_cnt[cm->new_fb_idx] = 1;
+  cm->new_fb_idx = FRAME_BUFFERS - 1;
+  cm->frame_bufs[cm->new_fb_idx].ref_count = 1;
 
-  for (i = 0; i < ALLOWED_REFS_PER_FRAME; i++)
-    cm->active_ref_idx[i] = i;
-
-  for (i = 0; i < NUM_REF_FRAMES; i++) {
+  for (i = 0; i < REF_FRAMES; i++) {
     cm->ref_frame_map[i] = i;
-    cm->fb_idx_ref_cnt[i] = 1;
+    cm->frame_bufs[i].ref_count = 1;
   }
 
   if (vp9_alloc_frame_buffer(&cm->post_proc_buffer, width, height, ss_x, ss_y,
-                             VP9BORDERINPIXELS) < 0)
+                             VP9_ENC_BORDER_IN_PIXELS) < 0)
     goto fail;
 
   set_mb_mi(cm, aligned_width, aligned_height);
@@ -198,22 +200,13 @@ int vp9_alloc_frame_buffers(VP9_COMMON *cm, int width, int height) {
   return 1;
 }
 
-void vp9_create_common(VP9_COMMON *cm) {
-  vp9_machine_specific_config(cm);
-
-  cm->tx_mode = ONLY_4X4;
-  cm->comp_pred_mode = HYBRID_PREDICTION;
-}
-
 void vp9_remove_common(VP9_COMMON *cm) {
   vp9_free_frame_buffers(cm);
+  vp9_free_internal_frame_buffers(&cm->int_frame_buffers);
 }
 
 void vp9_initialize_common() {
   vp9_init_neighbors();
-  vp9_coef_tree_initialize();
-  vp9_entropy_mode_init();
-  vp9_entropy_mv_init();
 }
 
 void vp9_update_frame_size(VP9_COMMON *cm) {

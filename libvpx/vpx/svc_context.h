@@ -16,8 +16,8 @@
 #ifndef VPX_SVC_CONTEXT_H_
 #define VPX_SVC_CONTEXT_H_
 
-#include "vpx/vp8cx.h"
-#include "vpx/vpx_encoder.h"
+#include "./vp8cx.h"
+#include "./vpx_encoder.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,7 +39,6 @@ typedef enum SVC_LOG_LEVEL {
 typedef struct {
   // public interface to svc_command options
   int spatial_layers;               // number of layers
-  int first_frame_full_size;        // set to one to force first frame full size
   SVC_ENCODING_MODE encoding_mode;  // svc encoding strategy
   SVC_LOG_LEVEL log_level;  // amount of information to display
   int log_print;  // when set, printf log messages instead of returning the
@@ -65,7 +64,8 @@ vpx_codec_err_t vpx_svc_set_options(SvcContext *svc_ctx, const char *options);
  * e.g., "60,53,39,33,27"
  */
 vpx_codec_err_t vpx_svc_set_quantizers(SvcContext *svc_ctx,
-                                       const char *quantizer_values);
+                                       const char *quantizer_values,
+                                       const int is_for_keyframe);
 
 /**
  * Set SVC scale factors
@@ -114,6 +114,17 @@ size_t vpx_svc_get_frame_size(const SvcContext *svc_ctx);
 void *vpx_svc_get_buffer(const SvcContext *svc_ctx);
 
 /**
+ * return size of two pass rate control stats data to be returned by
+ * vpx_svc_get_rc_stats_buffer
+ */
+size_t vpx_svc_get_rc_stats_buffer_size(const SvcContext *svc_ctx);
+
+/**
+ * return buffer two pass of rate control stats data
+ */
+char *vpx_svc_get_rc_stats_buffer(const SvcContext *svc_ctx);
+
+/**
  * return spatial resolution of the specified layer
  */
 vpx_codec_err_t vpx_svc_get_layer_resolution(const SvcContext *svc_ctx,
@@ -139,4 +150,4 @@ void vpx_svc_set_keyframe(SvcContext *svc_ctx);
 }  // extern "C"
 #endif
 
-#endif  /* VPX_SVC_CONTEXT_H_ */
+#endif  // VPX_SVC_CONTEXT_H_

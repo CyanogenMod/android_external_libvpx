@@ -8,34 +8,26 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "./vpxenc.h"
 #include "./vpx_config.h"
 
-#if defined(_WIN32) || defined(__OS2__) || !CONFIG_OS_SUPPORT
-#define USE_POSIX_MMAP 0
-#else
-#define USE_POSIX_MMAP 1
-#endif
-
+#include <assert.h>
+#include <limits.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
-#include <limits.h>
-#include <assert.h>
+
 #include "vpx/vpx_encoder.h"
 #if CONFIG_DECODERS
 #include "vpx/vpx_decoder.h"
 #endif
-#if USE_POSIX_MMAP
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <unistd.h>
-#endif
 
 #include "third_party/libyuv/include/libyuv/scale.h"
+#include "./args.h"
+#include "./ivfenc.h"
+#include "./tools_common.h"
 
 #if CONFIG_VP8_ENCODER || CONFIG_VP9_ENCODER
 #include "vpx/vp8cx.h"
@@ -44,10 +36,12 @@
 #include "vpx/vp8dx.h"
 #endif
 
-#include "./tools_common.h"
+#include "vpx/vpx_integer.h"
 #include "vpx_ports/mem_ops.h"
 #include "vpx_ports/vpx_timer.h"
+#include "./rate_hist.h"
 #include "./vpxstats.h"
+#include "./warnings.h"
 #include "./webmenc.h"
 #include "./y4minput.h"
 
@@ -66,24 +60,6 @@ static size_t wrap_fwrite(const void *ptr, size_t size, size_t nmemb,
 
 
 static const char *exec_name;
-
-static const struct codec_item {
-  char const              *name;
-  const vpx_codec_iface_t *(*iface)(void);
-  const vpx_codec_iface_t *(*dx_iface)(void);
-  unsigned int             fourcc;
-} codecs[] = {
-#if CONFIG_VP8_ENCODER && CONFIG_VP8_DECODER
-  {"vp8", &vpx_codec_vp8_cx, &vpx_codec_vp8_dx, VP8_FOURCC},
-#elif CONFIG_VP8_ENCODER && !CONFIG_VP8_DECODER
-  {"vp8", &vpx_codec_vp8_cx, NULL, VP8_FOURCC},
-#endif
-#if CONFIG_VP9_ENCODER && CONFIG_VP9_DECODER
-  {"vp9", &vpx_codec_vp9_cx, &vpx_codec_vp9_dx, VP9_FOURCC},
-#elif CONFIG_VP9_ENCODER && !CONFIG_VP9_DECODER
-  {"vp9", &vpx_codec_vp9_cx, NULL, VP9_FOURCC},
-#endif
-};
 
 static void warn_or_exit_on_errorv(vpx_codec_ctx_t *ctx, int fatal,
                                    const char *s, va_list ap) {
@@ -118,199 +94,34 @@ static void warn_or_exit_on_error(vpx_codec_ctx_t *ctx, int fatal,
   va_end(ap);
 }
 
-enum video_file_type {
-  FILE_TYPE_RAW,
-  FILE_TYPE_IVF,
-  FILE_TYPE_Y4M
-};
-
-struct detect_buffer {
-  char buf[4];
-  size_t buf_read;
-  size_t position;
-};
-
-
-struct input_state {
-  char                 *fn;
-  FILE                 *file;
-  off_t                 length;
-  y4m_input             y4m;
-  struct detect_buffer  detect;
-  enum video_file_type  file_type;
-  unsigned int          w;
-  unsigned int          h;
-  struct vpx_rational   framerate;
-  int                   use_i420;
-  int                   only_i420;
-};
-
-#define IVF_FRAME_HDR_SZ (4+8) /* 4 byte size + 8 byte timestamp */
-static int read_frame(struct input_state *input, vpx_image_t *img) {
-  FILE *f = input->file;
-  enum video_file_type file_type = input->file_type;
-  y4m_input *y4m = &input->y4m;
-  struct detect_buffer *detect = &input->detect;
-  int plane = 0;
+int read_frame(struct VpxInputContext *input_ctx, vpx_image_t *img) {
+  FILE *f = input_ctx->file;
+  y4m_input *y4m = &input_ctx->y4m;
   int shortread = 0;
 
-  if (file_type == FILE_TYPE_Y4M) {
+  if (input_ctx->file_type == FILE_TYPE_Y4M) {
     if (y4m_input_fetch_frame(y4m, f, img) < 1)
       return 0;
   } else {
-    if (file_type == FILE_TYPE_IVF) {
-      char junk[IVF_FRAME_HDR_SZ];
-
-      /* Skip the frame header. We know how big the frame should be. See
-       * write_ivf_frame_header() for documentation on the frame header
-       * layout.
-       */
-      (void) fread(junk, 1, IVF_FRAME_HDR_SZ, f);
-    }
-
-    for (plane = 0; plane < 3; plane++) {
-      unsigned char *ptr;
-      int w = (plane ? (1 + img->d_w) / 2 : img->d_w);
-      int h = (plane ? (1 + img->d_h) / 2 : img->d_h);
-      int r;
-
-      /* Determine the correct plane based on the image format. The for-loop
-       * always counts in Y,U,V order, but this may not match the order of
-       * the data on disk.
-       */
-      switch (plane) {
-        case 1:
-          ptr = img->planes[img->fmt == VPX_IMG_FMT_YV12 ? VPX_PLANE_V : VPX_PLANE_U];
-          break;
-        case 2:
-          ptr = img->planes[img->fmt == VPX_IMG_FMT_YV12 ? VPX_PLANE_U : VPX_PLANE_V];
-          break;
-        default:
-          ptr = img->planes[plane];
-      }
-
-      for (r = 0; r < h; r++) {
-        size_t needed = w;
-        size_t buf_position = 0;
-        const size_t left = detect->buf_read - detect->position;
-        if (left > 0) {
-          const size_t more = (left < needed) ? left : needed;
-          memcpy(ptr, detect->buf + detect->position, more);
-          buf_position = more;
-          needed -= more;
-          detect->position += more;
-        }
-        if (needed > 0) {
-          shortread |= (fread(ptr + buf_position, 1, needed, f) < needed);
-        }
-
-        ptr += img->stride[plane];
-      }
-    }
+    shortread = read_yuv_frame(input_ctx, img);
   }
 
   return !shortread;
 }
 
-
-unsigned int file_is_y4m(FILE      *infile,
-                         y4m_input *y4m,
-                         char       detect[4]) {
+int file_is_y4m(const char detect[4]) {
   if (memcmp(detect, "YUV4", 4) == 0) {
     return 1;
   }
   return 0;
 }
 
-#define IVF_FILE_HDR_SZ (32)
-unsigned int file_is_ivf(struct input_state *input,
-                         unsigned int *fourcc) {
-  char raw_hdr[IVF_FILE_HDR_SZ];
-  int is_ivf = 0;
-  FILE *infile = input->file;
-  unsigned int *width = &input->w;
-  unsigned int *height = &input->h;
-  struct detect_buffer *detect = &input->detect;
-
-  if (memcmp(detect->buf, "DKIF", 4) != 0)
-    return 0;
-
-  /* See write_ivf_file_header() for more documentation on the file header
-   * layout.
-   */
-  if (fread(raw_hdr + 4, 1, IVF_FILE_HDR_SZ - 4, infile)
-      == IVF_FILE_HDR_SZ - 4) {
-    {
-      is_ivf = 1;
-
-      if (mem_get_le16(raw_hdr + 4) != 0)
-        warn("Unrecognized IVF version! This file may not decode "
-             "properly.");
-
-      *fourcc = mem_get_le32(raw_hdr + 8);
-    }
+int fourcc_is_ivf(const char detect[4]) {
+  if (memcmp(detect, "DKIF", 4) == 0) {
+    return 1;
   }
-
-  if (is_ivf) {
-    *width = mem_get_le16(raw_hdr + 12);
-    *height = mem_get_le16(raw_hdr + 14);
-    detect->position = 4;
-  }
-
-  return is_ivf;
+  return 0;
 }
-
-
-static void write_ivf_file_header(FILE *outfile,
-                                  const vpx_codec_enc_cfg_t *cfg,
-                                  unsigned int fourcc,
-                                  int frame_cnt) {
-  char header[32];
-
-  if (cfg->g_pass != VPX_RC_ONE_PASS && cfg->g_pass != VPX_RC_LAST_PASS)
-    return;
-
-  header[0] = 'D';
-  header[1] = 'K';
-  header[2] = 'I';
-  header[3] = 'F';
-  mem_put_le16(header + 4,  0);                 /* version */
-  mem_put_le16(header + 6,  32);                /* headersize */
-  mem_put_le32(header + 8,  fourcc);            /* headersize */
-  mem_put_le16(header + 12, cfg->g_w);          /* width */
-  mem_put_le16(header + 14, cfg->g_h);          /* height */
-  mem_put_le32(header + 16, cfg->g_timebase.den); /* rate */
-  mem_put_le32(header + 20, cfg->g_timebase.num); /* scale */
-  mem_put_le32(header + 24, frame_cnt);         /* length */
-  mem_put_le32(header + 28, 0);                 /* unused */
-
-  (void) fwrite(header, 1, 32, outfile);
-}
-
-
-static void write_ivf_frame_header(FILE *outfile,
-                                   const vpx_codec_cx_pkt_t *pkt) {
-  char             header[12];
-  vpx_codec_pts_t  pts;
-
-  if (pkt->kind != VPX_CODEC_CX_FRAME_PKT)
-    return;
-
-  pts = pkt->data.frame.pts;
-  mem_put_le32(header, (int)pkt->data.frame.sz);
-  mem_put_le32(header + 4, pts & 0xFFFFFFFF);
-  mem_put_le32(header + 8, pts >> 32);
-
-  (void) fwrite(header, 1, 12, outfile);
-}
-
-static void write_ivf_frame_size(FILE *outfile, size_t size) {
-  char             header[4];
-  mem_put_le32(header, (int)size);
-  (void) fwrite(header, 1, 4, outfile);
-}
-
-
 
 /* Murmur hash derived from public domain reference implementation at
  *   http:// sites.google.com/site/murmurhash/
@@ -360,7 +171,6 @@ static unsigned int murmur(const void *key, int len, unsigned int seed) {
 }
 
 
-#include "args.h"
 static const arg_def_t debugmode = ARG_DEF("D", "debug", 0,
                                            "Debug mode (makes output deterministic)");
 static const arg_def_t outputfile = ARG_DEF("o", "output", 1,
@@ -395,11 +205,7 @@ static const arg_def_t verbosearg       = ARG_DEF("v", "verbose", 0,
                                                   "Show encoder parameters");
 static const arg_def_t psnrarg          = ARG_DEF(NULL, "psnr", 0,
                                                   "Show PSNR in status line");
-enum TestDecodeFatality {
-  TEST_DECODE_OFF,
-  TEST_DECODE_FATAL,
-  TEST_DECODE_WARN,
-};
+
 static const struct arg_enum_list test_decode_enum[] = {
   {"off",   TEST_DECODE_OFF},
   {"fatal", TEST_DECODE_FATAL},
@@ -419,11 +225,23 @@ static const arg_def_t q_hist_n         = ARG_DEF(NULL, "q-hist", 1,
                                                   "Show quantizer histogram (n-buckets)");
 static const arg_def_t rate_hist_n         = ARG_DEF(NULL, "rate-hist", 1,
                                                      "Show rate histogram (n-buckets)");
+static const arg_def_t disable_warnings =
+    ARG_DEF(NULL, "disable-warnings", 0,
+            "Disable warnings about potentially incorrect encode settings.");
+static const arg_def_t disable_warning_prompt =
+    ARG_DEF("y", "disable-warning-prompt", 0,
+            "Display warnings, but do not prompt user to continue.");
+static const arg_def_t experimental_bitstream =
+    ARG_DEF(NULL, "experimental-bitstream", 0,
+            "Allow experimental bitstream features.");
+
+
 static const arg_def_t *main_args[] = {
   &debugmode,
   &outputfile, &codecarg, &passes, &pass_arg, &fpf_name, &limit, &skip,
   &deadline, &best_dl, &good_dl, &rt_dl,
-  &quietarg, &verbosearg, &psnrarg, &use_ivf, &out_part, &q_hist_n, &rate_hist_n,
+  &quietarg, &verbosearg, &psnrarg, &use_ivf, &out_part, &q_hist_n,
+  &rate_hist_n, &disable_warnings, &disable_warning_prompt,
   NULL
 };
 
@@ -532,12 +350,6 @@ static const arg_def_t static_thresh = ARG_DEF(NULL, "static-thresh", 1,
                                                "Motion detection threshold");
 static const arg_def_t cpu_used = ARG_DEF(NULL, "cpu-used", 1,
                                           "CPU Used (-16..16)");
-static const arg_def_t token_parts = ARG_DEF(NULL, "token-parts", 1,
-                                     "Number of token partitions to use, log2");
-static const arg_def_t tile_cols = ARG_DEF(NULL, "tile-columns", 1,
-                                         "Number of tile columns to use, log2");
-static const arg_def_t tile_rows = ARG_DEF(NULL, "tile-rows", 1,
-                                           "Number of tile rows to use, log2");
 static const arg_def_t auto_altref = ARG_DEF(NULL, "auto-alt-ref", 1,
                                              "Enable automatic alt reference frames");
 static const arg_def_t arnr_maxframes = ARG_DEF(NULL, "arnr-maxframes", 1,
@@ -557,13 +369,10 @@ static const arg_def_t cq_level = ARG_DEF(NULL, "cq-level", 1,
                                           "Constant/Constrained Quality level");
 static const arg_def_t max_intra_rate_pct = ARG_DEF(NULL, "max-intra-rate", 1,
                                                     "Max I-frame bitrate (pct)");
-static const arg_def_t lossless = ARG_DEF(NULL, "lossless", 1, "Lossless mode");
-#if CONFIG_VP9_ENCODER
-static const arg_def_t frame_parallel_decoding  = ARG_DEF(
-    NULL, "frame-parallel", 1, "Enable frame parallel decodability features");
-#endif
 
 #if CONFIG_VP8_ENCODER
+static const arg_def_t token_parts =
+    ARG_DEF(NULL, "token-parts", 1, "Number of token partitions to use, log2");
 static const arg_def_t *vp8_args[] = {
   &cpu_used, &auto_altref, &noise_sens, &sharpness, &static_thresh,
   &token_parts, &arnr_maxframes, &arnr_strength, &arnr_type,
@@ -581,11 +390,22 @@ static const int vp8_arg_ctrl_map[] = {
 #endif
 
 #if CONFIG_VP9_ENCODER
+static const arg_def_t tile_cols =
+    ARG_DEF(NULL, "tile-columns", 1, "Number of tile columns to use, log2");
+static const arg_def_t tile_rows =
+    ARG_DEF(NULL, "tile-rows", 1, "Number of tile rows to use, log2");
+static const arg_def_t lossless = ARG_DEF(NULL, "lossless", 1, "Lossless mode");
+static const arg_def_t frame_parallel_decoding = ARG_DEF(
+    NULL, "frame-parallel", 1, "Enable frame parallel decodability features");
+static const arg_def_t aq_mode = ARG_DEF(
+    NULL, "aq-mode", 1,
+    "Adaptive q mode (0: off (by default), 1: variance 2: complexity)");
+
 static const arg_def_t *vp9_args[] = {
   &cpu_used, &auto_altref, &noise_sens, &sharpness, &static_thresh,
   &tile_cols, &tile_rows, &arnr_maxframes, &arnr_strength, &arnr_type,
   &tune_ssim, &cq_level, &max_intra_rate_pct, &lossless,
-  &frame_parallel_decoding,
+  &frame_parallel_decoding, &aq_mode,
   NULL
 };
 static const int vp9_arg_ctrl_map[] = {
@@ -594,7 +414,7 @@ static const int vp9_arg_ctrl_map[] = {
   VP9E_SET_TILE_COLUMNS, VP9E_SET_TILE_ROWS,
   VP8E_SET_ARNR_MAXFRAMES, VP8E_SET_ARNR_STRENGTH, VP8E_SET_ARNR_TYPE,
   VP8E_SET_TUNING, VP8E_SET_CQ_LEVEL, VP8E_SET_MAX_INTRA_BITRATE_PCT,
-  VP9E_SET_LOSSLESS, VP9E_SET_FRAME_PARALLEL_DECODING,
+  VP9E_SET_LOSSLESS, VP9E_SET_FRAME_PARALLEL_DECODING, VP9E_SET_AQ_MODE,
   0
 };
 #endif
@@ -628,304 +448,38 @@ void usage_exit() {
   fprintf(stderr, "\nStream timebase (--timebase):\n"
           "  The desired precision of timestamps in the output, expressed\n"
           "  in fractional seconds. Default is 1/1000.\n");
-  fprintf(stderr, "\n"
-          "Included encoders:\n"
-          "\n");
+  fprintf(stderr, "\nIncluded encoders:\n\n");
 
-  for (i = 0; i < sizeof(codecs) / sizeof(codecs[0]); i++)
+  for (i = 0; i < get_vpx_encoder_count(); ++i) {
+    const VpxInterface *const encoder = get_vpx_encoder_by_index(i);
     fprintf(stderr, "    %-6s - %s\n",
-            codecs[i].name,
-            vpx_codec_iface_name(codecs[i].iface()));
+            encoder->name, vpx_codec_iface_name(encoder->interface()));
+  }
 
   exit(EXIT_FAILURE);
 }
 
-
-#define HIST_BAR_MAX 40
-struct hist_bucket {
-  int low, high, count;
-};
-
-
-static int merge_hist_buckets(struct hist_bucket *bucket,
-                              int *buckets_,
-                              int max_buckets) {
-  int small_bucket = 0, merge_bucket = INT_MAX, big_bucket = 0;
-  int buckets = *buckets_;
-  int i;
-
-  /* Find the extrema for this list of buckets */
-  big_bucket = small_bucket = 0;
-  for (i = 0; i < buckets; i++) {
-    if (bucket[i].count < bucket[small_bucket].count)
-      small_bucket = i;
-    if (bucket[i].count > bucket[big_bucket].count)
-      big_bucket = i;
-  }
-
-  /* If we have too many buckets, merge the smallest with an adjacent
-   * bucket.
-   */
-  while (buckets > max_buckets) {
-    int last_bucket = buckets - 1;
-
-    /* merge the small bucket with an adjacent one. */
-    if (small_bucket == 0)
-      merge_bucket = 1;
-    else if (small_bucket == last_bucket)
-      merge_bucket = last_bucket - 1;
-    else if (bucket[small_bucket - 1].count < bucket[small_bucket + 1].count)
-      merge_bucket = small_bucket - 1;
-    else
-      merge_bucket = small_bucket + 1;
-
-    assert(abs(merge_bucket - small_bucket) <= 1);
-    assert(small_bucket < buckets);
-    assert(big_bucket < buckets);
-    assert(merge_bucket < buckets);
-
-    if (merge_bucket < small_bucket) {
-      bucket[merge_bucket].high = bucket[small_bucket].high;
-      bucket[merge_bucket].count += bucket[small_bucket].count;
-    } else {
-      bucket[small_bucket].high = bucket[merge_bucket].high;
-      bucket[small_bucket].count += bucket[merge_bucket].count;
-      merge_bucket = small_bucket;
-    }
-
-    assert(bucket[merge_bucket].low != bucket[merge_bucket].high);
-
-    buckets--;
-
-    /* Remove the merge_bucket from the list, and find the new small
-     * and big buckets while we're at it
-     */
-    big_bucket = small_bucket = 0;
-    for (i = 0; i < buckets; i++) {
-      if (i > merge_bucket)
-        bucket[i] = bucket[i + 1];
-
-      if (bucket[i].count < bucket[small_bucket].count)
-        small_bucket = i;
-      if (bucket[i].count > bucket[big_bucket].count)
-        big_bucket = i;
-    }
-
-  }
-
-  *buckets_ = buckets;
-  return bucket[big_bucket].count;
-}
-
-
-static void show_histogram(const struct hist_bucket *bucket,
-                           int                       buckets,
-                           int                       total,
-                           int                       scale) {
-  const char *pat1, *pat2;
-  int i;
-
-  switch ((int)(log(bucket[buckets - 1].high) / log(10)) + 1) {
-    case 1:
-    case 2:
-      pat1 = "%4d %2s: ";
-      pat2 = "%4d-%2d: ";
-      break;
-    case 3:
-      pat1 = "%5d %3s: ";
-      pat2 = "%5d-%3d: ";
-      break;
-    case 4:
-      pat1 = "%6d %4s: ";
-      pat2 = "%6d-%4d: ";
-      break;
-    case 5:
-      pat1 = "%7d %5s: ";
-      pat2 = "%7d-%5d: ";
-      break;
-    case 6:
-      pat1 = "%8d %6s: ";
-      pat2 = "%8d-%6d: ";
-      break;
-    case 7:
-      pat1 = "%9d %7s: ";
-      pat2 = "%9d-%7d: ";
-      break;
-    default:
-      pat1 = "%12d %10s: ";
-      pat2 = "%12d-%10d: ";
-      break;
-  }
-
-  for (i = 0; i < buckets; i++) {
-    int len;
-    int j;
-    float pct;
-
-    pct = (float)(100.0 * bucket[i].count / total);
-    len = HIST_BAR_MAX * bucket[i].count / scale;
-    if (len < 1)
-      len = 1;
-    assert(len <= HIST_BAR_MAX);
-
-    if (bucket[i].low == bucket[i].high)
-      fprintf(stderr, pat1, bucket[i].low, "");
-    else
-      fprintf(stderr, pat2, bucket[i].low, bucket[i].high);
-
-    for (j = 0; j < HIST_BAR_MAX; j++)
-      fprintf(stderr, j < len ? "=" : " ");
-    fprintf(stderr, "\t%5d (%6.2f%%)\n", bucket[i].count, pct);
-  }
-}
-
-
-static void show_q_histogram(const int counts[64], int max_buckets) {
-  struct hist_bucket bucket[64];
-  int buckets = 0;
-  int total = 0;
-  int scale;
-  int i;
-
-
-  for (i = 0; i < 64; i++) {
-    if (counts[i]) {
-      bucket[buckets].low = bucket[buckets].high = i;
-      bucket[buckets].count = counts[i];
-      buckets++;
-      total += counts[i];
-    }
-  }
-
-  fprintf(stderr, "\nQuantizer Selection:\n");
-  scale = merge_hist_buckets(bucket, &buckets, max_buckets);
-  show_histogram(bucket, buckets, total, scale);
-}
-
-
-#define RATE_BINS (100)
-struct rate_hist {
-  int64_t            *pts;
-  int                *sz;
-  int                 samples;
-  int                 frames;
-  struct hist_bucket  bucket[RATE_BINS];
-  int                 total;
-};
-
-
-static void init_rate_histogram(struct rate_hist          *hist,
-                                const vpx_codec_enc_cfg_t *cfg,
-                                const vpx_rational_t      *fps) {
-  int i;
-
-  /* Determine the number of samples in the buffer. Use the file's framerate
-   * to determine the number of frames in rc_buf_sz milliseconds, with an
-   * adjustment (5/4) to account for alt-refs
-   */
-  hist->samples = cfg->rc_buf_sz * 5 / 4 * fps->num / fps->den / 1000;
-
-  /* prevent division by zero */
-  if (hist->samples == 0)
-    hist->samples = 1;
-
-  hist->pts = calloc(hist->samples, sizeof(*hist->pts));
-  hist->sz = calloc(hist->samples, sizeof(*hist->sz));
-  for (i = 0; i < RATE_BINS; i++) {
-    hist->bucket[i].low = INT_MAX;
-    hist->bucket[i].high = 0;
-    hist->bucket[i].count = 0;
-  }
-}
-
-
-static void destroy_rate_histogram(struct rate_hist *hist) {
-  free(hist->pts);
-  free(hist->sz);
-}
-
-
-static void update_rate_histogram(struct rate_hist          *hist,
-                                  const vpx_codec_enc_cfg_t *cfg,
-                                  const vpx_codec_cx_pkt_t  *pkt) {
-  int i, idx;
-  int64_t now, then, sum_sz = 0, avg_bitrate;
-
-  now = pkt->data.frame.pts * 1000
-        * (uint64_t)cfg->g_timebase.num / (uint64_t)cfg->g_timebase.den;
-
-  idx = hist->frames++ % hist->samples;
-  hist->pts[idx] = now;
-  hist->sz[idx] = (int)pkt->data.frame.sz;
-
-  if (now < cfg->rc_buf_initial_sz)
-    return;
-
-  then = now;
-
-  /* Sum the size over the past rc_buf_sz ms */
-  for (i = hist->frames; i > 0 && hist->frames - i < hist->samples; i--) {
-    int i_idx = (i - 1) % hist->samples;
-
-    then = hist->pts[i_idx];
-    if (now - then > cfg->rc_buf_sz)
-      break;
-    sum_sz += hist->sz[i_idx];
-  }
-
-  if (now == then)
-    return;
-
-  avg_bitrate = sum_sz * 8 * 1000 / (now - then);
-  idx = (int)(avg_bitrate * (RATE_BINS / 2) / (cfg->rc_target_bitrate * 1000));
-  if (idx < 0)
-    idx = 0;
-  if (idx > RATE_BINS - 1)
-    idx = RATE_BINS - 1;
-  if (hist->bucket[idx].low > avg_bitrate)
-    hist->bucket[idx].low = (int)avg_bitrate;
-  if (hist->bucket[idx].high < avg_bitrate)
-    hist->bucket[idx].high = (int)avg_bitrate;
-  hist->bucket[idx].count++;
-  hist->total++;
-}
-
-
-static void show_rate_histogram(struct rate_hist          *hist,
-                                const vpx_codec_enc_cfg_t *cfg,
-                                int                        max_buckets) {
-  int i, scale;
-  int buckets = 0;
-
-  for (i = 0; i < RATE_BINS; i++) {
-    if (hist->bucket[i].low == INT_MAX)
-      continue;
-    hist->bucket[buckets++] = hist->bucket[i];
-  }
-
-  fprintf(stderr, "\nRate (over %dms window):\n", cfg->rc_buf_sz);
-  scale = merge_hist_buckets(hist->bucket, &buckets, max_buckets);
-  show_histogram(hist->bucket, buckets, hist->total, scale);
-}
-
 #define mmin(a, b)  ((a) < (b) ? (a) : (b))
-static void find_mismatch(vpx_image_t *img1, vpx_image_t *img2,
+static void find_mismatch(const vpx_image_t *const img1,
+                          const vpx_image_t *const img2,
                           int yloc[4], int uloc[4], int vloc[4]) {
-  const unsigned int bsize = 64;
-  const unsigned int bsizey = bsize >> img1->y_chroma_shift;
-  const unsigned int bsizex = bsize >> img1->x_chroma_shift;
-  const int c_w = (img1->d_w + img1->x_chroma_shift) >> img1->x_chroma_shift;
-  const int c_h = (img1->d_h + img1->y_chroma_shift) >> img1->y_chroma_shift;
-  unsigned int match = 1;
-  unsigned int i, j;
+  const uint32_t bsize = 64;
+  const uint32_t bsizey = bsize >> img1->y_chroma_shift;
+  const uint32_t bsizex = bsize >> img1->x_chroma_shift;
+  const uint32_t c_w =
+      (img1->d_w + img1->x_chroma_shift) >> img1->x_chroma_shift;
+  const uint32_t c_h =
+      (img1->d_h + img1->y_chroma_shift) >> img1->y_chroma_shift;
+  int match = 1;
+  uint32_t i, j;
   yloc[0] = yloc[1] = yloc[2] = yloc[3] = -1;
   for (i = 0, match = 1; match && i < img1->d_h; i += bsize) {
     for (j = 0; match && j < img1->d_w; j += bsize) {
       int k, l;
-      int si = mmin(i + bsize, img1->d_h) - i;
-      int sj = mmin(j + bsize, img1->d_w) - j;
-      for (k = 0; match && k < si; k++)
-        for (l = 0; match && l < sj; l++) {
+      const int si = mmin(i + bsize, img1->d_h) - i;
+      const int sj = mmin(j + bsize, img1->d_w) - j;
+      for (k = 0; match && k < si; ++k) {
+        for (l = 0; match && l < sj; ++l) {
           if (*(img1->planes[VPX_PLANE_Y] +
                 (i + k) * img1->stride[VPX_PLANE_Y] + j + l) !=
               *(img2->planes[VPX_PLANE_Y] +
@@ -940,6 +494,7 @@ static void find_mismatch(vpx_image_t *img1, vpx_image_t *img2,
             break;
           }
         }
+      }
     }
   }
 
@@ -947,10 +502,10 @@ static void find_mismatch(vpx_image_t *img1, vpx_image_t *img2,
   for (i = 0, match = 1; match && i < c_h; i += bsizey) {
     for (j = 0; match && j < c_w; j += bsizex) {
       int k, l;
-      int si = mmin(i + bsizey, c_h - i);
-      int sj = mmin(j + bsizex, c_w - j);
-      for (k = 0; match && k < si; k++)
-        for (l = 0; match && l < sj; l++) {
+      const int si = mmin(i + bsizey, c_h - i);
+      const int sj = mmin(j + bsizex, c_w - j);
+      for (k = 0; match && k < si; ++k) {
+        for (l = 0; match && l < sj; ++l) {
           if (*(img1->planes[VPX_PLANE_U] +
                 (i + k) * img1->stride[VPX_PLANE_U] + j + l) !=
               *(img2->planes[VPX_PLANE_U] +
@@ -960,21 +515,22 @@ static void find_mismatch(vpx_image_t *img1, vpx_image_t *img2,
             uloc[2] = *(img1->planes[VPX_PLANE_U] +
                         (i + k) * img1->stride[VPX_PLANE_U] + j + l);
             uloc[3] = *(img2->planes[VPX_PLANE_U] +
-                        (i + k) * img2->stride[VPX_PLANE_V] + j + l);
+                        (i + k) * img2->stride[VPX_PLANE_U] + j + l);
             match = 0;
             break;
           }
         }
+      }
     }
   }
   vloc[0] = vloc[1] = vloc[2] = vloc[3] = -1;
   for (i = 0, match = 1; match && i < c_h; i += bsizey) {
     for (j = 0; match && j < c_w; j += bsizex) {
       int k, l;
-      int si = mmin(i + bsizey, c_h - i);
-      int sj = mmin(j + bsizex, c_w - j);
-      for (k = 0; match && k < si; k++)
-        for (l = 0; match && l < sj; l++) {
+      const int si = mmin(i + bsizey, c_h - i);
+      const int sj = mmin(j + bsizex, c_w - j);
+      for (k = 0; match && k < si; ++k) {
+        for (l = 0; match && l < sj; ++l) {
           if (*(img1->planes[VPX_PLANE_V] +
                 (i + k) * img1->stride[VPX_PLANE_V] + j + l) !=
               *(img2->planes[VPX_PLANE_V] +
@@ -989,34 +545,37 @@ static void find_mismatch(vpx_image_t *img1, vpx_image_t *img2,
             break;
           }
         }
+      }
     }
   }
 }
 
-static int compare_img(vpx_image_t *img1, vpx_image_t *img2)
-{
-  const int c_w = (img1->d_w + img1->x_chroma_shift) >> img1->x_chroma_shift;
-  const int c_h = (img1->d_h + img1->y_chroma_shift) >> img1->y_chroma_shift;
+static int compare_img(const vpx_image_t *const img1,
+                       const vpx_image_t *const img2) {
+  const uint32_t c_w =
+      (img1->d_w + img1->x_chroma_shift) >> img1->x_chroma_shift;
+  const uint32_t c_h =
+      (img1->d_h + img1->y_chroma_shift) >> img1->y_chroma_shift;
+  uint32_t i;
   int match = 1;
-  unsigned int i;
 
   match &= (img1->fmt == img2->fmt);
-  match &= (img1->w == img2->w);
-  match &= (img1->h == img2->h);
+  match &= (img1->d_w == img2->d_w);
+  match &= (img1->d_h == img2->d_h);
 
-  for (i = 0; i < img1->d_h; i++)
-    match &= (memcmp(img1->planes[VPX_PLANE_Y]+i*img1->stride[VPX_PLANE_Y],
-                     img2->planes[VPX_PLANE_Y]+i*img2->stride[VPX_PLANE_Y],
+  for (i = 0; i < img1->d_h; ++i)
+    match &= (memcmp(img1->planes[VPX_PLANE_Y] + i * img1->stride[VPX_PLANE_Y],
+                     img2->planes[VPX_PLANE_Y] + i * img2->stride[VPX_PLANE_Y],
                      img1->d_w) == 0);
 
-  for (i = 0; i < c_h; i++)
-    match &= (memcmp(img1->planes[VPX_PLANE_U]+i*img1->stride[VPX_PLANE_U],
-                     img2->planes[VPX_PLANE_U]+i*img2->stride[VPX_PLANE_U],
+  for (i = 0; i < c_h; ++i)
+    match &= (memcmp(img1->planes[VPX_PLANE_U] + i * img1->stride[VPX_PLANE_U],
+                     img2->planes[VPX_PLANE_U] + i * img2->stride[VPX_PLANE_U],
                      c_w) == 0);
 
-  for (i = 0; i < c_h; i++)
-    match &= (memcmp(img1->planes[VPX_PLANE_V]+i*img1->stride[VPX_PLANE_U],
-                     img2->planes[VPX_PLANE_V]+i*img2->stride[VPX_PLANE_U],
+  for (i = 0; i < c_h; ++i)
+    match &= (memcmp(img1->planes[VPX_PLANE_V] + i * img1->stride[VPX_PLANE_V],
+                     img2->planes[VPX_PLANE_V] + i * img2->stride[VPX_PLANE_V],
                      c_w) == 0);
 
   return match;
@@ -1033,29 +592,6 @@ static int compare_img(vpx_image_t *img1, vpx_image_t *img2)
 #define ARG_CTRL_CNT_MAX MAX(NELEMENTS(vp8_arg_ctrl_map), \
                              NELEMENTS(vp9_arg_ctrl_map))
 #endif
-
-/* Configuration elements common to all streams */
-struct global_config {
-  const struct codec_item  *codec;
-  int                       passes;
-  int                       pass;
-  int                       usage;
-  int                       deadline;
-  int                       use_i420;
-  int                       quiet;
-  int                       verbose;
-  int                       limit;
-  int                       skip_frames;
-  int                       show_psnr;
-  enum TestDecodeFatality   test_decode;
-  int                       have_framerate;
-  struct vpx_rational       framerate;
-  int                       out_part;
-  int                       debug;
-  int                       show_q_hist_buckets;
-  int                       show_rate_hist_buckets;
-};
-
 
 /* Per-stream configuration */
 struct stream_config {
@@ -1075,7 +611,7 @@ struct stream_state {
   struct stream_state      *next;
   struct stream_config      config;
   FILE                     *file;
-  struct rate_hist          rate_hist;
+  struct rate_hist         *rate_hist;
   struct EbmlGlobal         ebml;
   uint32_t                  hash;
   uint64_t                  psnr_sse_total;
@@ -1109,13 +645,13 @@ void validate_positive_rational(const char          *msg,
 }
 
 
-static void parse_global_config(struct global_config *global, char **argv) {
+static void parse_global_config(struct VpxEncoderConfig *global, char **argv) {
   char       **argi, **argj;
   struct arg   arg;
 
   /* Initialize default parameters */
   memset(global, 0, sizeof(*global));
-  global->codec = codecs;
+  global->codec = get_vpx_encoder_by_index(0);
   global->passes = 0;
   global->use_i420 = 1;
   /* Assign default deadline to good quality */
@@ -1125,18 +661,9 @@ static void parse_global_config(struct global_config *global, char **argv) {
     arg.argv_step = 1;
 
     if (arg_match(&arg, &codecarg, argi)) {
-      int j, k = -1;
-
-      for (j = 0; j < sizeof(codecs) / sizeof(codecs[0]); j++)
-        if (!strcmp(codecs[j].name, arg.val))
-          k = j;
-
-      if (k >= 0)
-        global->codec = codecs + k;
-      else
-        die("Error: Unrecognized argument (%s) to --codec\n",
-            arg.val);
-
+      global->codec = get_vpx_encoder_by_name(arg.val);
+      if (!global->codec)
+        die("Error: Unrecognized argument (%s) to --codec\n", arg.val);
     } else if (arg_match(&arg, &passes, argi)) {
       global->passes = arg_parse_uint(&arg);
 
@@ -1186,19 +713,14 @@ static void parse_global_config(struct global_config *global, char **argv) {
       global->show_q_hist_buckets = arg_parse_uint(&arg);
     else if (arg_match(&arg, &rate_hist_n, argi))
       global->show_rate_hist_buckets = arg_parse_uint(&arg);
+    else if (arg_match(&arg, &disable_warnings, argi))
+      global->disable_warnings = 1;
+    else if (arg_match(&arg, &disable_warning_prompt, argi))
+      global->disable_warning_prompt = 1;
+    else if (arg_match(&arg, &experimental_bitstream, argi))
+      global->experimental_bitstream = 1;
     else
       argj++;
-  }
-
-  /* Validate global config */
-  if (global->passes == 0) {
-#if CONFIG_VP9_ENCODER
-    // Make default VP9 passes = 2 until there is a better quality 1-pass
-    // encoder
-    global->passes = (global->codec->iface == vpx_codec_vp9_cx ? 2 : 1);
-#else
-    global->passes = 1;
-#endif
   }
 
   if (global->pass) {
@@ -1209,15 +731,30 @@ static void parse_global_config(struct global_config *global, char **argv) {
       global->passes = global->pass;
     }
   }
+  /* Validate global config */
+  if (global->passes == 0) {
+#if CONFIG_VP9_ENCODER
+    // Make default VP9 passes = 2 until there is a better quality 1-pass
+    // encoder
+    global->passes = (strcmp(global->codec->name, "vp9") == 0 &&
+                      global->deadline != VPX_DL_REALTIME) ? 2 : 1;
+#else
+    global->passes = 1;
+#endif
+  }
+
+  if (global->deadline == VPX_DL_REALTIME &&
+      global->passes > 1) {
+    warn("Enforcing one-pass encoding in realtime mode\n");
+    global->passes = 1;
+  }
 }
 
 
-void open_input_file(struct input_state *input) {
-  unsigned int fourcc;
-
+void open_input_file(struct VpxInputContext *input) {
   /* Parse certain options from the input file, if possible */
-  input->file = strcmp(input->fn, "-") ? fopen(input->fn, "rb")
-                : set_binary_mode(stdin);
+  input->file = strcmp(input->filename, "-")
+      ? fopen(input->filename, "rb") : set_binary_mode(stdin);
 
   if (!input->file)
     fatal("Failed to open input file");
@@ -1237,18 +774,18 @@ void open_input_file(struct input_state *input) {
   input->detect.position = 0;
 
   if (input->detect.buf_read == 4
-      && file_is_y4m(input->file, &input->y4m, input->detect.buf)) {
+      && file_is_y4m(input->detect.buf)) {
     if (y4m_input_open(&input->y4m, input->file, input->detect.buf, 4,
                        input->only_i420) >= 0) {
       input->file_type = FILE_TYPE_Y4M;
-      input->w = input->y4m.pic_w;
-      input->h = input->y4m.pic_h;
-      input->framerate.num = input->y4m.fps_n;
-      input->framerate.den = input->y4m.fps_d;
+      input->width = input->y4m.pic_w;
+      input->height = input->y4m.pic_h;
+      input->framerate.numerator = input->y4m.fps_n;
+      input->framerate.denominator = input->y4m.fps_d;
       input->use_i420 = 0;
     } else
       fatal("Unsupported Y4M stream.");
-  } else if (input->detect.buf_read == 4 && file_is_ivf(input, &fourcc)) {
+  } else if (input->detect.buf_read == 4 && fourcc_is_ivf(input->detect.buf)) {
     fatal("IVF is not supported as input.");
   } else {
     input->file_type = FILE_TYPE_RAW;
@@ -1256,13 +793,13 @@ void open_input_file(struct input_state *input) {
 }
 
 
-static void close_input_file(struct input_state *input) {
+static void close_input_file(struct VpxInputContext *input) {
   fclose(input->file);
   if (input->file_type == FILE_TYPE_Y4M)
     y4m_input_close(&input->y4m);
 }
 
-static struct stream_state *new_stream(struct global_config *global,
+static struct stream_state *new_stream(struct VpxEncoderConfig *global,
                                        struct stream_state *prev) {
   struct stream_state *stream;
 
@@ -1277,7 +814,7 @@ static struct stream_state *new_stream(struct global_config *global,
     vpx_codec_err_t  res;
 
     /* Populate encoder configuration */
-    res = vpx_codec_enc_config_default(global->codec->iface(),
+    res = vpx_codec_enc_config_default(global->codec->interface(),
                                        &stream->config.cfg,
                                        global->usage);
     if (res)
@@ -1301,6 +838,10 @@ static struct stream_state *new_stream(struct global_config *global,
 
     /* Allows removal of the application version from the EBML tags */
     stream->ebml.debug = global->debug;
+
+    /* Default lag_in_frames is 0 in realtime mode */
+    if (global->deadline == VPX_DL_REALTIME)
+      stream->config.cfg.g_lag_in_frames = 0;
   }
 
   /* Output files must be specified for each stream */
@@ -1311,7 +852,7 @@ static struct stream_state *new_stream(struct global_config *global,
 }
 
 
-static int parse_stream_params(struct global_config *global,
+static int parse_stream_params(struct VpxEncoderConfig *global,
                                struct stream_state  *stream,
                                char **argv) {
   char                   **argi, **argj;
@@ -1321,15 +862,15 @@ static int parse_stream_params(struct global_config *global,
   struct stream_config    *config = &stream->config;
   int                      eos_mark_found = 0;
 
-  /* Handle codec specific options */
+  // Handle codec specific options
   if (0) {
 #if CONFIG_VP8_ENCODER
-  } else if (global->codec->iface == vpx_codec_vp8_cx) {
+  } else if (strcmp(global->codec->name, "vp8") == 0) {
     ctrl_args = vp8_args;
     ctrl_args_map = vp8_arg_ctrl_map;
 #endif
 #if CONFIG_VP9_ENCODER
-  } else if (global->codec->iface == vpx_codec_vp9_cx) {
+  } else if (strcmp(global->codec->name, "vp9") == 0) {
     ctrl_args = vp9_args;
     ctrl_args_map = vp9_arg_ctrl_map;
 #endif
@@ -1349,59 +890,63 @@ static int parse_stream_params(struct global_config *global,
       continue;
     }
 
-    if (0);
-    else if (arg_match(&arg, &outputfile, argi))
+    if (0) {
+    } else if (arg_match(&arg, &outputfile, argi)) {
       config->out_fn = arg.val;
-    else if (arg_match(&arg, &fpf_name, argi))
+    } else if (arg_match(&arg, &fpf_name, argi)) {
       config->stats_fn = arg.val;
-    else if (arg_match(&arg, &use_ivf, argi))
+    } else if (arg_match(&arg, &use_ivf, argi)) {
       config->write_webm = 0;
-    else if (arg_match(&arg, &threads, argi))
+    } else if (arg_match(&arg, &threads, argi)) {
       config->cfg.g_threads = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &profile, argi))
+    } else if (arg_match(&arg, &profile, argi)) {
       config->cfg.g_profile = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &width, argi))
+    } else if (arg_match(&arg, &width, argi)) {
       config->cfg.g_w = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &height, argi))
+    } else if (arg_match(&arg, &height, argi)) {
       config->cfg.g_h = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &stereo_mode, argi))
+    } else if (arg_match(&arg, &stereo_mode, argi)) {
       config->stereo_fmt = arg_parse_enum_or_int(&arg);
-    else if (arg_match(&arg, &timebase, argi)) {
+    } else if (arg_match(&arg, &timebase, argi)) {
       config->cfg.g_timebase = arg_parse_rational(&arg);
       validate_positive_rational(arg.name, &config->cfg.g_timebase);
-    } else if (arg_match(&arg, &error_resilient, argi))
+    } else if (arg_match(&arg, &error_resilient, argi)) {
       config->cfg.g_error_resilient = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &lag_in_frames, argi))
+    } else if (arg_match(&arg, &lag_in_frames, argi)) {
       config->cfg.g_lag_in_frames = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &dropframe_thresh, argi))
+      if (global->deadline == VPX_DL_REALTIME &&
+          config->cfg.g_lag_in_frames != 0) {
+        warn("non-zero %s option ignored in realtime mode.\n", arg.name);
+        config->cfg.g_lag_in_frames = 0;
+      }
+    } else if (arg_match(&arg, &dropframe_thresh, argi)) {
       config->cfg.rc_dropframe_thresh = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &resize_allowed, argi))
+    } else if (arg_match(&arg, &resize_allowed, argi)) {
       config->cfg.rc_resize_allowed = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &resize_up_thresh, argi))
+    } else if (arg_match(&arg, &resize_up_thresh, argi)) {
       config->cfg.rc_resize_up_thresh = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &resize_down_thresh, argi))
+    } else if (arg_match(&arg, &resize_down_thresh, argi)) {
       config->cfg.rc_resize_down_thresh = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &end_usage, argi))
+    } else if (arg_match(&arg, &end_usage, argi)) {
       config->cfg.rc_end_usage = arg_parse_enum_or_int(&arg);
-    else if (arg_match(&arg, &target_bitrate, argi))
+    } else if (arg_match(&arg, &target_bitrate, argi)) {
       config->cfg.rc_target_bitrate = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &min_quantizer, argi))
+    } else if (arg_match(&arg, &min_quantizer, argi)) {
       config->cfg.rc_min_quantizer = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &max_quantizer, argi))
+    } else if (arg_match(&arg, &max_quantizer, argi)) {
       config->cfg.rc_max_quantizer = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &undershoot_pct, argi))
+    } else if (arg_match(&arg, &undershoot_pct, argi)) {
       config->cfg.rc_undershoot_pct = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &overshoot_pct, argi))
+    } else if (arg_match(&arg, &overshoot_pct, argi)) {
       config->cfg.rc_overshoot_pct = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &buf_sz, argi))
+    } else if (arg_match(&arg, &buf_sz, argi)) {
       config->cfg.rc_buf_sz = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &buf_initial_sz, argi))
+    } else if (arg_match(&arg, &buf_initial_sz, argi)) {
       config->cfg.rc_buf_initial_sz = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &buf_optimal_sz, argi))
+    } else if (arg_match(&arg, &buf_optimal_sz, argi)) {
       config->cfg.rc_buf_optimal_sz = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &bias_pct, argi)) {
-      config->cfg.rc_2pass_vbr_bias_pct = arg_parse_uint(&arg);
-
+    } else if (arg_match(&arg, &bias_pct, argi)) {
+        config->cfg.rc_2pass_vbr_bias_pct = arg_parse_uint(&arg);
       if (global->passes < 2)
         warn("option %s ignored in one-pass mode.\n", arg.name);
     } else if (arg_match(&arg, &minsection_pct, argi)) {
@@ -1414,16 +959,15 @@ static int parse_stream_params(struct global_config *global,
 
       if (global->passes < 2)
         warn("option %s ignored in one-pass mode.\n", arg.name);
-    } else if (arg_match(&arg, &kf_min_dist, argi))
+    } else if (arg_match(&arg, &kf_min_dist, argi)) {
       config->cfg.kf_min_dist = arg_parse_uint(&arg);
-    else if (arg_match(&arg, &kf_max_dist, argi)) {
+    } else if (arg_match(&arg, &kf_max_dist, argi)) {
       config->cfg.kf_max_dist = arg_parse_uint(&arg);
       config->have_kf_max_dist = 1;
-    } else if (arg_match(&arg, &kf_disabled, argi))
+    } else if (arg_match(&arg, &kf_disabled, argi)) {
       config->cfg.kf_mode = VPX_KF_DISABLED;
-    else {
+    } else {
       int i, match = 0;
-
       for (i = 0; ctrl_args[i]; i++) {
         if (arg_match(&arg, ctrl_args[i], argi)) {
           int j;
@@ -1447,32 +991,36 @@ static int parse_stream_params(struct global_config *global,
 
         }
       }
-
       if (!match)
         argj++;
     }
   }
-
   return eos_mark_found;
 }
 
 
-#define FOREACH_STREAM(func)\
-  do\
-  {\
-    struct stream_state  *stream;\
-    \
-    for(stream = streams; stream; stream = stream->next)\
-      func;\
-  }while(0)
+#define FOREACH_STREAM(func) \
+  do { \
+    struct stream_state *stream; \
+    for (stream = streams; stream; stream = stream->next) { \
+      func; \
+    } \
+  } while (0)
 
 
-static void validate_stream_config(struct stream_state *stream) {
-  struct stream_state *streami;
+static void validate_stream_config(const struct stream_state *stream,
+                                   const struct VpxEncoderConfig *global) {
+  const struct stream_state *streami;
 
   if (!stream->config.cfg.g_w || !stream->config.cfg.g_h)
     fatal("Stream %d: Specify stream dimensions with --width (-w) "
           " and --height (-h)", stream->index);
+
+  if (stream->config.cfg.g_profile != 0 && !global->experimental_bitstream) {
+    fatal("Stream %d: profile %d is experimental and requires the --%s flag",
+          stream->index, stream->config.cfg.g_profile,
+          experimental_bitstream.long_name);
+  }
 
   for (streami = stream; streami; streami = streami->next) {
     /* All streams require output files */
@@ -1516,8 +1064,8 @@ static void set_stream_dimensions(struct stream_state *stream,
 }
 
 
-static void set_default_kf_interval(struct stream_state  *stream,
-                                    struct global_config *global) {
+static void set_default_kf_interval(struct stream_state *stream,
+                                    struct VpxEncoderConfig *global) {
   /* Use a max keyframe interval of 5 seconds, if none was
    * specified on the command line.
    */
@@ -1529,17 +1077,17 @@ static void set_default_kf_interval(struct stream_state  *stream,
 }
 
 
-static void show_stream_config(struct stream_state  *stream,
-                               struct global_config *global,
-                               struct input_state   *input) {
+static void show_stream_config(struct stream_state *stream,
+                               struct VpxEncoderConfig *global,
+                               struct VpxInputContext *input) {
 
 #define SHOW(field) \
   fprintf(stderr, "    %-28s = %d\n", #field, stream->config.cfg.field)
 
   if (stream->index == 0) {
     fprintf(stderr, "Codec: %s\n",
-            vpx_codec_iface_name(global->codec->iface()));
-    fprintf(stderr, "Source file: %s Format: %s\n", input->fn,
+            vpx_codec_iface_name(global->codec->interface()));
+    fprintf(stderr, "Source file: %s Format: %s\n", input->filename,
             input->use_i420 ? "I420" : "YV12");
   }
   if (stream->next || stream->index)
@@ -1580,8 +1128,12 @@ static void show_stream_config(struct stream_state  *stream,
 
 
 static void open_output_file(struct stream_state *stream,
-                             struct global_config *global) {
+                             struct VpxEncoderConfig *global) {
   const char *fn = stream->config.out_fn;
+  const struct vpx_codec_enc_cfg *const cfg = &stream->config.cfg;
+
+  if (cfg->g_pass == VPX_RC_FIRST_PASS)
+    return;
 
   stream->file = strcmp(fn, "-") ? fopen(fn, "wb") : set_binary_mode(stdout);
 
@@ -1593,25 +1145,30 @@ static void open_output_file(struct stream_state *stream,
 
   if (stream->config.write_webm) {
     stream->ebml.stream = stream->file;
-    write_webm_file_header(&stream->ebml, &stream->config.cfg,
+    write_webm_file_header(&stream->ebml, cfg,
                            &global->framerate,
                            stream->config.stereo_fmt,
                            global->codec->fourcc);
-  } else
-    write_ivf_file_header(stream->file, &stream->config.cfg,
-                          global->codec->fourcc, 0);
+  } else {
+    ivf_write_file_header(stream->file, cfg, global->codec->fourcc, 0);
+  }
 }
 
 
 static void close_output_file(struct stream_state *stream,
-                              unsigned int         fourcc) {
+                              unsigned int fourcc) {
+  const struct vpx_codec_enc_cfg *const cfg = &stream->config.cfg;
+
+  if (cfg->g_pass == VPX_RC_FIRST_PASS)
+    return;
+
   if (stream->config.write_webm) {
     write_webm_file_footer(&stream->ebml, stream->hash);
     free(stream->ebml.cue_list);
     stream->ebml.cue_list = NULL;
   } else {
     if (!fseek(stream->file, 0, SEEK_SET))
-      write_ivf_file_header(stream->file, &stream->config.cfg,
+      ivf_write_file_header(stream->file, &stream->config.cfg,
                             fourcc,
                             stream->frames_out);
   }
@@ -1620,9 +1177,9 @@ static void close_output_file(struct stream_state *stream,
 }
 
 
-static void setup_pass(struct stream_state  *stream,
-                       struct global_config *global,
-                       int                   pass) {
+static void setup_pass(struct stream_state *stream,
+                       struct VpxEncoderConfig *global,
+                       int pass) {
   if (stream->config.stats_fn) {
     if (!stats_open_file(&stream->stats, stream->config.stats_fn,
                          pass))
@@ -1644,8 +1201,8 @@ static void setup_pass(struct stream_state  *stream,
 }
 
 
-static void initialize_encoder(struct stream_state  *stream,
-                               struct global_config *global) {
+static void initialize_encoder(struct stream_state *stream,
+                               struct VpxEncoderConfig *global) {
   int i;
   int flags = 0;
 
@@ -1653,7 +1210,7 @@ static void initialize_encoder(struct stream_state  *stream,
   flags |= global->out_part ? VPX_CODEC_USE_OUTPUT_PARTITION : 0;
 
   /* Construct Encoder Context */
-  vpx_codec_enc_init(&stream->encoder, global->codec->iface(),
+  vpx_codec_enc_init(&stream->encoder, global->codec->interface(),
                      &stream->config.cfg, flags);
   ctx_exit_on_error(&stream->encoder, "Failed to initialize encoder");
 
@@ -1673,16 +1230,17 @@ static void initialize_encoder(struct stream_state  *stream,
 
 #if CONFIG_DECODERS
   if (global->test_decode != TEST_DECODE_OFF) {
-    vpx_codec_dec_init(&stream->decoder, global->codec->dx_iface(), NULL, 0);
+    const VpxInterface *decoder = get_vpx_decoder_by_name(global->codec->name);
+    vpx_codec_dec_init(&stream->decoder, decoder->interface(), NULL, 0);
   }
 #endif
 }
 
 
-static void encode_frame(struct stream_state  *stream,
-                         struct global_config *global,
-                         struct vpx_image     *img,
-                         unsigned int          frames_in) {
+static void encode_frame(struct stream_state *stream,
+                         struct VpxEncoderConfig *global,
+                         struct vpx_image *img,
+                         unsigned int frames_in) {
   vpx_codec_pts_t frame_start, next_frame_start;
   struct vpx_codec_enc_cfg *cfg = &stream->config.cfg;
   struct vpx_usec_timer timer;
@@ -1737,9 +1295,9 @@ static void update_quantizer_histogram(struct stream_state *stream) {
 }
 
 
-static void get_cx_data(struct stream_state  *stream,
-                        struct global_config *global,
-                        int                  *got_data) {
+static void get_cx_data(struct stream_state *stream,
+                        struct VpxEncoderConfig *global,
+                        int *got_data) {
   const vpx_codec_cx_pkt_t *pkt;
   const struct vpx_codec_enc_cfg *cfg = &stream->config.cfg;
   vpx_codec_iter_t iter = NULL;
@@ -1757,7 +1315,7 @@ static void get_cx_data(struct stream_state  *stream,
         if (!global->quiet)
           fprintf(stderr, " %6luF", (unsigned long)pkt->data.frame.sz);
 
-        update_rate_histogram(&stream->rate_hist, cfg, pkt);
+        update_rate_histogram(stream->rate_hist, cfg, pkt);
         if (stream->config.write_webm) {
           /* Update the hash */
           if (!stream->ebml.debug)
@@ -1771,14 +1329,14 @@ static void get_cx_data(struct stream_state  *stream,
             ivf_header_pos = ftello(stream->file);
             fsize = pkt->data.frame.sz;
 
-            write_ivf_frame_header(stream->file, pkt);
+            ivf_write_frame_header(stream->file, pkt->data.frame.pts, fsize);
           } else {
             fsize += pkt->data.frame.sz;
 
             if (!(pkt->data.frame.flags & VPX_FRAME_IS_FRAGMENT)) {
               off_t currpos = ftello(stream->file);
               fseeko(stream->file, ivf_header_pos, SEEK_SET);
-              write_ivf_frame_size(stream->file, fsize);
+              ivf_write_frame_size(stream->file, fsize);
               fseeko(stream->file, currpos, SEEK_SET);
             }
           }
@@ -1792,7 +1350,7 @@ static void get_cx_data(struct stream_state  *stream,
 #if CONFIG_DECODERS
         if (global->test_decode != TEST_DECODE_OFF && !stream->mismatch_seen) {
           vpx_codec_decode(&stream->decoder, pkt->data.frame.buf,
-                           pkt->data.frame.sz, NULL, 0);
+                           (unsigned int)pkt->data.frame.sz, NULL, 0);
           if (stream->decoder.err) {
             warn_or_exit_on_error(&stream->decoder,
                                   global->test_decode == TEST_DECODE_FATAL,
@@ -1841,8 +1399,8 @@ static void show_psnr(struct stream_state  *stream) {
     return;
 
   fprintf(stderr, "Stream %d PSNR (Overall/Avg/Y/U/V)", stream->index);
-  ovpsnr = vp8_mse2psnr((double)stream->psnr_samples_total, 255.0,
-                        (double)stream->psnr_sse_total);
+  ovpsnr = sse_to_psnr((double)stream->psnr_samples_total, 255.0,
+                       (double)stream->psnr_sse_total);
   fprintf(stderr, " %.3f", ovpsnr);
 
   for (i = 0; i < 4; i++) {
@@ -1859,14 +1417,14 @@ static float usec_to_fps(uint64_t usec, unsigned int frames) {
 
 static void test_decode(struct stream_state  *stream,
                         enum TestDecodeFatality fatal,
-                        const struct codec_item *codec) {
+                        const VpxInterface *codec) {
   vpx_image_t enc_img, dec_img;
 
   if (stream->mismatch_seen)
     return;
 
   /* Get the internal reference frame */
-  if (codec->fourcc == VP8_FOURCC) {
+  if (strcmp(codec->name, "vp8") == 0) {
     struct vpx_ref_frame ref_enc, ref_dec;
     int width, height;
 
@@ -1915,7 +1473,9 @@ static void test_decode(struct stream_state  *stream,
 
 
 static void print_time(const char *label, int64_t etl) {
-  int hours, mins, secs;
+  int64_t hours;
+  int64_t mins;
+  int64_t secs;
 
   if (etl >= 0) {
     hours = etl / 3600;
@@ -1924,25 +1484,26 @@ static void print_time(const char *label, int64_t etl) {
     etl -= mins * 60;
     secs = etl;
 
-    fprintf(stderr, "[%3s %2d:%02d:%02d] ",
+    fprintf(stderr, "[%3s %2"PRId64":%02"PRId64": % 02"PRId64"] ",
             label, hours, mins, secs);
   } else {
     fprintf(stderr, "[%3s  unknown] ", label);
   }
 }
 
-int main(int argc, const char **argv_) {
-  int                    pass;
-  vpx_image_t            raw;
-  int                    frame_avail, got_data;
 
-  struct input_state       input = {0};
-  struct global_config     global;
-  struct stream_state     *streams = NULL;
-  char                   **argv, **argi;
-  uint64_t                 cx_time = 0;
-  int                      stream_cnt = 0;
-  int                      res = 0;
+int main(int argc, const char **argv_) {
+  int pass;
+  vpx_image_t raw;
+  int frame_avail, got_data;
+
+  struct VpxInputContext input = {0};
+  struct VpxEncoderConfig global;
+  struct stream_state *streams = NULL;
+  char **argv, **argi;
+  uint64_t cx_time = 0;
+  int stream_cnt = 0;
+  int res = 0;
 
   exec_name = argv_[0];
 
@@ -1950,8 +1511,8 @@ int main(int argc, const char **argv_) {
     usage_exit();
 
   /* Setup default input stream settings */
-  input.framerate.num = 30;
-  input.framerate.den = 1;
+  input.framerate.numerator = 30;
+  input.framerate.denominator = 1;
   input.use_i420 = 1;
   input.only_i420 = 1;
 
@@ -1961,6 +1522,7 @@ int main(int argc, const char **argv_) {
    */
   argv = argv_dup(argc - 1, argv_ + 1);
   parse_global_config(&global, argv);
+
 
   {
     /* Now parse each stream's parameters. Using a local scope here
@@ -1982,17 +1544,18 @@ int main(int argc, const char **argv_) {
     if (argi[0][0] == '-' && argi[0][1])
       die("Error: Unrecognized option %s\n", *argi);
 
-  /* Handle non-option arguments */
-  input.fn = argv[0];
+  FOREACH_STREAM(check_encoder_config(global.disable_warning_prompt,
+                                      &global, &stream->config.cfg););
 
-  if (!input.fn)
+  /* Handle non-option arguments */
+  input.filename = argv[0];
+
+  if (!input.filename)
     usage_exit();
 
-#if CONFIG_NON420
   /* Decide if other chroma subsamplings than 4:2:0 are supported */
   if (global.codec->fourcc == VP9_FOURCC)
     input.only_i420 = 0;
-#endif
 
   for (pass = global.pass ? global.pass - 1 : 0; pass < global.passes; pass++) {
     int frames_in = 0, seen_frames = 0;
@@ -2005,21 +1568,21 @@ int main(int argc, const char **argv_) {
     /* If the input file doesn't specify its w/h (raw files), try to get
      * the data from the first stream's configuration.
      */
-    if (!input.w || !input.h)
+    if (!input.width || !input.height)
       FOREACH_STREAM( {
       if (stream->config.cfg.g_w && stream->config.cfg.g_h) {
-        input.w = stream->config.cfg.g_w;
-        input.h = stream->config.cfg.g_h;
+        input.width = stream->config.cfg.g_w;
+        input.height = stream->config.cfg.g_h;
         break;
       }
     });
 
     /* Update stream configurations from the input file's parameters */
-    if (!input.w || !input.h)
+    if (!input.width || !input.height)
       fatal("Specify stream dimensions with --width (-w) "
             " and --height (-h)");
-    FOREACH_STREAM(set_stream_dimensions(stream, input.w, input.h));
-    FOREACH_STREAM(validate_stream_config(stream));
+    FOREACH_STREAM(set_stream_dimensions(stream, input.width, input.height));
+    FOREACH_STREAM(validate_stream_config(stream, &global));
 
     /* Ensure that --passes and --pass are consistent. If --pass is set and
      * --passes=2, ensure --fpf was set.
@@ -2034,8 +1597,10 @@ int main(int argc, const char **argv_) {
     /* Use the frame rate from the file only if none was specified
      * on the command-line.
      */
-    if (!global.have_framerate)
-      global.framerate = input.framerate;
+    if (!global.have_framerate) {
+      global.framerate.num = input.framerate.numerator;
+      global.framerate.den = input.framerate.denominator;
+    }
 
     FOREACH_STREAM(set_default_kf_interval(stream, &global));
 
@@ -2053,11 +1618,11 @@ int main(int argc, const char **argv_) {
         vpx_img_alloc(&raw,
                       input.use_i420 ? VPX_IMG_FMT_I420
                       : VPX_IMG_FMT_YV12,
-                      input.w, input.h, 32);
+                      input.width, input.height, 32);
 
-      FOREACH_STREAM(init_rate_histogram(&stream->rate_hist,
-                                         &stream->config.cfg,
-                                         &global.framerate));
+      FOREACH_STREAM(stream->rate_hist =
+                         init_rate_histogram(&stream->config.cfg,
+                                             &global.framerate));
     }
 
     FOREACH_STREAM(setup_pass(stream, &global, pass));
@@ -2121,7 +1686,7 @@ int main(int argc, const char **argv_) {
           int64_t rate;
 
           if (global.limit) {
-            int frame_in_lagged = (seen_frames - lagged_count) * 1000;
+            off_t frame_in_lagged = (seen_frames - lagged_count) * 1000;
 
             rate = cx_time ? frame_in_lagged * (int64_t)1000000 / cx_time : 0;
             remaining = 1000 * (global.limit - global.skip_frames
@@ -2194,10 +1759,10 @@ int main(int argc, const char **argv_) {
                                     global.show_q_hist_buckets));
 
   if (global.show_rate_hist_buckets)
-    FOREACH_STREAM(show_rate_histogram(&stream->rate_hist,
+    FOREACH_STREAM(show_rate_histogram(stream->rate_hist,
                                        &stream->config.cfg,
                                        global.show_rate_hist_buckets));
-  FOREACH_STREAM(destroy_rate_histogram(&stream->rate_hist));
+  FOREACH_STREAM(destroy_rate_histogram(stream->rate_hist));
 
 #if CONFIG_INTERNAL_STATS
   /* TODO(jkoleszar): This doesn't belong in this executable. Do it for now,

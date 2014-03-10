@@ -1,12 +1,12 @@
 /*
-*  Copyright (c) 2012 The WebM project authors. All Rights Reserved.
-*
-*  Use of this source code is governed by a BSD-style license
-*  that can be found in the LICENSE file in the root of the source
-*  tree. An additional intellectual property rights grant can be found
-*  in the file PATENTS.  All contributing project authors may
-*  be found in the AUTHORS file in the root of the source tree.
-*/
+ *  Copyright (c) 2013 The WebM project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
 
 #include <math.h>
 #include <stdlib.h>
@@ -16,12 +16,10 @@
 #include "test/register_state_check.h"
 #include "test/util.h"
 #include "third_party/googletest/src/include/gtest/gtest.h"
-extern "C" {
 #include "./vpx_config.h"
 #include "./vp8_rtcd.h"
 #include "vpx/vpx_integer.h"
 #include "vpx_mem/vpx_mem.h"
-}
 
 namespace {
 
@@ -32,7 +30,10 @@ typedef void (*sixtap_predict_fn_t)(uint8_t *src_ptr,
                                     uint8_t *dst_ptr,
                                     int  dst_pitch);
 
-class SixtapPredictTest : public PARAMS(int, int, sixtap_predict_fn_t) {
+typedef std::tr1::tuple<int, int, sixtap_predict_fn_t> sixtap_predict_param_t;
+
+class SixtapPredictTest
+    : public ::testing::TestWithParam<sixtap_predict_param_t> {
  public:
   static void SetUpTestCase() {
     src_ = reinterpret_cast<uint8_t*>(vpx_memalign(kDataAlignment, kSrcSize));
@@ -192,6 +193,16 @@ INSTANTIATE_TEST_CASE_P(
         make_tuple(8, 8, sixtap_8x8_c),
         make_tuple(8, 4, sixtap_8x4_c),
         make_tuple(4, 4, sixtap_4x4_c)));
+#if HAVE_NEON
+const sixtap_predict_fn_t sixtap_16x16_neon = vp8_sixtap_predict16x16_neon;
+const sixtap_predict_fn_t sixtap_8x8_neon = vp8_sixtap_predict8x8_neon;
+const sixtap_predict_fn_t sixtap_8x4_neon = vp8_sixtap_predict8x4_neon;
+INSTANTIATE_TEST_CASE_P(
+    DISABLED_NEON, SixtapPredictTest, ::testing::Values(
+        make_tuple(16, 16, sixtap_16x16_neon),
+        make_tuple(8, 8, sixtap_8x8_neon),
+        make_tuple(8, 4, sixtap_8x4_neon)));
+#endif
 #if HAVE_MMX
 const sixtap_predict_fn_t sixtap_16x16_mmx = vp8_sixtap_predict16x16_mmx;
 const sixtap_predict_fn_t sixtap_8x8_mmx = vp8_sixtap_predict8x8_mmx;

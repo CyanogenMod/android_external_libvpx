@@ -123,12 +123,17 @@ class Encoder {
     ASSERT_EQ(VPX_CODEC_OK, res) << EncoderError();
   }
 
+  void Control(int ctrl_id, struct vpx_svc_layer_id *arg) {
+    const vpx_codec_err_t res = vpx_codec_control_(&encoder_, ctrl_id, arg);
+    ASSERT_EQ(VPX_CODEC_OK, res) << EncoderError();
+  }
+
   void set_deadline(unsigned long deadline) {
     deadline_ = deadline;
   }
 
  protected:
-  virtual const vpx_codec_iface_t* CodecInterface() const = 0;
+  virtual vpx_codec_iface_t* CodecInterface() const = 0;
 
   const char *EncoderError() {
     const char *detail = vpx_codec_error_detail(&encoder_);

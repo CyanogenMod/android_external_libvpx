@@ -17,17 +17,15 @@
 
 #include "vpx/vpx_integer.h"
 #include "./vpx_config.h"
-extern "C" {
 #include "vpx_mem/vpx_mem.h"
 #if CONFIG_VP8_ENCODER
-# include "vp8/common/variance.h"
 # include "./vp8_rtcd.h"
+# include "vp8/common/variance.h"
 #endif
 #if CONFIG_VP9_ENCODER
-# include "vp9/encoder/vp9_variance.h"
 # include "./vp9_rtcd.h"
+# include "vp9/encoder/vp9_variance.h"
 #endif
-}
 #include "test/acm_random.h"
 
 namespace {
@@ -308,6 +306,19 @@ INSTANTIATE_TEST_CASE_P(
                       make_tuple(3, 4, variance8x16_c),
                       make_tuple(4, 3, variance16x8_c),
                       make_tuple(4, 4, variance16x16_c)));
+
+#if HAVE_NEON
+const vp8_variance_fn_t variance8x8_neon = vp8_variance8x8_neon;
+const vp8_variance_fn_t variance8x16_neon = vp8_variance8x16_neon;
+const vp8_variance_fn_t variance16x8_neon = vp8_variance16x8_neon;
+const vp8_variance_fn_t variance16x16_neon = vp8_variance16x16_neon;
+INSTANTIATE_TEST_CASE_P(
+    NEON, VP8VarianceTest,
+    ::testing::Values(make_tuple(3, 3, variance8x8_neon),
+                      make_tuple(3, 4, variance8x16_neon),
+                      make_tuple(4, 3, variance16x8_neon),
+                      make_tuple(4, 4, variance16x16_neon)));
+#endif
 
 #if HAVE_MMX
 const vp8_variance_fn_t variance4x4_mmx = vp8_variance4x4_mmx;
