@@ -297,6 +297,8 @@ vp9/encoder/vp9_bitstream.h
 vp9/encoder/vp9_block.h
 vp9/encoder/vp9_cost.c
 vp9/encoder/vp9_cost.h
+vp9/encoder/vp9_craq.c
+vp9/encoder/vp9_craq.h
 vp9/encoder/vp9_dct.c
 vp9/encoder/vp9_encodeframe.c
 vp9/encoder/vp9_encodeframe.h
@@ -333,6 +335,8 @@ vp9/encoder/vp9_segmentation.c
 vp9/encoder/vp9_segmentation.h
 vp9/encoder/vp9_subexp.c
 vp9/encoder/vp9_subexp.h
+vp9/encoder/vp9_svc_layercontext.c
+vp9/encoder/vp9_svc_layercontext.h
 vp9/encoder/vp9_temporal_filter.c
 vp9/encoder/vp9_temporal_filter.h
 vp9/encoder/vp9_tokenize.c
@@ -371,7 +375,6 @@ vpx_ports/vpx_ports.mk
 vpx_ports/vpx_timer.h
 vpx_scale/arm/neon/vp8_vpxyv12_copyframe_func_neon.asm.s
 vpx_scale/arm/neon/vp8_vpxyv12_copysrcframe_func_neon.asm.s
-vpx_scale/arm/neon/vp8_vpxyv12_copy_y_neon.asm.s
 vpx_scale/arm/neon/vp8_vpxyv12_extendframeborders_neon.asm.s
 vpx_scale/arm/neon/yv12extend_arm.c
 vpx_scale/generic/gen_scalers.c

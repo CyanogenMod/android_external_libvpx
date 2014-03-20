@@ -189,7 +189,6 @@ void vp9_remove_decompressor(VP9D_COMP *pbi) {
     vp9_loop_filter_dealloc(lf_sync, sb_rows);
   }
 
-  vpx_free(pbi->mi_streams);
   vpx_free(pbi->above_context[0]);
   vpx_free(pbi->above_seg_context);
   vpx_free(pbi);
@@ -423,25 +422,9 @@ int vp9_receive_compressed_data(VP9D_COMP *pbi,
   if (!cm->show_existing_frame)
     cm->last_show_frame = cm->show_frame;
   if (cm->show_frame) {
-    if (!cm->show_existing_frame) {
-      // current mip will be the prev_mip for the next frame
-      MODE_INFO *temp = cm->prev_mip;
-      MODE_INFO **temp2 = cm->prev_mi_grid_base;
-      cm->prev_mip = cm->mip;
-      cm->mip = temp;
-      cm->prev_mi_grid_base = cm->mi_grid_base;
-      cm->mi_grid_base = temp2;
+    if (!cm->show_existing_frame)
+      vp9_swap_mi_and_prev_mi(cm);
 
-      // update the upper left visible macroblock ptrs
-      cm->mi = cm->mip + cm->mode_info_stride + 1;
-      cm->prev_mi = cm->prev_mip + cm->mode_info_stride + 1;
-      cm->mi_grid_visible = cm->mi_grid_base + cm->mode_info_stride + 1;
-      cm->prev_mi_grid_visible = cm->prev_mi_grid_base +
-                                 cm->mode_info_stride + 1;
-
-      pbi->mb.mi_8x8 = cm->mi_grid_visible;
-      pbi->mb.mi_8x8[0] = cm->mi;
-    }
     cm->current_video_frame++;
   }
 

@@ -244,6 +244,7 @@ void vp9_build_inter_predictors_sb(MACROBLOCKD *xd, int mi_row, int mi_col,
 // TODO(jingning): This function serves as a placeholder for decoder prediction
 // using on demand border extension. It should be moved to /decoder/ directory.
 static void dec_build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
+                                       int bw, int bh,
                                        int x, int y, int w, int h,
                                        int mi_x, int mi_y) {
   struct macroblockd_plane *const pd = &xd->plane[plane];
@@ -265,15 +266,21 @@ static void dec_build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
                ? (plane == 0 ? mi->bmi[block].as_mv[ref].as_mv
                              : mi_mv_pred_q4(mi, ref))
                : mi->mbmi.mv[ref].as_mv;
+
+    // TODO(jkoleszar): This clamping is done in the incorrect place for the
+    // scaling case. It needs to be done on the scaled MV, not the pre-scaling
+    // MV. Note however that it performs the subsampling aware scaling so
+    // that the result is always q4.
+    // mv_precision precision is MV_PRECISION_Q4.
+    const MV mv_q4 = clamp_mv_to_umv_border_sb(xd, &mv, bw, bh,
+                                               pd->subsampling_x,
+                                               pd->subsampling_y);
+
     MV32 scaled_mv;
     int xs, ys, x0, y0, x0_16, y0_16, frame_width, frame_height, buf_stride,
         subpel_x, subpel_y;
     uint8_t *ref_frame, *buf_ptr;
     const YV12_BUFFER_CONFIG *ref_buf = xd->block_refs[ref]->buf;
-    const MV mv_q4 = {
-      mv.row * (1 << (1 - pd->subsampling_y)),
-      mv.col * (1 << (1 - pd->subsampling_x))
-    };
 
     // Get reference frame pointer, width and height.
     if (plane == 0) {
@@ -286,24 +293,40 @@ static void dec_build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
       ref_frame = plane == 1 ? ref_buf->u_buffer : ref_buf->v_buffer;
     }
 
-    // Get block position in current frame.
-    x0 = (-xd->mb_to_left_edge >> (3 + pd->subsampling_x)) + x;
-    y0 = (-xd->mb_to_top_edge >> (3 + pd->subsampling_y)) + y;
-
-    // Precision of x0_16 and y0_16 is 1/16th pixel.
-    x0_16 = x0 << SUBPEL_BITS;
-    y0_16 = y0 << SUBPEL_BITS;
-
     if (vp9_is_scaled(sf)) {
+      // Co-ordinate of containing block to pixel precision.
+      int x_start = (-xd->mb_to_left_edge >> (3 + pd->subsampling_x));
+      int y_start = (-xd->mb_to_top_edge >> (3 + pd->subsampling_y));
+
+      // Co-ordinate of the block to 1/16th pixel precision.
+      x0_16 = (x_start + x) << SUBPEL_BITS;
+      y0_16 = (y_start + y) << SUBPEL_BITS;
+
+      // Co-ordinate of current block in reference frame
+      // to 1/16th pixel precision.
+      x0_16 = sf->scale_value_x(x0_16, sf);
+      y0_16 = sf->scale_value_y(y0_16, sf);
+
+      // Map the top left corner of the block into the reference frame.
+      // NOTE: This must be done in this way instead of
+      // sf->scale_value_x(x_start + x, sf).
+      x0 = sf->scale_value_x(x_start, sf) + sf->scale_value_x(x, sf);
+      y0 = sf->scale_value_y(y_start, sf) + sf->scale_value_y(y, sf);
+
+      // Scale the MV and incorporate the sub-pixel offset of the block
+      // in the reference frame.
       scaled_mv = vp9_scale_mv(&mv_q4, mi_x + x, mi_y + y, sf);
       xs = sf->x_step_q4;
       ys = sf->y_step_q4;
-      // Map the top left corner of the block into the reference frame.
-      x0 = sf->scale_value_x(x0, sf);
-      y0 = sf->scale_value_y(y0, sf);
-      x0_16 = sf->scale_value_x(x0_16, sf);
-      y0_16 = sf->scale_value_y(y0_16, sf);
     } else {
+      // Co-ordinate of containing block to pixel precision.
+      x0 = (-xd->mb_to_left_edge >> (3 + pd->subsampling_x)) + x;
+      y0 = (-xd->mb_to_top_edge >> (3 + pd->subsampling_y)) + y;
+
+      // Co-ordinate of the block to 1/16th pixel precision.
+      x0_16 = x0 << SUBPEL_BITS;
+      y0_16 = y0 << SUBPEL_BITS;
+
       scaled_mv.row = mv_q4.row;
       scaled_mv.col = mv_q4.col;
       xs = ys = 16;
@@ -347,9 +370,10 @@ static void dec_build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
           y0 < 0 || y0 > frame_height - 1 || y1 < 0 || y1 > frame_height - 1) {
         uint8_t *buf_ptr1 = ref_frame + y0 * pre_buf->stride + x0;
         // Extend the border.
-        build_mc_border(buf_ptr1, pre_buf->stride, xd->mc_buf, x1 - x0,
-                        x0, y0, x1 - x0, y1 - y0, frame_width, frame_height);
-        buf_stride = x1 - x0;
+        build_mc_border(buf_ptr1, pre_buf->stride, xd->mc_buf, x1 - x0 + 1,
+                        x0, y0, x1 - x0 + 1, y1 - y0 + 1, frame_width,
+                        frame_height);
+        buf_stride = x1 - x0 + 1;
         buf_ptr = xd->mc_buf + y_pad * 3 * buf_stride + x_pad * 3;
       }
     }
@@ -377,10 +401,10 @@ void vp9_dec_build_inter_predictors_sb(MACROBLOCKD *xd, int mi_row, int mi_col,
       assert(bsize == BLOCK_8X8);
       for (y = 0; y < num_4x4_h; ++y)
         for (x = 0; x < num_4x4_w; ++x)
-          dec_build_inter_predictors(xd, plane, i++,
+          dec_build_inter_predictors(xd, plane, i++, bw, bh,
                                      4 * x, 4 * y, 4, 4, mi_x, mi_y);
     } else {
-      dec_build_inter_predictors(xd, plane, 0,
+      dec_build_inter_predictors(xd, plane, 0, bw, bh,
                                  0, 0, bw, bh, mi_x, mi_y);
     }
   }

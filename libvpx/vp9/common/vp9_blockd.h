@@ -204,13 +204,11 @@ typedef struct RefBuffer {
 typedef struct macroblockd {
   struct macroblockd_plane plane[MAX_MB_PLANE];
 
-  MODE_INFO *last_mi;
   int mode_info_stride;
 
   // A NULL indicates that the 8x8 is not part of the image
   MODE_INFO **mi_8x8;
   MODE_INFO **prev_mi_8x8;
-  MODE_INFO *mi_stream;
 
   int up_available;
   int left_available;
@@ -255,7 +253,7 @@ static INLINE BLOCK_SIZE get_subsize(BLOCK_SIZE bsize,
   return subsize;
 }
 
-extern const TX_TYPE mode2txfm_map[INTRA_MODES];
+extern const TX_TYPE intra_mode_to_tx_type_lookup[INTRA_MODES];
 
 static INLINE TX_TYPE get_tx_type(PLANE_TYPE plane_type,
                                   const MACROBLOCKD *xd) {
@@ -263,7 +261,7 @@ static INLINE TX_TYPE get_tx_type(PLANE_TYPE plane_type,
 
   if (plane_type != PLANE_TYPE_Y || is_inter_block(mbmi))
     return DCT_DCT;
-  return mode2txfm_map[mbmi->mode];
+  return intra_mode_to_tx_type_lookup[mbmi->mode];
 }
 
 static INLINE TX_TYPE get_tx_type_4x4(PLANE_TYPE plane_type,
@@ -273,7 +271,7 @@ static INLINE TX_TYPE get_tx_type_4x4(PLANE_TYPE plane_type,
   if (plane_type != PLANE_TYPE_Y || xd->lossless || is_inter_block(&mi->mbmi))
     return DCT_DCT;
 
-  return mode2txfm_map[get_y_mode(mi, ib)];
+  return intra_mode_to_tx_type_lookup[get_y_mode(mi, ib)];
 }
 
 void vp9_setup_block_planes(MACROBLOCKD *xd, int ss_x, int ss_y);

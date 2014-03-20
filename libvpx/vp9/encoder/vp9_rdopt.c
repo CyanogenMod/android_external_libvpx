@@ -41,6 +41,11 @@
 #include "vp9/encoder/vp9_tokenize.h"
 #include "vp9/encoder/vp9_variance.h"
 
+#define RD_THRESH_MAX_FACT 64
+#define RD_THRESH_INC      1
+#define RD_THRESH_POW      1.25
+#define RD_MULT_EPB_RATIO  64
+
 /* Factor to weigh the rate for switchable interp filters */
 #define SWITCHABLE_INTERP_RATE_FACTOR 1
 
@@ -2161,10 +2166,9 @@ static void mv_pred(VP9_COMP *cpi, MACROBLOCK *x,
     max_mv = MAX(max_mv,
                  MAX(abs(this_mv.as_mv.row), abs(this_mv.as_mv.col)) >> 3);
     // only need to check zero mv once
-    if (!this_mv.as_int && zero_seen) {
-      x->mode_sad[ref_frame][i] = x->mode_sad[ref_frame][INTER_OFFSET(ZEROMV)];
+    if (!this_mv.as_int && zero_seen)
       continue;
-    }
+
     zero_seen = zero_seen || !this_mv.as_int;
 
     row_offset = this_mv.as_mv.row >> 3;
@@ -2175,9 +2179,6 @@ static void mv_pred(VP9_COMP *cpi, MACROBLOCK *x,
     this_sad = cpi->fn_ptr[block_size].sdf(src_y_ptr, x->plane[0].src.stride,
                                            ref_y_ptr, ref_y_stride,
                                            0x7fffffff);
-    x->mode_sad[ref_frame][i] = this_sad;
-    if (this_mv.as_int == 0)
-      x->mode_sad[ref_frame][INTER_OFFSET(ZEROMV)] = this_sad;
 
     // Note if it is the best so far.
     if (this_sad < best_sad) {
@@ -2185,12 +2186,6 @@ static void mv_pred(VP9_COMP *cpi, MACROBLOCK *x,
       best_index = i;
     }
   }
-
-  if (!zero_seen)
-    x->mode_sad[ref_frame][INTER_OFFSET(ZEROMV)] =
-        cpi->fn_ptr[block_size].sdf(src_y_ptr, x->plane[0].src.stride,
-                                    ref_y_buffer, ref_y_stride,
-                                    0x7fffffff);
 
   // Note the index of the mv that worked best in the reference list.
   x->mv_best_ref_index[ref_frame] = best_index;
@@ -2332,8 +2327,7 @@ void vp9_setup_buffer_inter(VP9_COMP *cpi, MACROBLOCK *x,
   setup_pred_block(xd, yv12_mb[ref_frame], yv12, mi_row, mi_col, sf, sf);
 
   // Gets an initial list of candidate vectors from neighbours and orders them
-  vp9_find_mv_refs(cm, xd, tile, mi, xd->last_mi, ref_frame, candidates,
-                   mi_row, mi_col);
+  vp9_find_mv_refs(cm, xd, tile, mi, ref_frame, candidates, mi_row, mi_col);
 
   // Candidate refinement carried out at encoder and decoder
   vp9_find_best_ref_mvs(xd, cm->allow_high_precision_mv, candidates,
@@ -2917,9 +2911,12 @@ static int64_t handle_inter_mode(VP9_COMP *cpi, MACROBLOCK *x,
     *rate2 += get_switchable_rate(x);
 
   if (!is_comp_pred) {
-    if (cpi->active_map_enabled && x->active_ptr[0] == 0)
+    if (!x->in_active_map) {
+      if (psse)
+        *psse = 0;
+      *distortion = 0;
       x->skip = 1;
-    else if (cpi->allow_encode_breakout && x->encode_breakout) {
+    } else if (cpi->allow_encode_breakout && x->encode_breakout) {
       const BLOCK_SIZE y_size = get_plane_block_size(bsize, &xd->plane[0]);
       const BLOCK_SIZE uv_size = get_plane_block_size(bsize, &xd->plane[1]);
       unsigned int var, sse;
@@ -3162,13 +3159,13 @@ int64_t vp9_rd_pick_inter_mode_sb(VP9_COMP *cpi, MACROBLOCK *x,
   const int bhs = num_8x8_blocks_high_lookup[bsize] / 2;
   int best_skip2 = 0;
   int mode_skip_mask = 0;
-  const int mode_skip_start = cpi->sf.mode_skip_start + 1;
+  int mode_skip_start = cpi->sf.mode_skip_start + 1;
   const int *const rd_threshes = cpi->rd_threshes[segment_id][bsize];
   const int *const rd_thresh_freq_fact = cpi->rd_thresh_freq_fact[bsize];
   const int mode_search_skip_flags = cpi->sf.mode_search_skip_flags;
   const int intra_y_mode_mask =
       cpi->sf.intra_y_mode_mask[max_txsize_lookup[bsize]];
-  const int disable_inter_mode_mask = cpi->sf.disable_inter_mode_mask[bsize];
+  int disable_inter_mode_mask = cpi->sf.disable_inter_mode_mask[bsize];
 
   x->skip_encode = cpi->sf.skip_encode_frame && x->q_index < QIDX_SKIP_THRESH;
 
@@ -3271,6 +3268,20 @@ int64_t vp9_rd_pick_inter_mode_sb(VP9_COMP *cpi, MACROBLOCK *x,
     mode_skip_mask |= 0xFF30808;
   }
 
+  if (!x->in_active_map) {
+    int mode_index;
+    assert(cpi->ref_frame_flags & VP9_LAST_FLAG);
+    if (frame_mv[NEARESTMV][LAST_FRAME].as_int == 0)
+      mode_index = THR_NEARESTMV;
+    else if (frame_mv[NEARMV][LAST_FRAME].as_int == 0)
+      mode_index = THR_NEARMV;
+    else
+      mode_index = THR_ZEROMV;
+    mode_skip_mask = ~(1 << mode_index);
+    mode_skip_start = MAX_MODES;
+    disable_inter_mode_mask = 0;
+  }
+
   for (mode_index = 0; mode_index < MAX_MODES; ++mode_index) {
     int mode_excluded = 0;
     int64_t this_rd = INT64_MAX;
@@ -3360,8 +3371,11 @@ int64_t vp9_rd_pick_inter_mode_sb(VP9_COMP *cpi, MACROBLOCK *x,
         }
       }
     } else {
+      // TODO(aconverse): Find out if this is still productive then clean up or
+      // remove
       // if we're near/nearest and mv == 0,0, compare to zeromv
-      if (!(disable_inter_mode_mask & (1 << INTER_OFFSET(ZEROMV))) &&
+      if (x->in_active_map &&
+          !(disable_inter_mode_mask & (1 << INTER_OFFSET(ZEROMV))) &&
           (this_mode == NEARMV || this_mode == NEARESTMV ||
           this_mode == ZEROMV) &&
           frame_mv[this_mode][ref_frame].as_int == 0 &&
@@ -3400,7 +3414,7 @@ int64_t vp9_rd_pick_inter_mode_sb(VP9_COMP *cpi, MACROBLOCK *x,
     }
 
     mbmi->mode = this_mode;
-    mbmi->uv_mode = DC_PRED;
+    mbmi->uv_mode = x->in_active_map ? DC_PRED : this_mode;
     mbmi->ref_frame[0] = ref_frame;
     mbmi->ref_frame[1] = second_ref_frame;
     // Evaluate all sub-pel filters irrespective of whether we can use
@@ -3741,6 +3755,16 @@ int64_t vp9_rd_pick_inter_mode_sb(VP9_COMP *cpi, MACROBLOCK *x,
   } else {
     vp9_zero(best_filter_diff);
     vp9_zero(best_tx_diff);
+  }
+
+  if (!x->in_active_map) {
+    assert(mbmi->ref_frame[0] == LAST_FRAME);
+    assert(mbmi->ref_frame[1] == NONE);
+    assert(mbmi->mode == NEARESTMV ||
+           mbmi->mode == NEARMV ||
+           mbmi->mode == ZEROMV);
+    assert(frame_mv[mbmi->mode][LAST_FRAME].as_int == 0);
+    assert(mbmi->mode == mbmi->uv_mode);
   }
 
   set_ref_ptrs(cm, xd, mbmi->ref_frame[0], mbmi->ref_frame[1]);

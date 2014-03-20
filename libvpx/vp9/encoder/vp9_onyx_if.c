@@ -28,6 +28,8 @@
 #include "vp9/common/vp9_tile_common.h"
 
 #include "vp9/encoder/vp9_bitstream.h"
+#include "vp9/encoder/vp9_craq.h"
+#include "vp9/encoder/vp9_encodeframe.h"
 #include "vp9/encoder/vp9_encodemv.h"
 #include "vp9/encoder/vp9_firstpass.h"
 #include "vp9/encoder/vp9_mbgraph.h"
@@ -39,6 +41,13 @@
 #include "vp9/encoder/vp9_temporal_filter.h"
 #include "vp9/encoder/vp9_vaq.h"
 #include "vp9/encoder/vp9_resize.h"
+#include "vp9/encoder/vp9_svc_layercontext.h"
+
+#define ALL_INTRA_MODES 0x3FF
+#define INTRA_DC_ONLY 0x01
+#define INTRA_DC_TM ((1 << TM_PRED) | (1 << DC_PRED))
+#define INTRA_DC_H_V ((1 << DC_PRED) | (1 << V_PRED) | (1 << H_PRED))
+#define INTRA_DC_TM_H_V (INTRA_DC_TM | (1 << V_PRED) | (1 << H_PRED))
 
 void vp9_coef_tree_initialize();
 
@@ -165,6 +174,8 @@ static void dealloc_compressor_data(VP9_COMP *cpi) {
 
   vpx_free(cpi->complexity_map);
   cpi->complexity_map = 0;
+  vpx_free(cpi->cyclic_refresh.map);
+  cpi->cyclic_refresh.map = 0;
   vpx_free(cpi->active_map);
   cpi->active_map = 0;
 
@@ -192,8 +203,7 @@ static void dealloc_compressor_data(VP9_COMP *cpi) {
 }
 
 // Computes a q delta (in "q index" terms) to get from a starting q value
-// to a target value
-// target q value
+// to a target q value
 int vp9_compute_qdelta(const VP9_COMP *cpi, double qstart, double qtarget) {
   const RATE_CONTROL *const rc = &cpi->rc;
   int start_index = rc->worst_quality;
@@ -218,10 +228,9 @@ int vp9_compute_qdelta(const VP9_COMP *cpi, double qstart, double qtarget) {
 }
 
 // Computes a q delta (in "q index" terms) to get from a starting q value
-// to a value that should equate to thegiven rate ratio.
-
-static int compute_qdelta_by_rate(VP9_COMP *cpi, int base_q_index,
-                                  double rate_target_ratio) {
+// to a value that should equate to the given rate ratio.
+int vp9_compute_qdelta_by_rate(VP9_COMP *cpi, int base_q_index,
+                               double rate_target_ratio) {
   int i;
   int target_index = cpi->rc.worst_quality;
 
@@ -274,8 +283,10 @@ static void setup_in_frame_q_adj(VP9_COMP *cpi) {
 
     // Use some of the segments for in frame Q adjustment
     for (segment = 1; segment < 2; segment++) {
-      const int qindex_delta = compute_qdelta_by_rate(cpi, cm->base_qindex,
-                                   in_frame_q_adj_ratio[segment]);
+      const int qindex_delta =
+          vp9_compute_qdelta_by_rate(cpi,
+                                     cm->base_qindex,
+                                     in_frame_q_adj_ratio[segment]);
       vp9_enable_segfeature(seg, segment, SEG_LVL_ALT_Q);
       vp9_set_segdata(seg, segment, SEG_LVL_ALT_Q, qindex_delta);
     }
@@ -283,9 +294,10 @@ static void setup_in_frame_q_adj(VP9_COMP *cpi) {
 }
 static void configure_static_seg_features(VP9_COMP *cpi) {
   VP9_COMMON *const cm = &cpi->common;
+  const RATE_CONTROL *const rc = &cpi->rc;
   struct segmentation *const seg = &cm->seg;
 
-  int high_q = (int)(cpi->rc.avg_q > 48.0);
+  int high_q = (int)(rc->avg_q > 48.0);
   int qi_delta;
 
   // Disable and clear down for KF
@@ -323,9 +335,8 @@ static void configure_static_seg_features(VP9_COMP *cpi) {
       seg->update_map = 1;
       seg->update_data = 1;
 
-      qi_delta = vp9_compute_qdelta(
-          cpi, cpi->rc.avg_q, (cpi->rc.avg_q * 0.875));
-      vp9_set_segdata(seg, 1, SEG_LVL_ALT_Q, (qi_delta - 2));
+      qi_delta = vp9_compute_qdelta(cpi, rc->avg_q, rc->avg_q * 0.875);
+      vp9_set_segdata(seg, 1, SEG_LVL_ALT_Q, qi_delta - 2);
       vp9_set_segdata(seg, 1, SEG_LVL_ALT_LF, -2);
 
       vp9_enable_segfeature(seg, 1, SEG_LVL_ALT_Q);
@@ -338,16 +349,15 @@ static void configure_static_seg_features(VP9_COMP *cpi) {
     // All other frames if segmentation has been enabled
 
     // First normal frame in a valid gf or alt ref group
-    if (cpi->rc.frames_since_golden == 0) {
+    if (rc->frames_since_golden == 0) {
       // Set up segment features for normal frames in an arf group
-      if (cpi->rc.source_alt_ref_active) {
+      if (rc->source_alt_ref_active) {
         seg->update_map = 0;
         seg->update_data = 1;
         seg->abs_delta = SEGMENT_DELTADATA;
 
-        qi_delta = vp9_compute_qdelta(cpi, cpi->rc.avg_q,
-                                      (cpi->rc.avg_q * 1.125));
-        vp9_set_segdata(seg, 1, SEG_LVL_ALT_Q, (qi_delta + 2));
+        qi_delta = vp9_compute_qdelta(cpi, rc->avg_q, rc->avg_q * 1.125);
+        vp9_set_segdata(seg, 1, SEG_LVL_ALT_Q, qi_delta + 2);
         vp9_enable_segfeature(seg, 1, SEG_LVL_ALT_Q);
 
         vp9_set_segdata(seg, 1, SEG_LVL_ALT_LF, -2);
@@ -372,7 +382,7 @@ static void configure_static_seg_features(VP9_COMP *cpi) {
 
         vp9_clearall_segfeatures(seg);
       }
-    } else if (cpi->rc.is_src_frame_alt_ref) {
+    } else if (rc->is_src_frame_alt_ref) {
       // Special case where we are coding over the top of a previous
       // alt ref frame.
       // Segment coding disabled for compred testing
@@ -840,14 +850,12 @@ static void set_rt_speed_feature(VP9_COMMON *cm,
   }
   if (speed >= 5) {
     int i;
-    sf->mode_search_skip_flags |= FLAG_SKIP_COMP_REFMISMATCH |
-                                  FLAG_EARLY_TERMINATE;
-    sf->use_fast_coef_costing = 0;
+    sf->last_partitioning_redo_frequency = 4;
     sf->adaptive_rd_thresh = 5;
-    sf->auto_min_max_partition_size = frame_is_intra_only(cm) ?
-        RELAXED_NEIGHBORING_MIN_MAX : STRICT_NEIGHBORING_MIN_MAX;
+    sf->use_fast_coef_costing = 0;
+    sf->auto_min_max_partition_size = STRICT_NEIGHBORING_MIN_MAX;
     sf->adjust_partitioning_from_last_frame =
-        cm->last_frame_type == KEY_FRAME || (0 ==
+        cm->last_frame_type != cm->frame_type || (0 ==
         (cm->current_video_frame + 1) % sf->last_partitioning_redo_frequency);
     sf->subpel_force_stop = 1;
     for (i = 0; i < TX_SIZES; i++) {
@@ -865,8 +873,11 @@ static void set_rt_speed_feature(VP9_COMMON *cm,
     sf->max_intra_bsize = BLOCK_32X32;
   }
   if (speed >= 6) {
-    sf->partition_search_type = VAR_BASED_FIXED_PARTITION;
-    sf->search_method = HEX;
+    sf->partition_check =
+        (cm->current_video_frame % sf->last_partitioning_redo_frequency == 1);
+    sf->partition_search_type = REFERENCE_PARTITION;
+    sf->use_nonrd_pick_mode = 1;
+    sf->search_method = FAST_DIAMOND;
   }
   if (speed >= 7) {
     sf->partition_search_type = VAR_BASED_FIXED_PARTITION;
@@ -876,7 +887,7 @@ static void set_rt_speed_feature(VP9_COMMON *cm,
   if (speed >= 8) {
     int i;
     for (i = 0; i < BLOCK_SIZES; ++i)
-      sf->disable_inter_mode_mask[i] = 14;   // only search NEARESTMV (0)
+      sf->disable_inter_mode_mask[i] = 14;    // only search NEARESTMV (0)
   }
 }
 
@@ -1110,10 +1121,9 @@ static void update_frame_size(VP9_COMP *cpi) {
   }
 }
 
-
 // Table that converts 0-63 Q range values passed in outside to the Qindex
 // range used internally.
-static const int q_trans[] = {
+const int q_trans[] = {
   0,    4,   8,  12,  16,  20,  24,  28,
   32,   36,  40,  44,  48,  52,  56,  60,
   64,   68,  72,  76,  80,  84,  88,  92,
@@ -1182,130 +1192,12 @@ void vp9_new_framerate(VP9_COMP *cpi, double framerate) {
     rc->max_gf_interval = rc->static_scene_max_gf_interval;
 }
 
-static int64_t rescale(int64_t val, int64_t num, int denom) {
+int64_t vp9_rescale(int64_t val, int64_t num, int denom) {
   int64_t llnum = num;
   int64_t llden = denom;
   int64_t llval = val;
 
   return (llval * llnum / llden);
-}
-
-// Initialize layer context data from init_config().
-static void init_layer_context(VP9_COMP *const cpi) {
-  const VP9_CONFIG *const oxcf = &cpi->oxcf;
-  int temporal_layer = 0;
-  cpi->svc.spatial_layer_id = 0;
-  cpi->svc.temporal_layer_id = 0;
-  for (temporal_layer = 0; temporal_layer < cpi->svc.number_temporal_layers;
-      ++temporal_layer) {
-    LAYER_CONTEXT *const lc = &cpi->svc.layer_context[temporal_layer];
-    RATE_CONTROL *const lrc = &lc->rc;
-    lrc->avg_frame_qindex[INTER_FRAME] = q_trans[oxcf->worst_allowed_q];
-    lrc->last_q[INTER_FRAME] = q_trans[oxcf->worst_allowed_q];
-    lrc->ni_av_qi = q_trans[oxcf->worst_allowed_q];
-    lrc->total_actual_bits = 0;
-    lrc->total_target_vs_actual = 0;
-    lrc->ni_tot_qi = 0;
-    lrc->tot_q = 0.0;
-    lrc->avg_q = 0.0;
-    lrc->ni_frames = 0;
-    lrc->decimation_count = 0;
-    lrc->decimation_factor = 0;
-    lrc->rate_correction_factor = 1.0;
-    lrc->key_frame_rate_correction_factor = 1.0;
-    lc->target_bandwidth = oxcf->ts_target_bitrate[temporal_layer] *
-        1000;
-    lrc->buffer_level = rescale((int)(oxcf->starting_buffer_level),
-                               lc->target_bandwidth, 1000);
-    lrc->bits_off_target = lrc->buffer_level;
-  }
-}
-
-// Update the layer context from a change_config() call.
-static void update_layer_context_change_config(VP9_COMP *const cpi,
-                                               const int target_bandwidth) {
-  const VP9_CONFIG *const oxcf = &cpi->oxcf;
-  const RATE_CONTROL *const rc = &cpi->rc;
-  int temporal_layer = 0;
-  float bitrate_alloc = 1.0;
-  for (temporal_layer = 0; temporal_layer < cpi->svc.number_temporal_layers;
-      ++temporal_layer) {
-    LAYER_CONTEXT *const lc = &cpi->svc.layer_context[temporal_layer];
-    RATE_CONTROL *const lrc = &lc->rc;
-    lc->target_bandwidth = oxcf->ts_target_bitrate[temporal_layer] * 1000;
-    bitrate_alloc = (float)lc->target_bandwidth / (float)target_bandwidth;
-    // Update buffer-related quantities.
-    lc->starting_buffer_level =
-        (int64_t)(oxcf->starting_buffer_level * bitrate_alloc);
-    lc->optimal_buffer_level =
-        (int64_t)(oxcf->optimal_buffer_level * bitrate_alloc);
-    lc->maximum_buffer_size =
-        (int64_t)(oxcf->maximum_buffer_size * bitrate_alloc);
-    lrc->bits_off_target = MIN(lrc->bits_off_target, lc->maximum_buffer_size);
-    lrc->buffer_level = MIN(lrc->buffer_level, lc->maximum_buffer_size);
-    // Update framerate-related quantities.
-    lc->framerate = oxcf->framerate / oxcf->ts_rate_decimator[temporal_layer];
-    lrc->av_per_frame_bandwidth = (int)(lc->target_bandwidth / lc->framerate);
-    lrc->max_frame_bandwidth = rc->max_frame_bandwidth;
-    // Update qp-related quantities.
-    lrc->worst_quality = rc->worst_quality;
-    lrc->best_quality = rc->best_quality;
-  }
-}
-
-// Prior to encoding the frame, update framerate-related quantities
-// for the current layer.
-static void update_layer_framerate(VP9_COMP *const cpi) {
-  int temporal_layer = cpi->svc.temporal_layer_id;
-  const VP9_CONFIG *const oxcf = &cpi->oxcf;
-  LAYER_CONTEXT *const lc = &cpi->svc.layer_context[temporal_layer];
-  RATE_CONTROL *const lrc = &lc->rc;
-  lc->framerate = oxcf->framerate / oxcf->ts_rate_decimator[temporal_layer];
-  lrc->av_per_frame_bandwidth = (int)(lc->target_bandwidth / lc->framerate);
-  lrc->max_frame_bandwidth = cpi->rc.max_frame_bandwidth;
-  // Update the average layer frame size (non-cumulative per-frame-bw).
-  if (temporal_layer == 0) {
-    lc->avg_frame_size = lrc->av_per_frame_bandwidth;
-  } else {
-    double prev_layer_framerate = oxcf->framerate /
-        oxcf->ts_rate_decimator[temporal_layer - 1];
-    int prev_layer_target_bandwidth =
-        oxcf->ts_target_bitrate[temporal_layer - 1] * 1000;
-    lc->avg_frame_size =
-        (int)((lc->target_bandwidth - prev_layer_target_bandwidth) /
-              (lc->framerate - prev_layer_framerate));
-  }
-}
-
-// Prior to encoding the frame, set the layer context, for the current layer
-// to be encoded, to the cpi struct.
-static void restore_layer_context(VP9_COMP *const cpi) {
-  int temporal_layer = cpi->svc.temporal_layer_id;
-  LAYER_CONTEXT *lc = &cpi->svc.layer_context[temporal_layer];
-  int frame_since_key = cpi->rc.frames_since_key;
-  int frame_to_key = cpi->rc.frames_to_key;
-  cpi->rc = lc->rc;
-  cpi->oxcf.target_bandwidth = lc->target_bandwidth;
-  cpi->oxcf.starting_buffer_level = lc->starting_buffer_level;
-  cpi->oxcf.optimal_buffer_level = lc->optimal_buffer_level;
-  cpi->oxcf.maximum_buffer_size = lc->maximum_buffer_size;
-  cpi->output_framerate = lc->framerate;
-  // Reset the frames_since_key and frames_to_key counters to their values
-  // before the layer restore. Keep these defined for the stream (not layer).
-  cpi->rc.frames_since_key = frame_since_key;
-  cpi->rc.frames_to_key = frame_to_key;
-}
-
-// Save the layer context after encoding the frame.
-static void save_layer_context(VP9_COMP *const cpi) {
-  int temporal_layer = cpi->svc.temporal_layer_id;
-  LAYER_CONTEXT *lc = &cpi->svc.layer_context[temporal_layer];
-  lc->rc = cpi->rc;
-  lc->target_bandwidth = (int)cpi->oxcf.target_bandwidth;
-  lc->starting_buffer_level = cpi->oxcf.starting_buffer_level;
-  lc->optimal_buffer_level = cpi->oxcf.optimal_buffer_level;
-  lc->maximum_buffer_size = cpi->oxcf.maximum_buffer_size;
-  lc->framerate = cpi->output_framerate;
 }
 
 static void set_tile_limits(VP9_COMP *cpi) {
@@ -1321,6 +1213,7 @@ static void set_tile_limits(VP9_COMP *cpi) {
 
 static void init_config(struct VP9_COMP *cpi, VP9_CONFIG *oxcf) {
   VP9_COMMON *const cm = &cpi->common;
+  RATE_CONTROL *const rc = &cpi->rc;
   int i;
 
   cpi->oxcf = *oxcf;
@@ -1340,7 +1233,7 @@ static void init_config(struct VP9_COMP *cpi, VP9_CONFIG *oxcf) {
 
   if (cpi->svc.number_temporal_layers > 1 &&
       cpi->oxcf.end_usage == USAGE_STREAM_FROM_SERVER) {
-    init_layer_context(cpi);
+    vp9_init_layer_context(cpi);
   }
 
   // change includes all joint functionality
@@ -1348,32 +1241,32 @@ static void init_config(struct VP9_COMP *cpi, VP9_CONFIG *oxcf) {
 
   // Initialize active best and worst q and average q values.
   if (cpi->pass == 0 && cpi->oxcf.end_usage == USAGE_STREAM_FROM_SERVER) {
-    cpi->rc.avg_frame_qindex[0] = cpi->oxcf.worst_allowed_q;
-    cpi->rc.avg_frame_qindex[1] = cpi->oxcf.worst_allowed_q;
-    cpi->rc.avg_frame_qindex[2] = cpi->oxcf.worst_allowed_q;
+    rc->avg_frame_qindex[0] = cpi->oxcf.worst_allowed_q;
+    rc->avg_frame_qindex[1] = cpi->oxcf.worst_allowed_q;
+    rc->avg_frame_qindex[2] = cpi->oxcf.worst_allowed_q;
   } else {
-    cpi->rc.avg_frame_qindex[0] = (cpi->oxcf.worst_allowed_q +
-                                   cpi->oxcf.best_allowed_q) / 2;
-    cpi->rc.avg_frame_qindex[1] = (cpi->oxcf.worst_allowed_q +
-                                   cpi->oxcf.best_allowed_q) / 2;
-    cpi->rc.avg_frame_qindex[2] = (cpi->oxcf.worst_allowed_q +
-                                   cpi->oxcf.best_allowed_q) / 2;
+    rc->avg_frame_qindex[0] = (cpi->oxcf.worst_allowed_q +
+                                  cpi->oxcf.best_allowed_q) / 2;
+    rc->avg_frame_qindex[1] = (cpi->oxcf.worst_allowed_q +
+                                  cpi->oxcf.best_allowed_q) / 2;
+    rc->avg_frame_qindex[2] = (cpi->oxcf.worst_allowed_q +
+                                  cpi->oxcf.best_allowed_q) / 2;
   }
-  cpi->rc.last_q[0]                 = cpi->oxcf.best_allowed_q;
-  cpi->rc.last_q[1]                 = cpi->oxcf.best_allowed_q;
-  cpi->rc.last_q[2]                 = cpi->oxcf.best_allowed_q;
+  rc->last_q[0] = cpi->oxcf.best_allowed_q;
+  rc->last_q[1] = cpi->oxcf.best_allowed_q;
+  rc->last_q[2] = cpi->oxcf.best_allowed_q;
 
   // Initialise the starting buffer levels
-  cpi->rc.buffer_level              = cpi->oxcf.starting_buffer_level;
-  cpi->rc.bits_off_target           = cpi->oxcf.starting_buffer_level;
+  rc->buffer_level    = cpi->oxcf.starting_buffer_level;
+  rc->bits_off_target = cpi->oxcf.starting_buffer_level;
 
-  cpi->rc.rolling_target_bits       = cpi->rc.av_per_frame_bandwidth;
-  cpi->rc.rolling_actual_bits       = cpi->rc.av_per_frame_bandwidth;
-  cpi->rc.long_rolling_target_bits  = cpi->rc.av_per_frame_bandwidth;
-  cpi->rc.long_rolling_actual_bits  = cpi->rc.av_per_frame_bandwidth;
+  rc->rolling_target_bits      = rc->av_per_frame_bandwidth;
+  rc->rolling_actual_bits      = rc->av_per_frame_bandwidth;
+  rc->long_rolling_target_bits = rc->av_per_frame_bandwidth;
+  rc->long_rolling_actual_bits = rc->av_per_frame_bandwidth;
 
-  cpi->rc.total_actual_bits         = 0;
-  cpi->rc.total_target_vs_actual    = 0;
+  rc->total_actual_bits = 0;
+  rc->total_target_vs_actual = 0;
 
   cpi->static_mb_pct = 0;
 
@@ -1469,21 +1362,24 @@ void vp9_change_config(struct VP9_COMP *cpi, VP9_CONFIG *oxcf) {
   // Convert target bandwidth from Kbit/s to Bit/s
   cpi->oxcf.target_bandwidth       *= 1000;
 
-  cpi->oxcf.starting_buffer_level = rescale(cpi->oxcf.starting_buffer_level,
-                                            cpi->oxcf.target_bandwidth, 1000);
+  cpi->oxcf.starting_buffer_level =
+      vp9_rescale(cpi->oxcf.starting_buffer_level,
+                  cpi->oxcf.target_bandwidth, 1000);
 
   // Set or reset optimal and maximum buffer levels.
   if (cpi->oxcf.optimal_buffer_level == 0)
     cpi->oxcf.optimal_buffer_level = cpi->oxcf.target_bandwidth / 8;
   else
-    cpi->oxcf.optimal_buffer_level = rescale(cpi->oxcf.optimal_buffer_level,
-                                             cpi->oxcf.target_bandwidth, 1000);
+    cpi->oxcf.optimal_buffer_level =
+        vp9_rescale(cpi->oxcf.optimal_buffer_level,
+                    cpi->oxcf.target_bandwidth, 1000);
 
   if (cpi->oxcf.maximum_buffer_size == 0)
     cpi->oxcf.maximum_buffer_size = cpi->oxcf.target_bandwidth / 8;
   else
-    cpi->oxcf.maximum_buffer_size = rescale(cpi->oxcf.maximum_buffer_size,
-                                            cpi->oxcf.target_bandwidth, 1000);
+    cpi->oxcf.maximum_buffer_size =
+        vp9_rescale(cpi->oxcf.maximum_buffer_size,
+                    cpi->oxcf.target_bandwidth, 1000);
   // Under a configuration change, where maximum_buffer_size may change,
   // keep buffer level clipped to the maximum allowed buffer size.
   cpi->rc.bits_off_target = MIN(cpi->rc.bits_off_target,
@@ -1523,7 +1419,8 @@ void vp9_change_config(struct VP9_COMP *cpi, VP9_CONFIG *oxcf) {
 
   if (cpi->svc.number_temporal_layers > 1 &&
       cpi->oxcf.end_usage == USAGE_STREAM_FROM_SERVER) {
-    update_layer_context_change_config(cpi, (int)cpi->oxcf.target_bandwidth);
+    vp9_update_layer_context_change_config(cpi,
+                                           (int)cpi->oxcf.target_bandwidth);
   }
 
   cpi->speed = abs(cpi->oxcf.cpu_used);
@@ -1712,8 +1609,9 @@ static void free_pick_mode_context(MACROBLOCK *x) {
 
 VP9_COMP *vp9_create_compressor(VP9_CONFIG *oxcf) {
   int i, j;
-  VP9_COMP *cpi = vpx_memalign(32, sizeof(VP9_COMP));
-  VP9_COMMON *cm = cpi != NULL ? &cpi->common : NULL;
+  VP9_COMP *const cpi = vpx_memalign(32, sizeof(VP9_COMP));
+  VP9_COMMON *const cm = cpi != NULL ? &cpi->common : NULL;
+  RATE_CONTROL *const rc = cpi != NULL ? &cpi->rc : NULL;
 
   if (!cm)
     return NULL;
@@ -1743,7 +1641,7 @@ VP9_COMP *vp9_create_compressor(VP9_CONFIG *oxcf) {
   // Set reference frame sign bias for ALTREF frame to 1 (for now)
   cm->ref_frame_sign_bias[ALTREF_FRAME] = 1;
 
-  cpi->rc.baseline_gf_interval = DEFAULT_GF_INTERVAL;
+  rc->baseline_gf_interval = DEFAULT_GF_INTERVAL;
 
   cpi->gold_is_last = 0;
   cpi->alt_is_last = 0;
@@ -1757,6 +1655,9 @@ VP9_COMP *vp9_create_compressor(VP9_CONFIG *oxcf) {
   CHECK_MEM_ERROR(cm, cpi->complexity_map,
                   vpx_calloc(cm->mi_rows * cm->mi_cols, 1));
 
+  // Create a map used for cyclic background refresh.
+  CHECK_MEM_ERROR(cm, cpi->cyclic_refresh.map,
+                  vpx_calloc(cm->mi_rows * cm->mi_cols, 1));
 
   // And a place holder structure is the coding context
   // for use if we want to save and restore it
@@ -1778,12 +1679,12 @@ VP9_COMP *vp9_create_compressor(VP9_CONFIG *oxcf) {
   cpi->activity_avg = 90 << 12;
   cpi->key_frame_frequency = cpi->oxcf.key_freq;
 
-  cpi->rc.frames_since_key = 8;  // Sensible default for first frame.
-  cpi->rc.this_key_frame_forced = 0;
-  cpi->rc.next_key_frame_forced = 0;
+  rc->frames_since_key = 8;  // Sensible default for first frame.
+  rc->this_key_frame_forced = 0;
+  rc->next_key_frame_forced = 0;
 
-  cpi->rc.source_alt_ref_pending = 0;
-  cpi->rc.source_alt_ref_active = 0;
+  rc->source_alt_ref_pending = 0;
+  rc->source_alt_ref_active = 0;
   cpi->refresh_alt_ref_frame = 0;
 
 #if CONFIG_MULTIPLE_ARF
@@ -1839,17 +1740,17 @@ VP9_COMP *vp9_create_compressor(VP9_CONFIG *oxcf) {
 
   cpi->first_time_stamp_ever = INT64_MAX;
 
-  cpi->rc.frames_till_gf_update_due      = 0;
+  rc->frames_till_gf_update_due = 0;
 
-  cpi->rc.ni_av_qi                     = cpi->oxcf.worst_allowed_q;
-  cpi->rc.ni_tot_qi                    = 0;
-  cpi->rc.ni_frames                   = 0;
-  cpi->rc.tot_q = 0.0;
-  cpi->rc.avg_q = vp9_convert_qindex_to_q(cpi->oxcf.worst_allowed_q);
+  rc->ni_av_qi = cpi->oxcf.worst_allowed_q;
+  rc->ni_tot_qi = 0;
+  rc->ni_frames = 0;
+  rc->tot_q = 0.0;
+  rc->avg_q = vp9_convert_qindex_to_q(cpi->oxcf.worst_allowed_q);
 
-  cpi->rc.rate_correction_factor         = 1.0;
-  cpi->rc.key_frame_rate_correction_factor = 1.0;
-  cpi->rc.gf_rate_correction_factor  = 1.0;
+  rc->rate_correction_factor = 1.0;
+  rc->key_frame_rate_correction_factor = 1.0;
+  rc->gf_rate_correction_factor = 1.0;
 
   cal_nmvjointsadcost(cpi->mb.nmvjointsadcost);
   cpi->mb.nmvcost[0] = &cpi->mb.nmvcosts[0][MV_MAX];
@@ -2258,25 +2159,11 @@ int vp9_use_as_reference(VP9_COMP *cpi, int ref_frame_flags) {
   return 0;
 }
 
-int vp9_update_reference(VP9_COMP *cpi, int ref_frame_flags) {
-  if (ref_frame_flags > 7)
-    return -1;
-
-  cpi->ext_refresh_golden_frame = 0;
-  cpi->ext_refresh_alt_ref_frame = 0;
-  cpi->ext_refresh_last_frame   = 0;
-
-  if (ref_frame_flags & VP9_LAST_FLAG)
-    cpi->ext_refresh_last_frame = 1;
-
-  if (ref_frame_flags & VP9_GOLD_FLAG)
-    cpi->ext_refresh_golden_frame = 1;
-
-  if (ref_frame_flags & VP9_ALT_FLAG)
-    cpi->ext_refresh_alt_ref_frame = 1;
-
+void vp9_update_reference(VP9_COMP *cpi, int ref_frame_flags) {
+  cpi->ext_refresh_golden_frame = (ref_frame_flags & VP9_GOLD_FLAG) != 0;
+  cpi->ext_refresh_alt_ref_frame = (ref_frame_flags & VP9_ALT_FLAG) != 0;
+  cpi->ext_refresh_last_frame = (ref_frame_flags & VP9_LAST_FLAG) != 0;
   cpi->ext_refresh_frame_flags_pending = 1;
-  return 0;
 }
 
 static YV12_BUFFER_CONFIG *get_vp9_ref_frame_buffer(VP9_COMP *cpi,
@@ -2527,36 +2414,6 @@ void write_cx_frame_to_file(YV12_BUFFER_CONFIG *frame, int this_frame) {
 }
 #endif
 
-static double compute_edge_pixel_proportion(YV12_BUFFER_CONFIG *frame) {
-#define EDGE_THRESH 128
-  int i, j;
-  int num_edge_pels = 0;
-  int num_pels = (frame->y_height - 2) * (frame->y_width - 2);
-  uint8_t *prev = frame->y_buffer + 1;
-  uint8_t *curr = frame->y_buffer + 1 + frame->y_stride;
-  uint8_t *next = frame->y_buffer + 1 + 2 * frame->y_stride;
-  for (i = 1; i < frame->y_height - 1; i++) {
-    for (j = 1; j < frame->y_width - 1; j++) {
-      /* Sobel hor and ver gradients */
-      int v = 2 * (curr[1] - curr[-1]) + (prev[1] - prev[-1]) +
-              (next[1] - next[-1]);
-      int h = 2 * (prev[0] - next[0]) + (prev[1] - next[1]) +
-              (prev[-1] - next[-1]);
-      h = (h < 0 ? -h : h);
-      v = (v < 0 ? -v : v);
-      if (h > EDGE_THRESH || v > EDGE_THRESH)
-        num_edge_pels++;
-      curr++;
-      prev++;
-      next++;
-    }
-    curr += frame->y_stride - frame->y_width + 2;
-    prev += frame->y_stride - frame->y_width + 2;
-    next += frame->y_stride - frame->y_width + 2;
-  }
-  return (double)num_edge_pels / num_pels;
-}
-
 // Function to test for conditions that indicate we should loop
 // back and recode a frame.
 static int recode_loop_test(const VP9_COMP *cpi,
@@ -2593,7 +2450,7 @@ static int recode_loop_test(const VP9_COMP *cpi,
   return force_recode;
 }
 
-static void update_reference_frames(VP9_COMP * const cpi) {
+void vp9_update_reference_frames(VP9_COMP *cpi) {
   VP9_COMMON * const cm = &cpi->common;
 
   // At this point the new frame has been encoded.
@@ -2677,7 +2534,7 @@ static void loopfilter_frame(VP9_COMP *cpi, VP9_COMMON *cm) {
   vp9_extend_frame_inner_borders(cm->frame_to_show);
 }
 
-static void scale_references(VP9_COMP *cpi) {
+void vp9_scale_references(VP9_COMP *cpi) {
   VP9_COMMON *cm = &cpi->common;
   MV_REFERENCE_FRAME ref_frame;
 
@@ -2816,6 +2673,8 @@ static void encode_without_recode_loop(VP9_COMP *cpi,
     vp9_vaq_frame_setup(cpi);
   } else if (cpi->oxcf.aq_mode == COMPLEXITY_AQ) {
     setup_in_frame_q_adj(cpi);
+  } else if (cpi->oxcf.aq_mode == CYCLIC_REFRESH_AQ) {
+    vp9_setup_cyclic_refresh_aq(cpi);
   }
   // transform / motion compensation build reconstruction frame
   vp9_encode_frame(cpi);
@@ -3112,7 +2971,7 @@ static void encode_frame_to_data_rate(VP9_COMP *cpi,
   } else {
     cpi->Source = cpi->un_scaled_source;
   }
-  scale_references(cpi);
+  vp9_scale_references(cpi);
 
   vp9_clear_system_state();
 
@@ -3290,7 +3149,7 @@ static void encode_frame_to_data_rate(VP9_COMP *cpi,
     update_reference_segmentation_map(cpi);
 
   release_scaled_references(cpi);
-  update_reference_frames(cpi);
+  vp9_update_reference_frames(cpi);
 
   for (t = TX_4X4; t <= TX_32X32; t++)
     full_to_model_counts(cm->counts.coef[t], cpi->coef_counts[t]);
@@ -3367,20 +3226,7 @@ static void encode_frame_to_data_rate(VP9_COMP *cpi,
     cm->last_show_frame = cm->show_frame;
 
   if (cm->show_frame) {
-    // current mip will be the prev_mip for the next frame
-    MODE_INFO *temp = cm->prev_mip;
-    MODE_INFO **temp2 = cm->prev_mi_grid_base;
-    cm->prev_mip = cm->mip;
-    cm->mip = temp;
-    cm->prev_mi_grid_base = cm->mi_grid_base;
-    cm->mi_grid_base = temp2;
-
-    // update the upper left visible macroblock ptrs
-    cm->mi = cm->mip + cm->mode_info_stride + 1;
-    cm->mi_grid_visible = cm->mi_grid_base + cm->mode_info_stride + 1;
-
-    cpi->mb.e_mbd.mi_8x8 = cm->mi_grid_visible;
-    cpi->mb.e_mbd.mi_8x8[0] = cm->mi;
+    vp9_swap_mi_and_prev_mi(cm);
 
     // Don't increment frame counters if this was an altref buffer
     // update not a real frame
@@ -3672,8 +3518,8 @@ int vp9_get_compressed_data(VP9_COMP *cpi, unsigned int *frame_flags,
 
   if (cpi->svc.number_temporal_layers > 1 &&
       cpi->oxcf.end_usage == USAGE_STREAM_FROM_SERVER) {
-    update_layer_framerate(cpi);
-    restore_layer_context(cpi);
+    vp9_update_layer_framerate(cpi);
+    vp9_restore_layer_context(cpi);
   }
 
   // start with a 0 size frame
@@ -3729,12 +3575,13 @@ int vp9_get_compressed_data(VP9_COMP *cpi, unsigned int *frame_flags,
     vp9_vaq_init();
   }
 
-  if (cpi->use_svc) {
-    SvcEncode(cpi, size, dest, frame_flags);
-  } else if (cpi->pass == 1) {
+  if (cpi->pass == 1 &&
+      (!cpi->use_svc || cpi->svc.number_temporal_layers == 1)) {
     Pass1Encode(cpi, size, dest, frame_flags);
-  } else if (cpi->pass == 2) {
+  } else if (cpi->pass == 2 && !cpi->use_svc) {
     Pass2Encode(cpi, size, dest, frame_flags);
+  } else if (cpi->use_svc) {
+    SvcEncode(cpi, size, dest, frame_flags);
   } else {
     // One pass encode
     Pass0Encode(cpi, size, dest, frame_flags);
@@ -3755,7 +3602,7 @@ int vp9_get_compressed_data(VP9_COMP *cpi, unsigned int *frame_flags,
   // Save layer specific state.
   if (cpi->svc.number_temporal_layers > 1 &&
       cpi->oxcf.end_usage == USAGE_STREAM_FROM_SERVER) {
-    save_layer_context(cpi);
+    vp9_save_layer_context(cpi);
   }
 
   vpx_usec_timer_mark(&cmptimer);

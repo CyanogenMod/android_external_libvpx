@@ -27,6 +27,9 @@
 #include "vp9/encoder/vp9_encodemv.h"
 #include "vp9/encoder/vp9_ratectrl.h"
 
+#define DEFAULT_KF_BOOST 2000
+#define DEFAULT_GF_BOOST 2000
+
 #define LIMIT_QRANGE_FOR_ALTREF_AND_KEY 1
 
 #define MIN_BPB_FACTOR 0.005
@@ -462,33 +465,25 @@ static int get_active_quality(int q, int gfu_boost, int low, int high,
 }
 
 static int calc_active_worst_quality_one_pass_vbr(const VP9_COMP *cpi) {
+  const RATE_CONTROL *const rc = &cpi->rc;
+  const unsigned int curr_frame = cpi->common.current_video_frame;
   int active_worst_quality;
+
   if (cpi->common.frame_type == KEY_FRAME) {
-    if (cpi->common.current_video_frame == 0) {
-      active_worst_quality = cpi->rc.worst_quality;
-    } else {
-      // Choose active worst quality twice as large as the last q.
-      active_worst_quality = cpi->rc.last_q[KEY_FRAME] * 2;
-    }
-  } else if (!cpi->rc.is_src_frame_alt_ref &&
-             (cpi->refresh_golden_frame || cpi->refresh_alt_ref_frame)) {
-    if (cpi->common.current_video_frame == 1) {
-      active_worst_quality = cpi->rc.last_q[KEY_FRAME] * 5 / 4;
-    } else {
-      // Choose active worst quality twice as large as the last q.
-      active_worst_quality = cpi->rc.last_q[INTER_FRAME];
-    }
+    active_worst_quality = curr_frame == 0 ? rc->worst_quality
+                                           : rc->last_q[KEY_FRAME] * 2;
   } else {
-    if (cpi->common.current_video_frame == 1) {
-      active_worst_quality = cpi->rc.last_q[KEY_FRAME] * 2;
+    if (!rc->is_src_frame_alt_ref &&
+        (cpi->refresh_golden_frame || cpi->refresh_alt_ref_frame)) {
+      active_worst_quality =  curr_frame == 1 ? rc->last_q[KEY_FRAME] * 5 / 4
+                                              : rc->last_q[INTER_FRAME];
     } else {
-      // Choose active worst quality twice as large as the last q.
-      active_worst_quality = cpi->rc.last_q[INTER_FRAME] * 2;
+      active_worst_quality = curr_frame == 1 ? rc->last_q[KEY_FRAME] * 2
+                                             : rc->last_q[INTER_FRAME] * 2;
     }
   }
-  if (active_worst_quality > cpi->rc.worst_quality)
-    active_worst_quality = cpi->rc.worst_quality;
-  return active_worst_quality;
+
+  return MIN(active_worst_quality, rc->worst_quality);
 }
 
 // Adjust active_worst_quality level based on buffer level.
@@ -1272,7 +1267,7 @@ void vp9_rc_get_one_pass_vbr_params(VP9_COMP *cpi) {
   int target;
   if (!cpi->refresh_alt_ref_frame &&
       (cm->current_video_frame == 0 ||
-       cm->frame_flags & FRAMEFLAGS_KEY ||
+       (cm->frame_flags & FRAMEFLAGS_KEY) ||
        rc->frames_to_key == 0 ||
        (cpi->oxcf.auto_key && test_for_kf_one_pass(cpi)))) {
     cm->frame_type = KEY_FRAME;
@@ -1378,7 +1373,7 @@ void vp9_rc_get_one_pass_cbr_params(VP9_COMP *cpi) {
   RATE_CONTROL *const rc = &cpi->rc;
   int target;
   if ((cm->current_video_frame == 0 ||
-      cm->frame_flags & FRAMEFLAGS_KEY ||
+      (cm->frame_flags & FRAMEFLAGS_KEY) ||
       rc->frames_to_key == 0 ||
       (cpi->oxcf.auto_key && test_for_kf_one_pass(cpi)))) {
     cm->frame_type = KEY_FRAME;

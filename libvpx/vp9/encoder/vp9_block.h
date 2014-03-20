@@ -115,7 +115,6 @@ struct macroblock {
   unsigned int source_variance;
   unsigned int pred_sse[MAX_REF_FRAMES];
   int pred_mv_sad[MAX_REF_FRAMES];
-  int mode_sad[MAX_REF_FRAMES][INTER_MODES + 1];
 
   int nmvjointcost[MV_JOINTS];
   int nmvcosts[2][MV_VALS];
@@ -154,7 +153,7 @@ struct macroblock {
 
   int encode_breakout;
 
-  unsigned char *active_ptr;
+  int in_active_map;
 
   // note that token_costs is the cost when eob node is skipped
   vp9_coeff_cost token_costs[TX_SIZES];

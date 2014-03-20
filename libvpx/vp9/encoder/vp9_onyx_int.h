@@ -30,6 +30,7 @@
 #include "vp9/encoder/vp9_mcomp.h"
 #include "vp9/encoder/vp9_quantize.h"
 #include "vp9/encoder/vp9_ratectrl.h"
+#include "vp9/encoder/vp9_svc_layercontext.h"
 #include "vp9/encoder/vp9_tokenize.h"
 #include "vp9/encoder/vp9_variance.h"
 
@@ -39,29 +40,10 @@ extern "C" {
 
 // #define MODE_TEST_HIT_STATS
 
-#if CONFIG_MULTIPLE_ARF
-// Set MIN_GF_INTERVAL to 1 for the full decomposition.
-#define MIN_GF_INTERVAL             2
-#else
-#define MIN_GF_INTERVAL             4
-#endif
 #define DEFAULT_GF_INTERVAL         10
-#define DEFAULT_KF_BOOST            2000
-#define DEFAULT_GF_BOOST            2000
-
-#define KEY_FRAME_CONTEXT 5
 
 #define MAX_MODES 30
 #define MAX_REFS  6
-
-#define MIN_THRESHMULT  32
-#define MAX_THRESHMULT  512
-
-#define GF_ZEROMV_ZBIN_BOOST 0
-#define LF_ZEROMV_ZBIN_BOOST 0
-#define MV_ZBIN_BOOST        0
-#define SPLIT_MV_ZBIN_BOOST  0
-#define INTRA_ZBIN_BOOST     0
 
 typedef struct {
   int nmvjointcost[MV_JOINTS];
@@ -155,43 +137,33 @@ typedef enum {
 } AUTO_MIN_MAX_MODE;
 
 typedef enum {
-  // Values should be powers of 2 so that they can be selected as bits of
-  // an integer flags field
-
-  // terminate search early based on distortion so far compared to
+  // Terminate search early based on distortion so far compared to
   // qp step, distortion in the neighborhood of the frame, etc.
-  FLAG_EARLY_TERMINATE = 1,
+  FLAG_EARLY_TERMINATE = 1 << 0,
 
-  // skips comp inter modes if the best so far is an intra mode
-  FLAG_SKIP_COMP_BESTINTRA = 2,
+  // Skips comp inter modes if the best so far is an intra mode.
+  FLAG_SKIP_COMP_BESTINTRA = 1 << 1,
 
-  // skips comp inter modes if the best single intermode so far does
+  // Skips comp inter modes if the best single intermode so far does
   // not have the same reference as one of the two references being
-  // tested
-  FLAG_SKIP_COMP_REFMISMATCH = 4,
+  // tested.
+  FLAG_SKIP_COMP_REFMISMATCH = 1 << 2,
 
-  // skips oblique intra modes if the best so far is an inter mode
-  FLAG_SKIP_INTRA_BESTINTER = 8,
+  // Skips oblique intra modes if the best so far is an inter mode.
+  FLAG_SKIP_INTRA_BESTINTER = 1 << 3,
 
-  // skips oblique intra modes  at angles 27, 63, 117, 153 if the best
-  // intra so far is not one of the neighboring directions
-  FLAG_SKIP_INTRA_DIRMISMATCH = 16,
+  // Skips oblique intra modes  at angles 27, 63, 117, 153 if the best
+  // intra so far is not one of the neighboring directions.
+  FLAG_SKIP_INTRA_DIRMISMATCH = 1 << 4,
 
-  // skips intra modes other than DC_PRED if the source variance
-  // is small
-  FLAG_SKIP_INTRA_LOWVAR = 32,
+  // Skips intra modes other than DC_PRED if the source variance is small
+  FLAG_SKIP_INTRA_LOWVAR = 1 << 5,
 } MODE_SEARCH_SKIP_LOGIC;
 
 typedef enum {
   SUBPEL_TREE = 0,
   // Other methods to come
 } SUBPEL_SEARCH_METHODS;
-
-#define ALL_INTRA_MODES 0x3FF
-#define INTRA_DC_ONLY 0x01
-#define INTRA_DC_TM ((1 << TM_PRED) | (1 << DC_PRED))
-#define INTRA_DC_H_V ((1 << DC_PRED) | (1 << V_PRED) | (1 << H_PRED))
-#define INTRA_DC_TM_H_V (INTRA_DC_TM | (1 << V_PRED) | (1 << H_PRED))
 
 typedef enum {
   LAST_FRAME_PARTITION_OFF = 0,
@@ -229,6 +201,8 @@ typedef enum {
   // Use a fixed size partition in every 64X64 SB, where the size is
   // determined based on source variance
   VAR_BASED_FIXED_PARTITION = 2,
+
+  REFERENCE_PARTITION = 3,
 
   // Use an arbitrary partitioning scheme based on source variance within
   // a 64X64 SB
@@ -374,6 +348,10 @@ typedef struct {
   // was selected, and 2 means we use 8 tap if no 8x8 filter mode was selected.
   int adaptive_pred_interp_filter;
 
+  // Search through variable block partition types in non-RD mode decision
+  // encoding process for RTC.
+  int partition_check;
+
   // Implements various heuristics to skip searching modes
   // The heuristics selected are based on  flags
   // defined in the MODE_SEARCH_SKIP_HEURISTICS enum
@@ -432,16 +410,6 @@ typedef struct {
   BLOCK_SIZE max_intra_bsize;
 } SPEED_FEATURES;
 
-typedef struct {
-  RATE_CONTROL rc;
-  int target_bandwidth;
-  int64_t starting_buffer_level;
-  int64_t optimal_buffer_level;
-  int64_t maximum_buffer_size;
-  double framerate;
-  int avg_frame_size;
-} LAYER_CONTEXT;
-
 typedef enum {
   NORMAL      = 0,
   FOURFIVE    = 1,
@@ -450,38 +418,88 @@ typedef enum {
 } VPX_SCALING;
 
 typedef enum {
-  VP9_LAST_FLAG = 1,
-  VP9_GOLD_FLAG = 2,
-  VP9_ALT_FLAG = 4
+  VP9_LAST_FLAG = 1 << 0,
+  VP9_GOLD_FLAG = 1 << 1,
+  VP9_ALT_FLAG = 1 << 2,
 } VP9_REFFRAME;
 
 typedef enum {
-  USAGE_LOCAL_FILE_PLAYBACK   = 0x0,
-  USAGE_STREAM_FROM_SERVER    = 0x1,
-  USAGE_CONSTRAINED_QUALITY   = 0x2,
-  USAGE_CONSTANT_QUALITY      = 0x3,
+  USAGE_LOCAL_FILE_PLAYBACK = 0,
+  USAGE_STREAM_FROM_SERVER  = 1,
+  USAGE_CONSTRAINED_QUALITY = 2,
+  USAGE_CONSTANT_QUALITY    = 3,
 } END_USAGE;
 
-
+typedef struct {
+  // Target percentage of blocks per frame that are cyclicly refreshed.
+  int max_mbs_perframe;
+  // Maximum q-delta as percentage of base q.
+  int max_qdelta_perc;
+  // Block size below which we don't apply cyclic refresh.
+  BLOCK_SIZE min_block_size;
+  // Macroblock starting index (unit of 8x8) for cycling through the frame.
+  int mb_index;
+  // Controls how long a block will need to wait to be refreshed again.
+  int time_for_refresh;
+  // Actual number of blocks that were applied delta-q (segment 1).
+  int num_seg_blocks;
+  // Actual encoding bits for segment 1.
+  int actual_seg_bits;
+  // RD mult. parameters for segment 1.
+  int rdmult;
+  // Cyclic refresh map.
+  signed char *map;
+  // Projected rate and distortion for the current superblock.
+  int64_t projected_rate_sb;
+  int64_t projected_dist_sb;
+  // Thresholds applied to projected rate/distortion of the superblock.
+  int64_t thresh_rate_sb;
+  int64_t thresh_dist_sb;
+} CYCLIC_REFRESH;
 typedef enum {
-  MODE_GOODQUALITY    = 0x1,
-  MODE_BESTQUALITY    = 0x2,
-  MODE_FIRSTPASS      = 0x3,
-  MODE_SECONDPASS     = 0x4,
-  MODE_SECONDPASS_BEST = 0x5,
-  MODE_REALTIME       = 0x6,
+  // Good Quality Fast Encoding. The encoder balances quality with the
+  // amount of time it takes to encode the output. (speed setting
+  // controls how fast)
+  MODE_GOODQUALITY = 1,
+
+  // One Pass - Best Quality. The encoder places priority on the
+  // quality of the output over encoding speed. The output is compressed
+  // at the highest possible quality. This option takes the longest
+  // amount of time to encode. (speed setting ignored)
+  MODE_BESTQUALITY = 2,
+
+  // Two Pass - First Pass. The encoder generates a file of statistics
+  // for use in the second encoding pass. (speed setting controls how fast)
+  MODE_FIRSTPASS = 3,
+
+  // Two Pass - Second Pass. The encoder uses the statistics that were
+  // generated in the first encoding pass to create the compressed
+  // output. (speed setting controls how fast)
+  MODE_SECONDPASS = 4,
+
+  // Two Pass - Second Pass Best.  The encoder uses the statistics that
+  // were generated in the first encoding pass to create the compressed
+  // output using the highest possible quality, and taking a
+  // longer amount of time to encode. (speed setting ignored)
+  MODE_SECONDPASS_BEST = 5,
+
+  // Realtime/Live Encoding. This mode is optimized for realtime
+  // encoding (for example, capturing a television signal or feed from
+  // a live camera). (speed setting controls how fast)
+  MODE_REALTIME = 6,
 } MODE;
 
 typedef enum {
-  FRAMEFLAGS_KEY    = 1,
-  FRAMEFLAGS_GOLDEN = 2,
-  FRAMEFLAGS_ALTREF = 4,
+  FRAMEFLAGS_KEY    = 1 << 0,
+  FRAMEFLAGS_GOLDEN = 1 << 1,
+  FRAMEFLAGS_ALTREF = 1 << 2,
 } FRAMETYPE_FLAGS;
 
 typedef enum {
   NO_AQ = 0,
   VARIANCE_AQ = 1,
   COMPLEXITY_AQ = 2,
+  CYCLIC_REFRESH_AQ = 3,
   AQ_MODE_COUNT  // This should always be the last member of the enum
 } AQ_MODE;
 
@@ -499,27 +517,6 @@ typedef struct {
   int cpu_used;
   unsigned int rc_max_intra_bitrate_pct;
 
-  // mode ->
-  // (0)=Realtime/Live Encoding. This mode is optimized for realtime
-  //     encoding (for example, capturing a television signal or feed from
-  //     a live camera). ( speed setting controls how fast )
-  // (1)=Good Quality Fast Encoding. The encoder balances quality with the
-  //     amount of time it takes to encode the output. ( speed setting
-  //     controls how fast )
-  // (2)=One Pass - Best Quality. The encoder places priority on the
-  //     quality of the output over encoding speed. The output is compressed
-  //     at the highest possible quality. This option takes the longest
-  //     amount of time to encode. ( speed setting ignored )
-  // (3)=Two Pass - First Pass. The encoder generates a file of statistics
-  //     for use in the second encoding pass. ( speed setting controls how
-  //     fast )
-  // (4)=Two Pass - Second Pass. The encoder uses the statistics that were
-  //     generated in the first encoding pass to create the compressed
-  //     output. ( speed setting controls how fast )
-  // (5)=Two Pass - Second Pass Best.  The encoder uses the statistics that
-  //     were generated in the first encoding pass to create the compressed
-  //     output using the highest possible quality, and taking a
-  //    longer amount of time to encode.. ( speed setting ignored )
   MODE mode;
 
   // Key Framing Operations
@@ -726,9 +723,6 @@ typedef struct VP9_COMP {
   int cpu_used;
   int pass;
 
-  vp9_prob last_skip_false_probs[3][SKIP_CONTEXTS];
-  int last_skip_probs_q[3];
-
   int ref_frame_flags;
 
   SPEED_FEATURES sf;
@@ -752,6 +746,8 @@ typedef struct VP9_COMP {
 
   unsigned char *active_map;
   unsigned int active_map_enabled;
+
+  CYCLIC_REFRESH cyclic_refresh;
 
   fractional_mv_step_fp *find_fractional_mv_step;
   fractional_mv_step_comp_fp *find_fractional_mv_step_comp;
@@ -825,15 +821,7 @@ typedef struct VP9_COMP {
 
   int use_svc;
 
-  struct svc {
-    int spatial_layer_id;
-    int temporal_layer_id;
-    int number_spatial_layers;
-    int number_temporal_layers;
-    // Layer context used for rate control in CBR mode, only defined for
-    // temporal layers for now.
-    LAYER_CONTEXT layer_context[VPX_TS_MAX_LAYERS];
-  } svc;
+  SVC svc;
 
 #if CONFIG_MULTIPLE_ARF
   // ARF tracking variables.
@@ -883,7 +871,7 @@ int vp9_get_preview_raw_frame(VP9_COMP *cpi, YV12_BUFFER_CONFIG *dest,
 
 int vp9_use_as_reference(VP9_COMP *cpi, int ref_frame_flags);
 
-int vp9_update_reference(VP9_COMP *cpi, int ref_frame_flags);
+void vp9_update_reference(VP9_COMP *cpi, int ref_frame_flags);
 
 int vp9_copy_reference_enc(VP9_COMP *cpi, VP9_REFFRAME ref_frame_flag,
                            YV12_BUFFER_CONFIG *sd);
@@ -933,8 +921,6 @@ static YV12_BUFFER_CONFIG *get_ref_frame_buffer(VP9_COMP *cpi,
                                                              ref_frame)]].buf;
 }
 
-void vp9_encode_frame(VP9_COMP *cpi);
-
 void vp9_set_speed_features(VP9_COMP *cpi);
 
 int vp9_calc_ss_err(const YV12_BUFFER_CONFIG *source,
@@ -944,9 +930,20 @@ void vp9_alloc_compressor_data(VP9_COMP *cpi);
 
 int vp9_compute_qdelta(const VP9_COMP *cpi, double qstart, double qtarget);
 
+int vp9_compute_qdelta_by_rate(VP9_COMP *cpi, int base_q_index,
+                               double rate_target_ratio);
+
+void vp9_scale_references(VP9_COMP *cpi);
+
+void vp9_update_reference_frames(VP9_COMP *cpi);
+
 static int get_token_alloc(int mb_rows, int mb_cols) {
   return mb_rows * mb_cols * (48 * 16 + 4);
 }
+
+extern const int q_trans[];
+
+int64_t vp9_rescale(int64_t val, int64_t num, int denom);
 
 static void set_ref_ptrs(VP9_COMMON *cm, MACROBLOCKD *xd,
                          MV_REFERENCE_FRAME ref0, MV_REFERENCE_FRAME ref1) {

@@ -32,6 +32,7 @@ while (<STDIN>)
 
     s/ldrneb/ldrbne/i;
     s/ldrneh/ldrhne/i;
+    s/^(\s*)ENDP.*/$&\n$1ALIGN 4/;
 
     print;
 }

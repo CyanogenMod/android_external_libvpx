@@ -232,6 +232,8 @@ vp9/encoder/vp9_bitstream.h
 vp9/encoder/vp9_block.h
 vp9/encoder/vp9_cost.c
 vp9/encoder/vp9_cost.h
+vp9/encoder/vp9_craq.c
+vp9/encoder/vp9_craq.h
 vp9/encoder/vp9_dct.c
 vp9/encoder/vp9_encodeframe.c
 vp9/encoder/vp9_encodeframe.h
@@ -268,6 +270,8 @@ vp9/encoder/vp9_segmentation.c
 vp9/encoder/vp9_segmentation.h
 vp9/encoder/vp9_subexp.c
 vp9/encoder/vp9_subexp.h
+vp9/encoder/vp9_svc_layercontext.c
+vp9/encoder/vp9_svc_layercontext.h
 vp9/encoder/vp9_temporal_filter.c
 vp9/encoder/vp9_temporal_filter.h
 vp9/encoder/vp9_tokenize.c
