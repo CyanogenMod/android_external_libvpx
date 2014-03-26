@@ -9,8 +9,8 @@
  */
 
 
-#ifndef DBOOLHUFF_H_
-#define DBOOLHUFF_H_
+#ifndef VP8_DECODER_DBOOLHUFF_H_
+#define VP8_DECODER_DBOOLHUFF_H_
 
 #include <stddef.h>
 #include <limits.h>
@@ -18,6 +18,10 @@
 #include "vpx_config.h"
 #include "vpx_ports/mem.h"
 #include "vpx/vpx_integer.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef size_t VP8_BD_VALUE;
 
@@ -135,4 +139,8 @@ static int vp8dx_bool_error(BOOL_DECODER *br)
     return 0;
 }
 
-#endif  // DBOOLHUFF_H_
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#endif  // VP8_DECODER_DBOOLHUFF_H_

@@ -12,6 +12,10 @@
 #ifndef VP9_ENCODER_X86_VP9_MCOMP_X86_H_
 #define VP9_ENCODER_X86_VP9_MCOMP_X86_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if HAVE_SSE3
 #if !CONFIG_RUNTIME_CPU_DETECT
 
@@ -36,5 +40,9 @@
 #endif
 #endif
 
+#ifdef __cplusplus
+}  // extern "C"
 #endif
+
+#endif  // VP9_ENCODER_X86_VP9_MCOMP_X86_H_
 

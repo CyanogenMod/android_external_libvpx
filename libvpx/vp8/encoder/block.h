@@ -9,14 +9,18 @@
  */
 
 
-#ifndef __INC_BLOCK_H
-#define __INC_BLOCK_H
+#ifndef VP8_ENCODER_BLOCK_H_
+#define VP8_ENCODER_BLOCK_H_
 
 #include "vp8/common/onyx.h"
 #include "vp8/common/blockd.h"
 #include "vp8/common/entropymv.h"
 #include "vp8/common/entropy.h"
 #include "vpx_ports/mem.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define MAX_MODES 20
 #define MAX_ERROR_BINS 1024
@@ -160,4 +164,8 @@ typedef struct macroblock
 } MACROBLOCK;
 
 
+#ifdef __cplusplus
+}  // extern "C"
 #endif
+
+#endif  // VP8_ENCODER_BLOCK_H_

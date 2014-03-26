@@ -12,13 +12,11 @@
 #include "test/acm_random.h"
 #include "test/clear_system_state.h"
 #include "test/register_state_check.h"
-extern "C" {
 #include "./vpx_config.h"
 #include "./vp8_rtcd.h"
 #include "vp8/common/blockd.h"
 #include "vp8/encoder/block.h"
 #include "vpx_mem/vpx_mem.h"
-}
 
 typedef void (*subtract_b_fn_t)(BLOCK *be, BLOCKD *bd, int pitch);
 
@@ -61,7 +59,7 @@ TEST_P(SubtractBlockTest, SimpleSubtract) {
     int16_t *src_diff = be.src_diff;
     for (int r = 0; r < kBlockHeight; ++r) {
       for (int c = 0; c < kBlockWidth; ++c) {
-        src_diff[c] = static_cast<int16_t>(0xa5a5);
+        src_diff[c] = static_cast<int16_t>(0xa5a5u);
       }
       src_diff += kDiffPredStride;
     }
@@ -106,6 +104,11 @@ TEST_P(SubtractBlockTest, SimpleSubtract) {
 
 INSTANTIATE_TEST_CASE_P(C, SubtractBlockTest,
                         ::testing::Values(vp8_subtract_b_c));
+
+#if HAVE_NEON
+INSTANTIATE_TEST_CASE_P(NEON, SubtractBlockTest,
+                        ::testing::Values(vp8_subtract_b_neon));
+#endif
 
 #if HAVE_MMX
 INSTANTIATE_TEST_CASE_P(MMX, SubtractBlockTest,

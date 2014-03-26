@@ -11,9 +11,12 @@
 #include <stdlib.h>
 
 #include "./vpx_config.h"
+
 #include "vp9/common/vp9_common.h"
+
+#include "vp9/encoder/vp9_extend.h"
 #include "vp9/encoder/vp9_lookahead.h"
-#include "vp9/common/vp9_extend.h"
+#include "vp9/encoder/vp9_onyx_int.h"
 
 struct lookahead_ctx {
   unsigned int max_sz;         /* Absolute size of the queue */
@@ -73,7 +76,7 @@ struct lookahead_ctx * vp9_lookahead_init(unsigned int width,
     for (i = 0; i < depth; i++)
       if (vp9_alloc_frame_buffer(&ctx->buf[i].img,
                                  width, height, subsampling_x, subsampling_y,
-                                 VP9BORDERINPIXELS))
+                                 VP9_ENC_BORDER_IN_PIXELS))
         goto bail;
   }
   return ctx;
@@ -85,8 +88,7 @@ struct lookahead_ctx * vp9_lookahead_init(unsigned int width,
 #define USE_PARTIAL_COPY 0
 
 int vp9_lookahead_push(struct lookahead_ctx *ctx, YV12_BUFFER_CONFIG   *src,
-                       int64_t ts_start, int64_t ts_end, unsigned int flags,
-                       unsigned char *active_map) {
+                       int64_t ts_start, int64_t ts_end, unsigned int flags) {
   struct lookahead_entry *buf;
 #if USE_PARTIAL_COPY
   int row, col, active_end;
@@ -173,7 +175,6 @@ struct lookahead_entry * vp9_lookahead_peek(struct lookahead_ctx *ctx,
                                             int index) {
   struct lookahead_entry *buf = NULL;
 
-  assert(index < (int)ctx->max_sz);
   if (index < (int)ctx->sz) {
     index += ctx->read_idx;
     if (index >= (int)ctx->max_sz)

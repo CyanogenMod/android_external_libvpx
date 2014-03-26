@@ -9,8 +9,8 @@
  */
 
 
-#ifndef __INC_VP8_INT_H
-#define __INC_VP8_INT_H
+#ifndef VP8_ENCODER_ONYX_INT_H_
+#define VP8_ENCODER_ONYX_INT_H_
 
 #include <stdio.h>
 #include "vpx_config.h"
@@ -31,6 +31,10 @@
 #include "lookahead.h"
 #if CONFIG_TEMPORAL_DENOISING
 #include "vp8/encoder/denoising.h"
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 #define MIN_GF_INTERVAL             4
@@ -721,4 +725,8 @@ void vp8_set_speed_features(VP8_COMP *cpi);
                                "Failed to allocate "#lval);\
     } while(0)
 #endif
+#ifdef __cplusplus
+}  // extern "C"
 #endif
+
+#endif  // VP8_ENCODER_ONYX_INT_H_
