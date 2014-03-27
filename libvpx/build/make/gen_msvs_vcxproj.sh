@@ -28,12 +28,13 @@ Options:
     --lib                       Generate a project for creating a static library
     --dll                       Generate a project for creating a dll
     --static-crt                Use the static C runtime (/MT)
+    --enable-werror             Treat warnings as errors (/WX)
     --target=isa-os-cc          Target specifier (required)
     --out=filename              Write output to a file [stdout]
     --name=project_name         Name of the project (required)
     --proj-guid=GUID            GUID to use for the project
     --module-def=filename       File containing export definitions (for DLLs)
-    --ver=version               Version (10,11) of visual studio to generate for
+    --ver=version               Version (10,11,12) of visual studio to generate for
     --src-path-bare=dir         Path to root of source tree
     -Ipath/to/include           Additional include directories
     -DFLAG[=value]              Preprocessor macros to define
@@ -156,6 +157,10 @@ generate_filter() {
                 objf=$(echo ${f%.*}.obj | sed -e 's/^[\./]\+//g' -e 's,/,_,g')
 
                 if ([ "$pat" == "asm" ] || [ "$pat" == "s" ]) && $asm_use_custom_step; then
+                    # Avoid object file name collisions, i.e. vpx_config.c and
+                    # vpx_config.asm produce the same object file without
+                    # this additional suffix.
+                    objf=${objf%.obj}_asm.obj
                     open_tag CustomBuild \
                         Include=".\\$f"
                     for plat in "${platforms[@]}"; do
@@ -174,6 +179,10 @@ generate_filter() {
                         Include=".\\$f"
                     # Separate file names with Condition?
                     tag_content ObjectFileName "\$(IntDir)$objf"
+                    # Check for AVX and turn it on to avoid warnings.
+                    if [[ $f =~ avx.?\.c$ ]]; then
+                        tag_content AdditionalOptions "/arch:AVX"
+                    fi
                     close_tag ClCompile
                 elif [ "$pat" == "h" ] ; then
                     tag ClInclude \
@@ -225,10 +234,12 @@ for opt in "$@"; do
         ;;
         --static-crt) use_static_runtime=true
         ;;
+        --enable-werror) werror=true
+        ;;
         --ver=*)
             vs_ver="$optval"
             case "$optval" in
-                10|11)
+                10|11|12)
                 ;;
                 *) die Unrecognized Visual Studio Version in $opt
                 ;;
@@ -269,7 +280,7 @@ guid=${guid:-`generate_uuid`}
 asm_use_custom_step=false
 uses_asm=${uses_asm:-false}
 case "${vs_ver:-11}" in
-    10|11)
+    10|11|12)
        asm_use_custom_step=$uses_asm
     ;;
 esac
@@ -383,6 +394,20 @@ generate_vcxproj() {
                     tag_content PlatformToolset v110
                 fi
             fi
+            if [ "$vs_ver" = "12" ]; then
+                if [ "$plat" = "ARM" ]; then
+                    # Setting the wp80 toolchain automatically sets the
+                    # WINAPI_FAMILY define, which is required for building
+                    # code for arm with the windows headers. Alternatively,
+                    # one could add AppContainerApplication=true in the Globals
+                    # section and add PrecompiledHeader=NotUsing and
+                    # CompileAsWinRT=false in ClCompile and SubSystem=Console
+                    # in Link.
+                    tag_content PlatformToolset v120_wp80
+                else
+                    tag_content PlatformToolset v120
+                fi
+            fi
             tag_content CharacterSet Unicode
             if [ "$config" = "Release" ]; then
                 tag_content WholeProgramOptimization true
@@ -412,6 +437,14 @@ generate_vcxproj() {
                 Condition="'\$(Configuration)|\$(Platform)'=='$config|$plat'"
             tag_content OutDir "\$(SolutionDir)$plat_no_ws\\\$(Configuration)\\"
             tag_content IntDir "$plat_no_ws\\\$(Configuration)\\${name}\\"
+            if [ "$proj_kind" == "lib" ]; then
+              if [ "$config" == "Debug" ]; then
+                config_suffix=d
+              else
+                config_suffix=""
+              fi
+              tag_content TargetName "${name}${lib_sfx}${config_suffix}"
+            fi
             close_tag PropertyGroup
         done
     done
@@ -420,9 +453,13 @@ generate_vcxproj() {
         for config in Debug Release; do
             open_tag ItemDefinitionGroup \
                 Condition="'\$(Configuration)|\$(Platform)'=='$config|$plat'"
-            if [ "$name" = "vpx" ]; then
+            if [ "$name" == "vpx" ]; then
+                hostplat=$plat
+                if [ "$hostplat" == "ARM" ]; then
+                    hostplat=Win32
+                fi
                 open_tag PreBuildEvent
-                tag_content Command "call obj_int_extract.bat $src_path_bare"
+                tag_content Command "call obj_int_extract.bat $src_path_bare $hostplat\\\$(Configuration)"
                 close_tag PreBuildEvent
             fi
             open_tag ClCompile
@@ -430,7 +467,6 @@ generate_vcxproj() {
                 opt=Disabled
                 runtime=$debug_runtime
                 curlibs=$debug_libs
-                confsuffix=d
                 case "$name" in
                 obj_int_extract)
                     debug=DEBUG
@@ -443,7 +479,6 @@ generate_vcxproj() {
                 opt=MaxSpeed
                 runtime=$release_runtime
                 curlibs=$libs
-                confsuffix=""
                 tag_content FavorSizeOrSpeed Speed
                 debug=NDEBUG
             fi
@@ -460,14 +495,14 @@ generate_vcxproj() {
             tag_content PreprocessorDefinitions "WIN32;$debug;_CRT_SECURE_NO_WARNINGS;_CRT_SECURE_NO_DEPRECATE$extradefines;%(PreprocessorDefinitions)"
             tag_content RuntimeLibrary $runtime
             tag_content WarningLevel Level3
-            # DebugInformationFormat
+            if ${werror:-false}; then
+                tag_content TreatWarningAsError true
+            fi
             close_tag ClCompile
             case "$proj_kind" in
             exe)
                 open_tag Link
-                if [ "$name" = "obj_int_extract" ]; then
-                    tag_content OutputFile "${name}.exe"
-                else
+                if [ "$name" != "obj_int_extract" ]; then
                     tag_content AdditionalDependencies "$curlibs"
                     tag_content AdditionalLibraryDirectories "$libdirs;%(AdditionalLibraryDirectories)"
                 fi
@@ -481,9 +516,6 @@ generate_vcxproj() {
                 close_tag Link
                 ;;
             lib)
-                open_tag Lib
-                tag_content OutputFile "\$(OutDir)${name}${lib_sfx}${confsuffix}.lib"
-                close_tag Lib
                 ;;
             esac
             close_tag ItemDefinitionGroup

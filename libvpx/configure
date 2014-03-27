@@ -24,14 +24,14 @@ Advanced options:
   ${toggle_examples}              examples
   ${toggle_docs}                  documentation
   ${toggle_unit_tests}            unit tests
+  ${toggle_decode_perf_tests}     build decoder perf tests with unit tests
   --libc=PATH                     path to alternate libc
   --as={yasm|nasm|auto}           use specified assembler [auto, yasm preferred]
-  --sdk-path=PATH                 path to root of sdk (iOS, android builds only)
+  --sdk-path=PATH                 path to root of sdk (android builds only)
   ${toggle_fast_unaligned}        don't use unaligned accesses, even when
                                   supported by hardware [auto]
   ${toggle_codec_srcs}            in/exclude codec library source code
   ${toggle_debug_libs}            in/exclude debug version of libraries
-  ${toggle_md5}                   support for output of checksum data
   ${toggle_static_msvcrt}         use static MSVCRT (VS builds only)
   ${toggle_vp8}                   VP8 codec support
   ${toggle_vp9}                   VP9 codec support
@@ -51,6 +51,7 @@ Advanced options:
   ${toggle_postproc_visualizer}   macro block / block level visualizers
   ${toggle_multi_res_encoding}    enable multiple-resolution encoding
   ${toggle_temporal_denoising}    enable temporal denoising and disable the spatial denoiser
+  ${toggle_webm_io}               enable input from and output to WebM container
 
 Codecs:
   Codecs can be selectively enabled or disabled individually, or by family:
@@ -100,6 +101,7 @@ all_platforms="${all_platforms} armv7-linux-rvct"    #neon Cortex-A8
 all_platforms="${all_platforms} armv7-linux-gcc"     #neon Cortex-A8
 all_platforms="${all_platforms} armv7-none-rvct"     #neon Cortex-A8
 all_platforms="${all_platforms} armv7-win32-vs11"
+all_platforms="${all_platforms} armv7-win32-vs12"
 all_platforms="${all_platforms} mips32-linux-gcc"
 all_platforms="${all_platforms} ppc32-darwin8-gcc"
 all_platforms="${all_platforms} ppc32-darwin9-gcc"
@@ -127,6 +129,7 @@ all_platforms="${all_platforms} x86-win32-vs8"
 all_platforms="${all_platforms} x86-win32-vs9"
 all_platforms="${all_platforms} x86-win32-vs10"
 all_platforms="${all_platforms} x86-win32-vs11"
+all_platforms="${all_platforms} x86-win32-vs12"
 all_platforms="${all_platforms} x86_64-darwin9-gcc"
 all_platforms="${all_platforms} x86_64-darwin10-gcc"
 all_platforms="${all_platforms} x86_64-darwin11-gcc"
@@ -140,6 +143,7 @@ all_platforms="${all_platforms} x86_64-win64-vs8"
 all_platforms="${all_platforms} x86_64-win64-vs9"
 all_platforms="${all_platforms} x86_64-win64-vs10"
 all_platforms="${all_platforms} x86_64-win64-vs11"
+all_platforms="${all_platforms} x86_64-win64-vs12"
 all_platforms="${all_platforms} universal-darwin8-gcc"
 all_platforms="${all_platforms} universal-darwin9-gcc"
 all_platforms="${all_platforms} universal-darwin10-gcc"
@@ -156,6 +160,18 @@ all_targets="libs examples docs"
 for t in ${all_targets}; do
     [ -f ${source_path}/${t}.mk ] && enable_feature ${t}
 done
+
+if ! perl --version >/dev/null; then
+    die "Perl is required to build"
+fi
+
+
+if [ "`cd ${source_path} && pwd`" != "`pwd`" ]; then
+  # test to see if source_path already configured
+  if [ -f ${source_path}/vpx_config.h ]; then
+    die "source directory already configured; run 'make distclean' there first"
+  fi
+fi
 
 # check installed doxygen version
 doxy_version=$(doxygen --version 2>/dev/null)
@@ -180,7 +196,6 @@ enable_feature install_libs
 enable_feature static
 enable_feature optimizations
 enable_feature fast_unaligned #allow unaligned accesses, if supported by hw
-enable_feature md5
 enable_feature spatial_resampling
 enable_feature multithread
 enable_feature os_support
@@ -250,7 +265,6 @@ HAVE_LIST="
 "
 EXPERIMENT_LIST="
     multiple_arf
-    non420
     alpha
 "
 CONFIG_LIST="
@@ -275,7 +289,6 @@ CONFIG_LIST="
     mem_manager
     mem_tracker
     mem_checks
-    md5
 
     dequant_tokens
     dc_recon
@@ -299,6 +312,8 @@ CONFIG_LIST="
     postproc_visualizer
     os_support
     unit_tests
+    webm_io
+    decode_perf_tests
     multi_res_encoding
     temporal_denoising
     experimental
@@ -331,7 +346,6 @@ CMDLINE_SELECT="
     fast_unaligned
     codec_srcs
     debug_libs
-    md5
 
     dequant_tokens
     dc_recon
@@ -352,6 +366,8 @@ CMDLINE_SELECT="
     small
     postproc_visualizer
     unit_tests
+    webm_io
+    decode_perf_tests
     multi_res_encoding
     temporal_denoising
     experimental
@@ -670,9 +686,10 @@ process_toolchain() {
                  VCPROJ_SFX=vcproj
                  gen_vcproj_cmd=${source_path}/build/make/gen_msvs_proj.sh
                  ;;
-             10|11)
+             10|11|12)
                  VCPROJ_SFX=vcxproj
                  gen_vcproj_cmd=${source_path}/build/make/gen_msvs_vcxproj.sh
+                 enabled werror && gen_vcproj_cmd="${gen_vcproj_cmd} --enable-werror"
                  ;;
              esac
              all_targets="${all_targets} solution"
@@ -686,6 +703,9 @@ process_toolchain() {
     if enabled postproc_visualizer; then
         enabled postproc || die "postproc_visualizer requires postproc to be enabled"
     fi
+
+    # Enable WebM IO by default.
+    soft_enable webm_io
 
     # Enable unit tests by default if we have a working C++ compiler.
     case "$toolchain" in

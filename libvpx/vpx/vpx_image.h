@@ -13,12 +13,12 @@
  * \brief Describes the vpx image descriptor and associated operations
  *
  */
+#ifndef VPX_VPX_IMAGE_H_
+#define VPX_VPX_IMAGE_H_
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#ifndef VPX_IMAGE_H
-#define VPX_IMAGE_H
 
   /*!\brief Current ABI version number
    *
@@ -28,7 +28,7 @@ extern "C" {
    * types, removing or reassigning enums, adding/removing/rearranging
    * fields to structures
    */
-#define VPX_IMAGE_ABI_VERSION (1) /**<\hideinitializer*/
+#define VPX_IMAGE_ABI_VERSION (2) /**<\hideinitializer*/
 
 
 #define VPX_IMG_FMT_PLANAR     0x100  /**< Image is a planar format */
@@ -139,6 +139,8 @@ extern "C" {
     unsigned char *img_data;       /**< private */
     int      img_data_owner; /**< private */
     int      self_allocd;    /**< private */
+
+    void    *fb_priv; /**< Frame buffer data associated with the image. */
   } vpx_image_t; /**< alias for struct vpx_image */
 
   /**\brief Representation of a rectangle on a surface */
@@ -237,7 +239,8 @@ extern "C" {
    */
   void vpx_img_free(vpx_image_t *img);
 
-#endif
 #ifdef __cplusplus
-}
+}  // extern "C"
 #endif
+
+#endif  // VPX_VPX_IMAGE_H_

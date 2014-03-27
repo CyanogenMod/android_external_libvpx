@@ -14,7 +14,7 @@
 #include <cstdlib>
 #include <new>
 #include <string>
-#include "nestegg/include/nestegg/nestegg.h"
+#include "third_party/nestegg/include/nestegg/nestegg.h"
 #include "test/video_source.h"
 
 namespace libvpx_test {
@@ -90,8 +90,12 @@ class WebMVideoSource : public CompressedVideoSource {
   virtual ~WebMVideoSource() {
     if (input_file_)
       fclose(input_file_);
-    if (nestegg_ctx_)
+    if (nestegg_ctx_ != NULL) {
+      if (pkt_ != NULL) {
+        nestegg_free_packet(pkt_);
+      }
       nestegg_destroy(nestegg_ctx_);
+    }
   }
 
   virtual void Init() {
@@ -104,7 +108,7 @@ class WebMVideoSource : public CompressedVideoSource {
 
     nestegg_io io = {nestegg_read_cb, nestegg_seek_cb, nestegg_tell_cb,
                      input_file_};
-    ASSERT_FALSE(nestegg_init(&nestegg_ctx_, io, NULL))
+    ASSERT_FALSE(nestegg_init(&nestegg_ctx_, io, NULL, -1))
         << "nestegg_init failed";
 
     unsigned int n;
@@ -136,8 +140,10 @@ class WebMVideoSource : public CompressedVideoSource {
 
       do {
         /* End of this packet, get another. */
-        if (pkt_)
+        if (pkt_ != NULL) {
           nestegg_free_packet(pkt_);
+          pkt_ = NULL;
+        }
 
         int again = nestegg_read_packet(nestegg_ctx_, &pkt_);
         ASSERT_GE(again, 0) << "nestegg_read_packet failed";
@@ -163,8 +169,8 @@ class WebMVideoSource : public CompressedVideoSource {
   virtual const uint8_t *cxdata() const {
     return end_of_file_ ? NULL : buf_;
   }
-  virtual const unsigned int frame_size() const { return buf_sz_; }
-  virtual const unsigned int frame_number() const { return frame_; }
+  virtual size_t frame_size() const { return buf_sz_; }
+  virtual unsigned int frame_number() const { return frame_; }
 
  protected:
   std::string file_name_;

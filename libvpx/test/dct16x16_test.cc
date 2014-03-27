@@ -18,12 +18,13 @@
 #include "test/register_state_check.h"
 #include "test/util.h"
 
-extern "C" {
-#include "vp9/common/vp9_entropy.h"
 #include "./vp9_rtcd.h"
+#include "vp9/common/vp9_entropy.h"
+#include "vpx/vpx_integer.h"
+
+extern "C" {
 void vp9_idct16x16_256_add_c(const int16_t *input, uint8_t *output, int pitch);
 }
-#include "vpx/vpx_integer.h"
 
 using libvpx_test::ACMRandom;
 
@@ -264,12 +265,15 @@ typedef void (*fht_t) (const int16_t *in, int16_t *out, int stride,
 typedef void (*iht_t) (const int16_t *in, uint8_t *out, int stride,
                        int tx_type);
 
+typedef std::tr1::tuple<fdct_t, idct_t, int> dct_16x16_param_t;
+typedef std::tr1::tuple<fht_t, iht_t, int> ht_16x16_param_t;
+
 void fdct16x16_ref(const int16_t *in, int16_t *out, int stride, int tx_type) {
   vp9_fdct16x16_c(in, out, stride);
 }
 
 void fht16x16_ref(const int16_t *in, int16_t *out, int stride, int tx_type) {
-  vp9_short_fht16x16_c(in, out, stride, tx_type);
+  vp9_fht16x16_c(in, out, stride, tx_type);
 }
 
 class Trans16x16TestBase {
@@ -412,8 +416,9 @@ class Trans16x16TestBase {
   fht_t fwd_txfm_ref;
 };
 
-class Trans16x16DCT : public Trans16x16TestBase,
-                      public PARAMS(fdct_t, idct_t, int) {
+class Trans16x16DCT
+    : public Trans16x16TestBase,
+      public ::testing::TestWithParam<dct_16x16_param_t> {
  public:
   virtual ~Trans16x16DCT() {}
 
@@ -454,8 +459,9 @@ TEST_P(Trans16x16DCT, InvAccuracyCheck) {
   RunInvAccuracyCheck();
 }
 
-class Trans16x16HT : public Trans16x16TestBase,
-                     public PARAMS(fht_t, iht_t, int) {
+class Trans16x16HT
+    : public Trans16x16TestBase,
+      public ::testing::TestWithParam<ht_16x16_param_t> {
  public:
   virtual ~Trans16x16HT() {}
 
@@ -501,10 +507,18 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     C, Trans16x16HT,
     ::testing::Values(
-        make_tuple(&vp9_short_fht16x16_c, &vp9_iht16x16_256_add_c, 0),
-        make_tuple(&vp9_short_fht16x16_c, &vp9_iht16x16_256_add_c, 1),
-        make_tuple(&vp9_short_fht16x16_c, &vp9_iht16x16_256_add_c, 2),
-        make_tuple(&vp9_short_fht16x16_c, &vp9_iht16x16_256_add_c, 3)));
+        make_tuple(&vp9_fht16x16_c, &vp9_iht16x16_256_add_c, 0),
+        make_tuple(&vp9_fht16x16_c, &vp9_iht16x16_256_add_c, 1),
+        make_tuple(&vp9_fht16x16_c, &vp9_iht16x16_256_add_c, 2),
+        make_tuple(&vp9_fht16x16_c, &vp9_iht16x16_256_add_c, 3)));
+
+#if HAVE_NEON
+INSTANTIATE_TEST_CASE_P(
+    NEON, Trans16x16DCT,
+    ::testing::Values(
+        make_tuple(&vp9_fdct16x16_c,
+                   &vp9_idct16x16_256_add_neon, 0)));
+#endif
 
 #if HAVE_SSE2
 INSTANTIATE_TEST_CASE_P(
@@ -515,9 +529,9 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     SSE2, Trans16x16HT,
     ::testing::Values(
-        make_tuple(&vp9_short_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 0),
-        make_tuple(&vp9_short_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 1),
-        make_tuple(&vp9_short_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 2),
-        make_tuple(&vp9_short_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 3)));
+        make_tuple(&vp9_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 0),
+        make_tuple(&vp9_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 1),
+        make_tuple(&vp9_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 2),
+        make_tuple(&vp9_fht16x16_sse2, &vp9_iht16x16_256_add_sse2, 3)));
 #endif
 }  // namespace

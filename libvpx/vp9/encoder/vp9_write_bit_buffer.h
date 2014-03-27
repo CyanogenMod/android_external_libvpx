@@ -8,12 +8,16 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef VP9_BIT_WRITE_BUFFER_H_
-#define VP9_BIT_WRITE_BUFFER_H_
+#ifndef VP9_ENCODER_VP9_WRITE_BIT_BUFFER_H_
+#define VP9_ENCODER_VP9_WRITE_BIT_BUFFER_H_
 
 #include <limits.h>
 
 #include "vpx/vpx_integer.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct vp9_write_bit_buffer {
   uint8_t *bit_buffer;
@@ -25,7 +29,7 @@ static size_t vp9_rb_bytes_written(struct vp9_write_bit_buffer *wb) {
 }
 
 static void vp9_wb_write_bit(struct vp9_write_bit_buffer *wb, int bit) {
-  const int off = wb->bit_offset;
+  const int off = (int)wb->bit_offset;
   const int p = off / CHAR_BIT;
   const int q = CHAR_BIT - 1 - off % CHAR_BIT;
   if (q == CHAR_BIT -1) {
@@ -45,4 +49,8 @@ static void vp9_wb_write_literal(struct vp9_write_bit_buffer *wb,
 }
 
 
-#endif  // VP9_BIT_WRITE_BUFFER_H_
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#endif  // VP9_ENCODER_VP9_WRITE_BIT_BUFFER_H_

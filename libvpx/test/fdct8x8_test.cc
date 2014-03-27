@@ -18,12 +18,13 @@
 #include "test/register_state_check.h"
 #include "test/util.h"
 
-extern "C" {
-#include "vp9/common/vp9_entropy.h"
 #include "./vp9_rtcd.h"
+#include "vp9/common/vp9_entropy.h"
+#include "vpx/vpx_integer.h"
+
+extern "C" {
 void vp9_idct8x8_64_add_c(const int16_t *input, uint8_t *output, int pitch);
 }
-#include "vpx/vpx_integer.h"
 
 using libvpx_test::ACMRandom;
 
@@ -35,12 +36,15 @@ typedef void (*fht_t) (const int16_t *in, int16_t *out, int stride,
 typedef void (*iht_t) (const int16_t *in, uint8_t *out, int stride,
                        int tx_type);
 
+typedef std::tr1::tuple<fdct_t, idct_t, int> dct_8x8_param_t;
+typedef std::tr1::tuple<fht_t, iht_t, int> ht_8x8_param_t;
+
 void fdct8x8_ref(const int16_t *in, int16_t *out, int stride, int tx_type) {
   vp9_fdct8x8_c(in, out, stride);
 }
 
 void fht8x8_ref(const int16_t *in, int16_t *out, int stride, int tx_type) {
-  vp9_short_fht8x8_c(in, out, stride, tx_type);
+  vp9_fht8x8_c(in, out, stride, tx_type);
 }
 
 class FwdTrans8x8TestBase {
@@ -215,8 +219,9 @@ class FwdTrans8x8TestBase {
   fht_t fwd_txfm_ref;
 };
 
-class FwdTrans8x8DCT : public FwdTrans8x8TestBase,
-                       public PARAMS(fdct_t, idct_t, int) {
+class FwdTrans8x8DCT
+    : public FwdTrans8x8TestBase,
+      public ::testing::TestWithParam<dct_8x8_param_t> {
  public:
   virtual ~FwdTrans8x8DCT() {}
 
@@ -254,8 +259,9 @@ TEST_P(FwdTrans8x8DCT, ExtremalCheck) {
   RunExtremalCheck();
 }
 
-class FwdTrans8x8HT : public FwdTrans8x8TestBase,
-                      public PARAMS(fht_t, iht_t, int) {
+class FwdTrans8x8HT
+    : public FwdTrans8x8TestBase,
+      public ::testing::TestWithParam<ht_8x8_param_t> {
  public:
   virtual ~FwdTrans8x8HT() {}
 
@@ -302,10 +308,24 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     C, FwdTrans8x8HT,
     ::testing::Values(
-        make_tuple(&vp9_short_fht8x8_c, &vp9_iht8x8_64_add_c, 0),
-        make_tuple(&vp9_short_fht8x8_c, &vp9_iht8x8_64_add_c, 1),
-        make_tuple(&vp9_short_fht8x8_c, &vp9_iht8x8_64_add_c, 2),
-        make_tuple(&vp9_short_fht8x8_c, &vp9_iht8x8_64_add_c, 3)));
+        make_tuple(&vp9_fht8x8_c, &vp9_iht8x8_64_add_c, 0),
+        make_tuple(&vp9_fht8x8_c, &vp9_iht8x8_64_add_c, 1),
+        make_tuple(&vp9_fht8x8_c, &vp9_iht8x8_64_add_c, 2),
+        make_tuple(&vp9_fht8x8_c, &vp9_iht8x8_64_add_c, 3)));
+
+#if HAVE_NEON
+INSTANTIATE_TEST_CASE_P(
+    NEON, FwdTrans8x8DCT,
+    ::testing::Values(
+        make_tuple(&vp9_fdct8x8_c, &vp9_idct8x8_64_add_neon, 0)));
+INSTANTIATE_TEST_CASE_P(
+    DISABLED_NEON, FwdTrans8x8HT,
+    ::testing::Values(
+        make_tuple(&vp9_fht8x8_c, &vp9_iht8x8_64_add_neon, 0),
+        make_tuple(&vp9_fht8x8_c, &vp9_iht8x8_64_add_neon, 1),
+        make_tuple(&vp9_fht8x8_c, &vp9_iht8x8_64_add_neon, 2),
+        make_tuple(&vp9_fht8x8_c, &vp9_iht8x8_64_add_neon, 3)));
+#endif
 
 #if HAVE_SSE2
 INSTANTIATE_TEST_CASE_P(
@@ -315,9 +335,9 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     SSE2, FwdTrans8x8HT,
     ::testing::Values(
-        make_tuple(&vp9_short_fht8x8_sse2, &vp9_iht8x8_64_add_sse2, 0),
-        make_tuple(&vp9_short_fht8x8_sse2, &vp9_iht8x8_64_add_sse2, 1),
-        make_tuple(&vp9_short_fht8x8_sse2, &vp9_iht8x8_64_add_sse2, 2),
-        make_tuple(&vp9_short_fht8x8_sse2, &vp9_iht8x8_64_add_sse2, 3)));
+        make_tuple(&vp9_fht8x8_sse2, &vp9_iht8x8_64_add_sse2, 0),
+        make_tuple(&vp9_fht8x8_sse2, &vp9_iht8x8_64_add_sse2, 1),
+        make_tuple(&vp9_fht8x8_sse2, &vp9_iht8x8_64_add_sse2, 2),
+        make_tuple(&vp9_fht8x8_sse2, &vp9_iht8x8_64_add_sse2, 3)));
 #endif
 }  // namespace
