@@ -4662,10 +4662,11 @@ long Chapters::Atom::Parse(
         }
         else if (id == 0x33C4)  // UID ID
         {
-            const long long val = UnserializeUInt(pReader, pos, size);
+            long long val;
+            status = UnserializeInt(pReader, pos, size, val);
 
-            if (val < 0)  // error
-                return static_cast<long>(val);
+            if (status < 0)  // error
+                return status;
 
             m_uid = val;
         }
