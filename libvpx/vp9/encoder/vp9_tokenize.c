@@ -108,7 +108,7 @@ void vp9_coef_tree_initialize() {
   vp9_tokens_from_tree(vp9_coef_encodings, vp9_coef_tree);
 }
 
-static void fill_value_tokens() {
+void vp9_tokenize_initialize() {
   TOKENVALUE *const t = dct_value_tokens + DCT_MAX_VALUE;
   const vp9_extra_bit *const e = vp9_extra_bits;
 
@@ -162,7 +162,6 @@ struct tokenize_b_args {
   VP9_COMP *cpi;
   MACROBLOCKD *xd;
   TOKENEXTRA **tp;
-  uint8_t *token_cache;
 };
 
 static void set_entropy_context_b(int plane, int block, BLOCK_SIZE plane_bsize,
@@ -213,10 +212,10 @@ static void tokenize_b(int plane, int block, BLOCK_SIZE plane_bsize,
   VP9_COMP *cpi = args->cpi;
   MACROBLOCKD *xd = args->xd;
   TOKENEXTRA **tp = args->tp;
-  uint8_t *token_cache = args->token_cache;
+  uint8_t token_cache[32 * 32];
   struct macroblock_plane *p = &cpi->mb.plane[plane];
   struct macroblockd_plane *pd = &xd->plane[plane];
-  MB_MODE_INFO *mbmi = &xd->mi_8x8[0]->mbmi;
+  MB_MODE_INFO *mbmi = &xd->mi[0]->mbmi;
   int pt; /* near block/prev token context index */
   int c;
   TOKENEXTRA *t = *tp;        /* store tokens starting here */
@@ -310,12 +309,12 @@ void vp9_tokenize_sb(VP9_COMP *cpi, TOKENEXTRA **t, int dry_run,
                      BLOCK_SIZE bsize) {
   VP9_COMMON *const cm = &cpi->common;
   MACROBLOCKD *const xd = &cpi->mb.e_mbd;
-  MB_MODE_INFO *const mbmi = &xd->mi_8x8[0]->mbmi;
+  MB_MODE_INFO *const mbmi = &xd->mi[0]->mbmi;
   TOKENEXTRA *t_backup = *t;
   const int ctx = vp9_get_skip_context(xd);
   const int skip_inc = !vp9_segfeature_active(&cm->seg, mbmi->segment_id,
                                               SEG_LVL_SKIP);
-  struct tokenize_b_args arg = {cpi, xd, t, cpi->mb.token_cache};
+  struct tokenize_b_args arg = {cpi, xd, t};
   if (mbmi->skip) {
     if (!dry_run)
       cm->counts.skip[ctx][1] += skip_inc;
@@ -332,8 +331,4 @@ void vp9_tokenize_sb(VP9_COMP *cpi, TOKENEXTRA **t, int dry_run,
     vp9_foreach_transformed_block(xd, bsize, set_entropy_context_b, &arg);
     *t = t_backup;
   }
-}
-
-void vp9_tokenize_initialize() {
-  fill_value_tokens();
 }

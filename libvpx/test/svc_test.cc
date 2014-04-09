@@ -31,6 +31,7 @@ class SvcTest : public ::testing::Test {
   SvcTest()
       : codec_iface_(0),
         test_file_name_("hantro_collage_w352h288.yuv"),
+        stats_file_name_("hantro_collage_w352h288.stat"),
         codec_initialized_(false),
         decoder_(0) {
     memset(&svc_, 0, sizeof(svc_));
@@ -73,6 +74,7 @@ class SvcTest : public ::testing::Test {
   struct vpx_codec_enc_cfg codec_enc_;
   vpx_codec_iface_t *codec_iface_;
   std::string test_file_name_;
+  std::string stats_file_name_;
   bool codec_initialized_;
   Decoder *decoder_;
 };
@@ -395,6 +397,76 @@ TEST_F(SvcTest, FirstPassEncode) {
                        video.duration(), VPX_DL_GOOD_QUALITY);
   ASSERT_EQ(VPX_CODEC_OK, res);
   EXPECT_GT(vpx_svc_get_rc_stats_buffer_size(&svc_), 0U);
+}
+
+TEST_F(SvcTest, SecondPassEncode) {
+  svc_.spatial_layers = 2;
+  codec_enc_.g_pass = VPX_RC_LAST_PASS;
+
+  FILE *const stats_file = libvpx_test::OpenTestDataFile(stats_file_name_);
+  ASSERT_TRUE(stats_file != NULL) << "Stats file open failed. Filename: "
+      << stats_file;
+
+  struct vpx_fixed_buf stats_buf;
+  fseek(stats_file, 0, SEEK_END);
+  stats_buf.sz = static_cast<size_t>(ftell(stats_file));
+  fseek(stats_file, 0, SEEK_SET);
+
+  stats_buf.buf = malloc(stats_buf.sz);
+  ASSERT_TRUE(stats_buf.buf != NULL);
+  const size_t bytes_read = fread(stats_buf.buf, 1, stats_buf.sz, stats_file);
+  ASSERT_EQ(bytes_read, stats_buf.sz);
+  fclose(stats_file);
+  codec_enc_.rc_twopass_stats_in = stats_buf;
+
+  vpx_codec_err_t res =
+      vpx_svc_init(&svc_, &codec_, vpx_codec_vp9_cx(), &codec_enc_);
+  ASSERT_EQ(VPX_CODEC_OK, res);
+  codec_initialized_ = true;
+
+  libvpx_test::I420VideoSource video(test_file_name_, kWidth, kHeight,
+                                     codec_enc_.g_timebase.den,
+                                     codec_enc_.g_timebase.num, 0, 30);
+  // FRAME 0
+  video.Begin();
+  // This frame is a keyframe.
+  res = vpx_svc_encode(&svc_, &codec_, video.img(), video.pts(),
+                       video.duration(), VPX_DL_GOOD_QUALITY);
+  ASSERT_EQ(VPX_CODEC_OK, res);
+  EXPECT_EQ(1, vpx_svc_is_keyframe(&svc_));
+
+  vpx_codec_err_t res_dec = decoder_->DecodeFrame(
+      static_cast<const uint8_t *>(vpx_svc_get_buffer(&svc_)),
+      vpx_svc_get_frame_size(&svc_));
+  ASSERT_EQ(VPX_CODEC_OK, res_dec) << decoder_->DecodeError();
+
+  // FRAME 1
+  video.Next();
+  // This is a P-frame.
+  res = vpx_svc_encode(&svc_, &codec_, video.img(), video.pts(),
+                       video.duration(), VPX_DL_GOOD_QUALITY);
+  ASSERT_EQ(VPX_CODEC_OK, res);
+  EXPECT_EQ(0, vpx_svc_is_keyframe(&svc_));
+
+  res_dec = decoder_->DecodeFrame(
+      static_cast<const uint8_t *>(vpx_svc_get_buffer(&svc_)),
+      vpx_svc_get_frame_size(&svc_));
+  ASSERT_EQ(VPX_CODEC_OK, res_dec) << decoder_->DecodeError();
+
+  // FRAME 2
+  video.Next();
+  // This is a P-frame.
+  res = vpx_svc_encode(&svc_, &codec_, video.img(), video.pts(),
+                       video.duration(), VPX_DL_GOOD_QUALITY);
+  ASSERT_EQ(VPX_CODEC_OK, res);
+  EXPECT_EQ(0, vpx_svc_is_keyframe(&svc_));
+
+  res_dec = decoder_->DecodeFrame(
+      static_cast<const uint8_t *>(vpx_svc_get_buffer(&svc_)),
+      vpx_svc_get_frame_size(&svc_));
+  ASSERT_EQ(VPX_CODEC_OK, res_dec) << decoder_->DecodeError();
+
+  free(stats_buf.buf);
 }
 
 }  // namespace

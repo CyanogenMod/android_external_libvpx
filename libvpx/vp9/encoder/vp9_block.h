@@ -157,7 +157,6 @@ struct macroblock {
 
   // note that token_costs is the cost when eob node is skipped
   vp9_coeff_cost token_costs[TX_SIZES];
-  DECLARE_ALIGNED(16, uint8_t, token_cache[1024]);
 
   int optimize;
 
@@ -197,7 +196,8 @@ struct macroblock {
 // TODO(jingning): the variables used here are little complicated. need further
 // refactoring on organizing the temporary buffers, when recursive
 // partition down to 4x4 block size is enabled.
-static PICK_MODE_CONTEXT *get_block_context(MACROBLOCK *x, BLOCK_SIZE bsize) {
+static INLINE PICK_MODE_CONTEXT *get_block_context(MACROBLOCK *x,
+                                                   BLOCK_SIZE bsize) {
   switch (bsize) {
     case BLOCK_64X64:
       return &x->sb64_context;

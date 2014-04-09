@@ -22,6 +22,9 @@ extern "C" {
 
 #define FRAME_OVERHEAD_BITS 200
 
+// Bits Per MB at different Q (Multiplied by 512)
+#define BPER_MB_NORMBITS    9
+
 typedef struct {
   // Rate targetting variables
   int this_frame_target;
@@ -58,7 +61,7 @@ typedef struct {
   int ni_av_qi;
   int ni_tot_qi;
   int ni_frames;
-  int avg_frame_qindex[3];  // 0 - KEY, 1 - INTER, 2 - ARF/GF
+  int avg_frame_qindex[3];        // 0 - KEY, 1 - INTER, 2 - ARF/GF
   double tot_q;
   double avg_q;
 
@@ -75,7 +78,8 @@ typedef struct {
   int long_rolling_actual_bits;
 
   int64_t total_actual_bits;
-  int total_target_vs_actual;        // debug stats
+  int64_t total_target_bits;
+  int64_t total_target_vs_actual;
 
   int worst_quality;
   int best_quality;
@@ -83,17 +87,13 @@ typedef struct {
 } RATE_CONTROL;
 
 struct VP9_COMP;
+struct VP9_CONFIG;
 
-void vp9_save_coding_context(struct VP9_COMP *cpi);
-void vp9_restore_coding_context(struct VP9_COMP *cpi);
-
-void vp9_setup_key_frame(struct VP9_COMP *cpi);
-void vp9_setup_inter_frame(struct VP9_COMP *cpi);
+void vp9_rc_init(const struct VP9_CONFIG *oxcf, int pass, RATE_CONTROL *rc);
 
 double vp9_convert_qindex_to_q(int qindex);
 
-// initialize luts for minq
-void vp9_rc_init_minq_luts(void);
+void vp9_rc_init_minq_luts();
 
 // Generally at the high level, the following flow is expected
 // to be enforced for rate control:
@@ -165,6 +165,15 @@ int vp9_rc_clamp_pframe_target_size(const struct VP9_COMP *const cpi,
 // Utility to set frame_target into the RATE_CONTROL structure
 // This function is called only from the vp9_rc_get_..._params() functions.
 void vp9_rc_set_frame_target(struct VP9_COMP *cpi, int target);
+
+// Computes a q delta (in "q index" terms) to get from a starting q value
+// to a target q value
+int vp9_compute_qdelta(const RATE_CONTROL *rc, double qstart, double qtarget);
+
+// Computes a q delta (in "q index" terms) to get from a starting q value
+// to a value that should equate to the given rate ratio.
+int vp9_compute_qdelta_by_rate(const RATE_CONTROL *rc, FRAME_TYPE frame_type,
+                               int qindex, double rate_target_ratio);
 
 #ifdef __cplusplus
 }  // extern "C"

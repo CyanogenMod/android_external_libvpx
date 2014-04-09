@@ -524,9 +524,6 @@ vpx_codec_err_t vpx_svc_init(SvcContext *svc_ctx, vpx_codec_ctx_t *codec_ctx,
             svc_ctx->spatial_layers);
     return VPX_CODEC_INVALID_PARAM;
   }
-  // use SvcInternal value for number of layers to enable forcing single layer
-  // for first frame
-  si->layers = svc_ctx->spatial_layers;
 
   res = parse_quantizer_values(svc_ctx, si->quantizers, 0);
   if (res != VPX_CODEC_OK) return res;
@@ -538,9 +535,12 @@ vpx_codec_err_t vpx_svc_init(SvcContext *svc_ctx, vpx_codec_ctx_t *codec_ctx,
   res = parse_scale_factors(svc_ctx, si->scale_factors);
   if (res != VPX_CODEC_OK) return res;
 
-  // parse aggregate command line options
+  // Parse aggregate command line options. Options must start with
+  // "layers=xx" then followed by other options
   res = parse_options(svc_ctx, si->options);
   if (res != VPX_CODEC_OK) return res;
+
+  si->layers = svc_ctx->spatial_layers;
 
   // Assign target bitrate for each layer. We calculate the ratio
   // from the resolution for now.
@@ -583,8 +583,12 @@ vpx_codec_err_t vpx_svc_init(SvcContext *svc_ctx, vpx_codec_ctx_t *codec_ctx,
   enc_cfg->rc_dropframe_thresh = 0;
   enc_cfg->rc_end_usage = VPX_CBR;
   enc_cfg->rc_resize_allowed = 0;
-  enc_cfg->rc_min_quantizer = 33;
-  enc_cfg->rc_max_quantizer = 33;
+
+  if (enc_cfg->g_pass == VPX_RC_ONE_PASS) {
+    enc_cfg->rc_min_quantizer = 33;
+    enc_cfg->rc_max_quantizer = 33;
+  }
+
   enc_cfg->rc_undershoot_pct = 100;
   enc_cfg->rc_overshoot_pct = 15;
   enc_cfg->rc_buf_initial_sz = 500;
@@ -784,12 +788,17 @@ static void set_svc_parameters(SvcContext *svc_ctx,
   }
   layer_index = layer + VPX_SS_MAX_LAYERS - si->layers;
 
-  if (vpx_svc_is_keyframe(svc_ctx)) {
-    svc_params.min_quantizer = si->quantizer_keyframe[layer_index];
-    svc_params.max_quantizer = si->quantizer_keyframe[layer_index];
+  if (codec_ctx->config.enc->g_pass == VPX_RC_ONE_PASS) {
+    if (vpx_svc_is_keyframe(svc_ctx)) {
+      svc_params.min_quantizer = si->quantizer_keyframe[layer_index];
+      svc_params.max_quantizer = si->quantizer_keyframe[layer_index];
+    } else {
+      svc_params.min_quantizer = si->quantizer[layer_index];
+      svc_params.max_quantizer = si->quantizer[layer_index];
+    }
   } else {
-    svc_params.min_quantizer = si->quantizer[layer_index];
-    svc_params.max_quantizer = si->quantizer[layer_index];
+    svc_params.min_quantizer = codec_ctx->config.enc->rc_min_quantizer;
+    svc_params.max_quantizer = codec_ctx->config.enc->rc_max_quantizer;
   }
 
   svc_params.distance_from_i_frame = si->frame_within_gop;

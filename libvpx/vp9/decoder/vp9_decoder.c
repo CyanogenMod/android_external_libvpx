@@ -104,23 +104,14 @@ void vp9_initialize_dec() {
   static int init_done = 0;
 
   if (!init_done) {
-    vp9_initialize_common();
+    vp9_init_neighbors();
     vp9_init_quant_tables();
     init_done = 1;
   }
 }
 
-static void init_macroblockd(VP9D_COMP *const pbi) {
-  MACROBLOCKD *xd = &pbi->mb;
-  struct macroblockd_plane *const pd = xd->plane;
-  int i;
-
-  for (i = 0; i < MAX_MB_PLANE; ++i)
-    pd[i].dqcoeff = pbi->dqcoeff[i];
-}
-
-VP9D_COMP *vp9_create_decompressor(VP9D_CONFIG *oxcf) {
-  VP9D_COMP *const pbi = vpx_memalign(32, sizeof(VP9D_COMP));
+VP9Decoder *vp9_decoder_create(const VP9D_CONFIG *oxcf) {
+  VP9Decoder *const pbi = vpx_memalign(32, sizeof(*pbi));
   VP9_COMMON *const cm = pbi ? &pbi->common : NULL;
 
   if (!cm)
@@ -128,12 +119,9 @@ VP9D_COMP *vp9_create_decompressor(VP9D_CONFIG *oxcf) {
 
   vp9_zero(*pbi);
 
-  // Initialize the references to not point to any frame buffers.
-  memset(&cm->ref_frame_map, -1, sizeof(cm->ref_frame_map));
-
   if (setjmp(cm->error.jmp)) {
     cm->error.setjmp = 0;
-    vp9_remove_decompressor(pbi);
+    vp9_decoder_remove(pbi);
     return NULL;
   }
 
@@ -142,9 +130,13 @@ VP9D_COMP *vp9_create_decompressor(VP9D_CONFIG *oxcf) {
 
   vp9_rtcd();
 
+  // Initialize the references to not point to any frame buffers.
+  vpx_memset(&cm->ref_frame_map, -1, sizeof(cm->ref_frame_map));
+
+  cm->current_video_frame = 0;
   pbi->oxcf = *oxcf;
   pbi->ready_for_new_data = 1;
-  cm->current_video_frame = 0;
+  pbi->decoded_key_frame = 0;
 
   // vp9_init_dequantizer() is first called here. Add check in
   // frame_init_dequantizer() to avoid unnecessary calling of
@@ -154,22 +146,17 @@ VP9D_COMP *vp9_create_decompressor(VP9D_CONFIG *oxcf) {
   vp9_loop_filter_init(cm);
 
   cm->error.setjmp = 0;
-  pbi->decoded_key_frame = 0;
-
-  init_macroblockd(pbi);
 
   vp9_worker_init(&pbi->lf_worker);
 
   return pbi;
 }
 
-void vp9_remove_decompressor(VP9D_COMP *pbi) {
+void vp9_decoder_remove(VP9Decoder *pbi) {
+  VP9_COMMON *const cm = &pbi->common;
   int i;
 
-  if (!pbi)
-    return;
-
-  vp9_remove_common(&pbi->common);
+  vp9_remove_common(cm);
   vp9_worker_end(&pbi->lf_worker);
   vpx_free(pbi->lf_worker.data1);
   for (i = 0; i < pbi->num_tile_workers; ++i) {
@@ -181,16 +168,11 @@ void vp9_remove_decompressor(VP9D_COMP *pbi) {
   vpx_free(pbi->tile_workers);
 
   if (pbi->num_tile_workers) {
-    VP9_COMMON *const cm = &pbi->common;
     const int sb_rows =
         mi_cols_aligned_to_sb(cm->mi_rows) >> MI_BLOCK_SIZE_LOG2;
-    VP9LfSync *const lf_sync = &pbi->lf_row_sync;
-
-    vp9_loop_filter_dealloc(lf_sync, sb_rows);
+    vp9_loop_filter_dealloc(&pbi->lf_row_sync, sb_rows);
   }
 
-  vpx_free(pbi->above_context[0]);
-  vpx_free(pbi->above_seg_context);
   vpx_free(pbi);
 }
 
@@ -200,7 +182,7 @@ static int equal_dimensions(const YV12_BUFFER_CONFIG *a,
            a->uv_height == b->uv_height && a->uv_width == b->uv_width;
 }
 
-vpx_codec_err_t vp9_copy_reference_dec(VP9D_COMP *pbi,
+vpx_codec_err_t vp9_copy_reference_dec(VP9Decoder *pbi,
                                        VP9_REFFRAME ref_frame_flag,
                                        YV12_BUFFER_CONFIG *sd) {
   VP9_COMMON *cm = &pbi->common;
@@ -227,17 +209,15 @@ vpx_codec_err_t vp9_copy_reference_dec(VP9D_COMP *pbi,
 }
 
 
-vpx_codec_err_t vp9_set_reference_dec(VP9D_COMP *pbi,
+vpx_codec_err_t vp9_set_reference_dec(VP9_COMMON *cm,
                                       VP9_REFFRAME ref_frame_flag,
                                       YV12_BUFFER_CONFIG *sd) {
-  VP9_COMMON *cm = &pbi->common;
   RefBuffer *ref_buf = NULL;
 
-  /* TODO(jkoleszar): The decoder doesn't have any real knowledge of what the
-   * encoder is using the frame buffers for. This is just a stub to keep the
-   * vpxenc --test-decode functionality working, and will be replaced in a
-   * later commit that adds VP9-specific controls for this functionality.
-   */
+  // TODO(jkoleszar): The decoder doesn't have any real knowledge of what the
+  // encoder is using the frame buffers for. This is just a stub to keep the
+  // vpxenc --test-decode functionality working, and will be replaced in a
+  // later commit that adds VP9-specific controls for this functionality.
   if (ref_frame_flag == VP9_LAST_FLAG) {
     ref_buf = &cm->frame_refs[0];
   } else if (ref_frame_flag == VP9_GOLD_FLAG) {
@@ -245,13 +225,13 @@ vpx_codec_err_t vp9_set_reference_dec(VP9D_COMP *pbi,
   } else if (ref_frame_flag == VP9_ALT_FLAG) {
     ref_buf = &cm->frame_refs[2];
   } else {
-    vpx_internal_error(&pbi->common.error, VPX_CODEC_ERROR,
+    vpx_internal_error(&cm->error, VPX_CODEC_ERROR,
                        "Invalid reference frame");
-    return pbi->common.error.error_code;
+    return cm->error.error_code;
   }
 
   if (!equal_dimensions(ref_buf->buf, sd)) {
-    vpx_internal_error(&pbi->common.error, VPX_CODEC_ERROR,
+    vpx_internal_error(&cm->error, VPX_CODEC_ERROR,
                        "Incorrect buffer dimensions");
   } else {
     int *ref_fb_ptr = &ref_buf->idx;
@@ -268,11 +248,11 @@ vpx_codec_err_t vp9_set_reference_dec(VP9D_COMP *pbi,
     vp8_yv12_copy_frame(sd, ref_buf->buf);
   }
 
-  return pbi->common.error.error_code;
+  return cm->error.error_code;
 }
 
 
-int vp9_get_reference_dec(VP9D_COMP *pbi, int index, YV12_BUFFER_CONFIG **fb) {
+int vp9_get_reference_dec(VP9Decoder *pbi, int index, YV12_BUFFER_CONFIG **fb) {
   VP9_COMMON *cm = &pbi->common;
 
   if (index < 0 || index >= REF_FRAMES)
@@ -283,7 +263,7 @@ int vp9_get_reference_dec(VP9D_COMP *pbi, int index, YV12_BUFFER_CONFIG **fb) {
 }
 
 /* If any buffer updating is signaled it should be done here. */
-static void swap_frame_buffers(VP9D_COMP *pbi) {
+static void swap_frame_buffers(VP9Decoder *pbi) {
   int ref_index = 0, mask;
   VP9_COMMON *const cm = &pbi->common;
 
@@ -307,35 +287,24 @@ static void swap_frame_buffers(VP9D_COMP *pbi) {
     cm->frame_refs[ref_index].idx = INT_MAX;
 }
 
-int vp9_receive_compressed_data(VP9D_COMP *pbi,
+int vp9_receive_compressed_data(VP9Decoder *pbi,
                                 size_t size, const uint8_t **psource,
                                 int64_t time_stamp) {
-  VP9_COMMON *cm = NULL;
+  VP9_COMMON *const cm = &pbi->common;
   const uint8_t *source = *psource;
   int retcode = 0;
 
-  /*if(pbi->ready_for_new_data == 0)
-      return -1;*/
-
-  if (!pbi)
-    return -1;
-
-  cm = &pbi->common;
   cm->error.error_code = VPX_CODEC_OK;
 
-  pbi->source = source;
-  pbi->source_sz = size;
-
-  if (pbi->source_sz == 0) {
-    /* This is used to signal that we are missing frames.
-     * We do not know if the missing frame(s) was supposed to update
-     * any of the reference buffers, but we act conservative and
-     * mark only the last buffer as corrupted.
-     *
-     * TODO(jkoleszar): Error concealment is undefined and non-normative
-     * at this point, but if it becomes so, [0] may not always be the correct
-     * thing to do here.
-     */
+  if (size == 0) {
+    // This is used to signal that we are missing frames.
+    // We do not know if the missing frame(s) was supposed to update
+    // any of the reference buffers, but we act conservative and
+    // mark only the last buffer as corrupted.
+    //
+    // TODO(jkoleszar): Error concealment is undefined and non-normative
+    // at this point, but if it becomes so, [0] may not always be the correct
+    // thing to do here.
     if (cm->frame_refs[0].idx != INT_MAX)
       cm->frame_refs[0].buf->corrupted = 1;
   }
@@ -349,14 +318,13 @@ int vp9_receive_compressed_data(VP9D_COMP *pbi,
   if (setjmp(cm->error.jmp)) {
     cm->error.setjmp = 0;
 
-    /* We do not know if the missing frame(s) was supposed to update
-     * any of the reference buffers, but we act conservative and
-     * mark only the last buffer as corrupted.
-     *
-     * TODO(jkoleszar): Error concealment is undefined and non-normative
-     * at this point, but if it becomes so, [0] may not always be the correct
-     * thing to do here.
-     */
+    // We do not know if the missing frame(s) was supposed to update
+    // any of the reference buffers, but we act conservative and
+    // mark only the last buffer as corrupted.
+    //
+    // TODO(jkoleszar): Error concealment is undefined and non-normative
+    // at this point, but if it becomes so, [0] may not always be the correct
+    // thing to do here.
     if (cm->frame_refs[0].idx != INT_MAX)
       cm->frame_refs[0].buf->corrupted = 1;
 
@@ -368,7 +336,7 @@ int vp9_receive_compressed_data(VP9D_COMP *pbi,
 
   cm->error.setjmp = 1;
 
-  retcode = vp9_decode_frame(pbi, psource);
+  retcode = vp9_decode_frame(pbi, source, source + size, psource);
 
   if (retcode < 0) {
     cm->error.error_code = VPX_CODEC_ERROR;
@@ -430,13 +398,12 @@ int vp9_receive_compressed_data(VP9D_COMP *pbi,
 
   pbi->ready_for_new_data = 0;
   pbi->last_time_stamp = time_stamp;
-  pbi->source_sz = 0;
 
   cm->error.setjmp = 0;
   return retcode;
 }
 
-int vp9_get_raw_frame(VP9D_COMP *pbi, YV12_BUFFER_CONFIG *sd,
+int vp9_get_raw_frame(VP9Decoder *pbi, YV12_BUFFER_CONFIG *sd,
                       int64_t *time_stamp, int64_t *time_end_stamp,
                       vp9_ppflags_t *flags) {
   int ret = -1;
@@ -455,19 +422,12 @@ int vp9_get_raw_frame(VP9D_COMP *pbi, YV12_BUFFER_CONFIG *sd,
 #if CONFIG_VP9_POSTPROC
   ret = vp9_post_proc_frame(&pbi->common, sd, flags);
 #else
-
-  if (pbi->common.frame_to_show) {
     *sd = *pbi->common.frame_to_show;
     sd->y_width = pbi->common.width;
     sd->y_height = pbi->common.height;
     sd->uv_width = sd->y_width >> pbi->common.subsampling_x;
     sd->uv_height = sd->y_height >> pbi->common.subsampling_y;
-
     ret = 0;
-  } else {
-    ret = -1;
-  }
-
 #endif /*!CONFIG_POSTPROC*/
   vp9_clear_system_state();
   return ret;
