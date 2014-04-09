@@ -144,8 +144,9 @@ static void build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
                                    int x, int y, int w, int h,
                                    int mi_x, int mi_y) {
   struct macroblockd_plane *const pd = &xd->plane[plane];
-  const MODE_INFO *mi = xd->mi_8x8[0];
+  const MODE_INFO *mi = xd->mi[0];
   const int is_compound = has_second_ref(&mi->mbmi);
+  const InterpKernel *kernel = vp9_get_interp_kernel(mi->mbmi.interp_filter);
   int ref;
 
   for (ref = 0; ref < 1 + is_compound; ++ref) {
@@ -193,8 +194,7 @@ static void build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
            + (scaled_mv.col >> SUBPEL_BITS);
 
     inter_predictor(pre, pre_buf->stride, dst, dst_buf->stride,
-                    subpel_x, subpel_y, sf, w, h, ref, xd->interp_kernel,
-                    xs, ys);
+                    subpel_x, subpel_y, sf, w, h, ref, kernel, xs, ys);
   }
 }
 
@@ -212,7 +212,7 @@ static void build_inter_predictors_for_planes(MACROBLOCKD *xd, BLOCK_SIZE bsize,
     const int bw = 4 * num_4x4_w;
     const int bh = 4 * num_4x4_h;
 
-    if (xd->mi_8x8[0]->mbmi.sb_type < BLOCK_8X8) {
+    if (xd->mi[0]->mbmi.sb_type < BLOCK_8X8) {
       int i = 0, x, y;
       assert(bsize == BLOCK_8X8);
       for (y = 0; y < num_4x4_h; ++y)
@@ -248,8 +248,9 @@ static void dec_build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
                                        int x, int y, int w, int h,
                                        int mi_x, int mi_y) {
   struct macroblockd_plane *const pd = &xd->plane[plane];
-  const MODE_INFO *mi = xd->mi_8x8[0];
+  const MODE_INFO *mi = xd->mi[0];
   const int is_compound = has_second_ref(&mi->mbmi);
+  const InterpKernel *kernel = vp9_get_interp_kernel(mi->mbmi.interp_filter);
   int ref;
 
   for (ref = 0; ref < 1 + is_compound; ++ref) {
@@ -308,10 +309,8 @@ static void dec_build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
       y0_16 = sf->scale_value_y(y0_16, sf);
 
       // Map the top left corner of the block into the reference frame.
-      // NOTE: This must be done in this way instead of
-      // sf->scale_value_x(x_start + x, sf).
-      x0 = sf->scale_value_x(x_start, sf) + sf->scale_value_x(x, sf);
-      y0 = sf->scale_value_y(y_start, sf) + sf->scale_value_y(y, sf);
+      x0 = sf->scale_value_x(x_start + x, sf);
+      y0 = sf->scale_value_y(y_start + y, sf);
 
       // Scale the MV and incorporate the sub-pixel offset of the block
       // in the reference frame.
@@ -379,7 +378,7 @@ static void dec_build_inter_predictors(MACROBLOCKD *xd, int plane, int block,
     }
 
     inter_predictor(buf_ptr, buf_stride, dst, dst_buf->stride, subpel_x,
-                    subpel_y, sf, w, h, ref, xd->interp_kernel, xs, ys);
+                    subpel_y, sf, w, h, ref, kernel, xs, ys);
   }
 }
 
@@ -396,7 +395,7 @@ void vp9_dec_build_inter_predictors_sb(MACROBLOCKD *xd, int mi_row, int mi_col,
     const int bw = 4 * num_4x4_w;
     const int bh = 4 * num_4x4_h;
 
-    if (xd->mi_8x8[0]->mbmi.sb_type < BLOCK_8X8) {
+    if (xd->mi[0]->mbmi.sb_type < BLOCK_8X8) {
       int i = 0, x, y;
       assert(bsize == BLOCK_8X8);
       for (y = 0; y < num_4x4_h; ++y)
