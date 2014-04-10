@@ -99,7 +99,7 @@ static void loop_filter_rows_mt(const YV12_BUFFER_CONFIG *const frame_buffer,
 
   for (r = start; r < stop; r += num_lf_workers) {
     const int mi_row = r << MI_BLOCK_SIZE_LOG2;
-    MODE_INFO **mi_8x8 = cm->mi_grid_visible + mi_row * cm->mode_info_stride;
+    MODE_INFO **mi_8x8 = cm->mi_grid_visible + mi_row * cm->mi_stride;
 
     for (c = 0; c < sb_cols; ++c) {
       const int mi_col = c << MI_BLOCK_SIZE_LOG2;
@@ -108,8 +108,7 @@ static void loop_filter_rows_mt(const YV12_BUFFER_CONFIG *const frame_buffer,
       sync_read(lf_sync, r, c);
 
       vp9_setup_dst_planes(xd, frame_buffer, mi_row, mi_col);
-      vp9_setup_mask(cm, mi_row, mi_col, mi_8x8 + mi_col, cm->mode_info_stride,
-                     &lfm);
+      vp9_setup_mask(cm, mi_row, mi_col, mi_8x8 + mi_col, cm->mi_stride, &lfm);
 
       for (plane = 0; plane < num_planes; ++plane) {
         vp9_filter_block_plane(cm, &xd->plane[plane], mi_row, &lfm);
@@ -133,13 +132,15 @@ static int loop_filter_row_worker(void *arg1, void *arg2) {
 
 // VP9 decoder: Implement multi-threaded loopfilter that uses the tile
 // threads.
-void vp9_loop_filter_frame_mt(VP9D_COMP *pbi,
+void vp9_loop_filter_frame_mt(VP9Decoder *pbi,
                               VP9_COMMON *cm,
                               MACROBLOCKD *xd,
                               int frame_filter_level,
                               int y_only, int partial_frame) {
   // Number of superblock rows and cols
   const int sb_rows = mi_cols_aligned_to_sb(cm->mi_rows) >> MI_BLOCK_SIZE_LOG2;
+  const int tile_cols = 1 << cm->log2_tile_cols;
+  const int num_workers = MIN(pbi->oxcf.max_threads & ~1, tile_cols);
   int i;
 
   // Allocate memory used in thread synchronization.
@@ -169,7 +170,16 @@ void vp9_loop_filter_frame_mt(VP9D_COMP *pbi,
              sizeof(*pbi->lf_row_sync.cur_sb_col) * sb_rows);
 
   // Set up loopfilter thread data.
-  for (i = 0; i < pbi->num_tile_workers; ++i) {
+  // The decoder is using num_workers instead of pbi->num_tile_workers
+  // because it has been observed that using more threads on the
+  // loopfilter, than there are tile columns in the frame will hurt
+  // performance on Android. This is because the system will only
+  // schedule the tile decode workers on cores equal to the number
+  // of tile columns. Then if the decoder tries to use more threads for the
+  // loopfilter, it will hurt performance because of contention. If the
+  // multithreading code changes in the future then the number of workers
+  // used by the loopfilter should be revisited.
+  for (i = 0; i < num_workers; ++i) {
     VP9Worker *const worker = &pbi->tile_workers[i];
     TileWorkerData *const tile_data = (TileWorkerData*)worker->data1;
     LFWorkerData *const lf_data = &tile_data->lfdata;
@@ -185,10 +195,10 @@ void vp9_loop_filter_frame_mt(VP9D_COMP *pbi,
     lf_data->y_only = y_only;   // always do all planes in decoder
 
     lf_data->lf_sync = &pbi->lf_row_sync;
-    lf_data->num_lf_workers = pbi->num_tile_workers;
+    lf_data->num_lf_workers = num_workers;
 
     // Start loopfiltering
-    if (i == pbi->num_tile_workers - 1) {
+    if (i == num_workers - 1) {
       vp9_worker_execute(worker);
     } else {
       vp9_worker_launch(worker);
@@ -196,7 +206,7 @@ void vp9_loop_filter_frame_mt(VP9D_COMP *pbi,
   }
 
   // Wait till all rows are finished
-  for (i = 0; i < pbi->num_tile_workers; ++i) {
+  for (i = 0; i < num_workers; ++i) {
     vp9_worker_sync(&pbi->tile_workers[i]);
   }
 }

@@ -570,9 +570,9 @@ TEST_P(DatarateTestVP9Large, BasicRateTargeting3TemporalLayersFrameDropping) {
         << " The datarate for the file is greater than target by too much, "
             "for layer: " << j;
     // Expect some frame drops in this test: for this 200 frames test,
-    // expect at least 10% and not more than 50% drops.
+    // expect at least 10% and not more than 60% drops.
     ASSERT_GE(num_drops_, 20);
-    ASSERT_LE(num_drops_, 100);
+    ASSERT_LE(num_drops_, 120);
   }
 }
 
@@ -581,8 +581,4 @@ VP9_INSTANTIATE_TEST_CASE(DatarateTestVP9Large,
                           ::testing::Values(::libvpx_test::kOnePassGood,
                           ::libvpx_test::kRealTime),
                           ::testing::Range(2, 7));
-// TODO(marpan): Speed 7 fails on one of these tests (likely just a threshold
-// needs to be changed), so for now test up to speed 6, and start at 2 (since
-// speed 0 and 1 are slow). Allow speed 7 (for real-time mode) after
-// looking into/fix failing issue.
 }  // namespace

@@ -17,10 +17,13 @@ extern "C" {
 #endif
 
 struct VP9Common;
-struct VP9Decompressor;
+struct VP9Decoder;
 
 void vp9_init_dequantizer(struct VP9Common *cm);
-int vp9_decode_frame(struct VP9Decompressor *cpi, const uint8_t **p_data_end);
+
+int vp9_decode_frame(struct VP9Decoder *pbi,
+                     const uint8_t *data, const uint8_t *data_end,
+                     const uint8_t **p_data_end);
 
 #ifdef __cplusplus
 }  // extern "C"

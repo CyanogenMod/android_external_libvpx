@@ -31,29 +31,16 @@ typedef struct {
   int width;
   int height;
   int version;
-  int postprocess;
   int max_threads;
   int inv_tile_order;
-  int input_partition;
 } VP9D_CONFIG;
 
-typedef enum {
-  VP9_LAST_FLAG = 1,
-  VP9_GOLD_FLAG = 2,
-  VP9_ALT_FLAG = 4
-} VP9_REFFRAME;
-
-typedef struct VP9Decompressor {
+typedef struct VP9Decoder {
   DECLARE_ALIGNED(16, MACROBLOCKD, mb);
 
   DECLARE_ALIGNED(16, VP9_COMMON, common);
 
-  DECLARE_ALIGNED(16, int16_t,  dqcoeff[MAX_MB_PLANE][64 * 64]);
-
   VP9D_CONFIG oxcf;
-
-  const uint8_t *source;
-  size_t source_sz;
 
   int64_t last_time_stamp;
   int ready_for_new_data;
@@ -72,37 +59,34 @@ typedef struct VP9Decompressor {
   int num_tile_workers;
 
   VP9LfSync lf_row_sync;
-
-  ENTROPY_CONTEXT *above_context[MAX_MB_PLANE];
-  PARTITION_CONTEXT *above_seg_context;
-} VP9D_COMP;
+} VP9Decoder;
 
 void vp9_initialize_dec();
 
-int vp9_receive_compressed_data(struct VP9Decompressor *pbi,
+int vp9_receive_compressed_data(struct VP9Decoder *pbi,
                                 size_t size, const uint8_t **dest,
                                 int64_t time_stamp);
 
-int vp9_get_raw_frame(struct VP9Decompressor *pbi,
+int vp9_get_raw_frame(struct VP9Decoder *pbi,
                       YV12_BUFFER_CONFIG *sd,
                       int64_t *time_stamp, int64_t *time_end_stamp,
                       vp9_ppflags_t *flags);
 
-vpx_codec_err_t vp9_copy_reference_dec(struct VP9Decompressor *pbi,
+vpx_codec_err_t vp9_copy_reference_dec(struct VP9Decoder *pbi,
                                        VP9_REFFRAME ref_frame_flag,
                                        YV12_BUFFER_CONFIG *sd);
 
-vpx_codec_err_t vp9_set_reference_dec(struct VP9Decompressor *pbi,
+vpx_codec_err_t vp9_set_reference_dec(VP9_COMMON *cm,
                                       VP9_REFFRAME ref_frame_flag,
                                       YV12_BUFFER_CONFIG *sd);
 
-int vp9_get_reference_dec(struct VP9Decompressor *pbi,
+int vp9_get_reference_dec(struct VP9Decoder *pbi,
                           int index, YV12_BUFFER_CONFIG **fb);
 
 
-struct VP9Decompressor *vp9_create_decompressor(VP9D_CONFIG *oxcf);
+struct VP9Decoder *vp9_decoder_create(const VP9D_CONFIG *oxcf);
 
-void vp9_remove_decompressor(struct VP9Decompressor *pbi);
+void vp9_decoder_remove(struct VP9Decoder *pbi);
 
 #ifdef __cplusplus
 }  // extern "C"

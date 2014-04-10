@@ -122,6 +122,7 @@ endif # CONFIG_SHARED
 ## TEST DATA
 ##
 LIBVPX_TEST_DATA-$(CONFIG_ENCODERS) += hantro_collage_w352h288.yuv
+LIBVPX_TEST_DATA-$(CONFIG_ENCODERS) += hantro_collage_w352h288.stat
 LIBVPX_TEST_DATA-$(CONFIG_ENCODERS) += hantro_odd.yuv
 LIBVPX_TEST_DATA-$(CONFIG_VP9_ENCODER) += rush_hour_444.y4m
 
@@ -693,8 +694,54 @@ LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-12-droppable_2.ivf
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-12-droppable_2.ivf.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-12-droppable_3.ivf
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-12-droppable_3.ivf.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-13-largescaling.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-13-largescaling.webm.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp91-2-04-yv444.webm
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp91-2-04-yv444.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-2.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-2.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-4.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-4.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-8.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-8.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-16.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-16.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-2-1.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-2-1.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-4-1.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-4-1.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-8-1.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-8-1.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-1.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-1.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-2-4.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-2-4.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-2-8.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-2-8.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-2-16.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-2-16.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-4-2.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-4-2.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-8-2.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-8-2.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-2.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-2.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-4-8.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-4-8.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-4-16.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-4-16.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-8-4.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-8-4.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-4.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-4.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-8-16.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-8-16.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-8.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-8.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-2-4-8-16.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-1-2-4-8-16.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-8-4-2-1.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-14-resize-fp-tiles-16-8-4-2-1.webm.md5
 
 ifeq ($(CONFIG_DECODE_PERF_TESTS),yes)
 # BBB VP9 streams

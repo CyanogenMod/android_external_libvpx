@@ -17,22 +17,21 @@
 #include "vp9/common/vp9_onyxc_int.h"
 #include "vp9/common/vp9_systemdependent.h"
 
-void vp9_update_mode_info_border(VP9_COMMON *cm, MODE_INFO *mi) {
-  const int stride = cm->mode_info_stride;
+static void clear_mi_border(const VP9_COMMON *cm, MODE_INFO *mi) {
   int i;
 
-  // Clear down top border row
-  vpx_memset(mi, 0, sizeof(MODE_INFO) * stride);
+  // Top border row
+  vpx_memset(mi, 0, sizeof(*mi) * cm->mi_stride);
 
-  // Clear left border column
-  for (i = 1; i < cm->mi_rows + 1; i++)
-    vpx_memset(&mi[i * stride], 0, sizeof(MODE_INFO));
+  // Left border column
+  for (i = 1; i < cm->mi_rows + 1; ++i)
+    vpx_memset(&mi[i * cm->mi_stride], 0, sizeof(*mi));
 }
 
 static void set_mb_mi(VP9_COMMON *cm, int aligned_width, int aligned_height) {
   cm->mi_cols = aligned_width >> MI_SIZE_LOG2;
   cm->mi_rows = aligned_height >> MI_SIZE_LOG2;
-  cm->mode_info_stride = cm->mi_cols + MI_BLOCK_SIZE;
+  cm->mi_stride = cm->mi_cols + MI_BLOCK_SIZE;
 
   cm->mb_cols = (cm->mi_cols + 1) >> 1;
   cm->mb_rows = (cm->mi_rows + 1) >> 1;
@@ -40,19 +39,17 @@ static void set_mb_mi(VP9_COMMON *cm, int aligned_width, int aligned_height) {
 }
 
 static void setup_mi(VP9_COMMON *cm) {
-  cm->mi = cm->mip + cm->mode_info_stride + 1;
-  cm->prev_mi = cm->prev_mip + cm->mode_info_stride + 1;
-  cm->mi_grid_visible = cm->mi_grid_base + cm->mode_info_stride + 1;
-  cm->prev_mi_grid_visible = cm->prev_mi_grid_base + cm->mode_info_stride + 1;
+  cm->mi = cm->mip + cm->mi_stride + 1;
+  cm->prev_mi = cm->prev_mip + cm->mi_stride + 1;
+  cm->mi_grid_visible = cm->mi_grid_base + cm->mi_stride + 1;
+  cm->prev_mi_grid_visible = cm->prev_mi_grid_base + cm->mi_stride + 1;
 
-  vpx_memset(cm->mip, 0,
-             cm->mode_info_stride * (cm->mi_rows + 1) * sizeof(*cm->mip));
+  vpx_memset(cm->mip, 0, cm->mi_stride * (cm->mi_rows + 1) * sizeof(*cm->mip));
 
-  vpx_memset(cm->mi_grid_base, 0,
-             cm->mode_info_stride * (cm->mi_rows + 1) *
-             sizeof(*cm->mi_grid_base));
+  vpx_memset(cm->mi_grid_base, 0, cm->mi_stride * (cm->mi_rows + 1) *
+                                      sizeof(*cm->mi_grid_base));
 
-  vp9_update_mode_info_border(cm, cm->prev_mip);
+  clear_mi_border(cm, cm->prev_mip);
 }
 
 static int alloc_mi(VP9_COMMON *cm, int mi_size) {
@@ -108,6 +105,12 @@ void vp9_free_frame_buffers(VP9_COMMON *cm) {
 
   vpx_free(cm->last_frame_seg_map);
   cm->last_frame_seg_map = NULL;
+
+  vpx_free(cm->above_context);
+  cm->above_context = NULL;
+
+  vpx_free(cm->above_seg_context);
+  cm->above_seg_context = NULL;
 }
 
 int vp9_resize_frame_buffers(VP9_COMMON *cm, int width, int height) {
@@ -123,7 +126,7 @@ int vp9_resize_frame_buffers(VP9_COMMON *cm, int width, int height) {
   set_mb_mi(cm, aligned_width, aligned_height);
 
   free_mi(cm);
-  if (alloc_mi(cm, cm->mode_info_stride * (cm->mi_rows + MI_BLOCK_SIZE)))
+  if (alloc_mi(cm, cm->mi_stride * (cm->mi_rows + MI_BLOCK_SIZE)))
     goto fail;
 
   setup_mi(cm);
@@ -134,6 +137,21 @@ int vp9_resize_frame_buffers(VP9_COMMON *cm, int width, int height) {
   if (!cm->last_frame_seg_map)
     goto fail;
 
+  vpx_free(cm->above_context);
+  cm->above_context =
+      (ENTROPY_CONTEXT *)vpx_calloc(2 * mi_cols_aligned_to_sb(cm->mi_cols) *
+                                        MAX_MB_PLANE,
+                                    sizeof(*cm->above_context));
+  if (!cm->above_context)
+    goto fail;
+
+  vpx_free(cm->above_seg_context);
+  cm->above_seg_context =
+     (PARTITION_CONTEXT *)vpx_calloc(mi_cols_aligned_to_sb(cm->mi_cols),
+                                     sizeof(*cm->above_seg_context));
+  if (!cm->above_seg_context)
+    goto fail;
+
   return 0;
 
  fail:
@@ -142,12 +160,11 @@ int vp9_resize_frame_buffers(VP9_COMMON *cm, int width, int height) {
 }
 
 int vp9_alloc_frame_buffers(VP9_COMMON *cm, int width, int height) {
-  int i;
-
   const int aligned_width = ALIGN_POWER_OF_TWO(width, MI_SIZE_LOG2);
   const int aligned_height = ALIGN_POWER_OF_TWO(height, MI_SIZE_LOG2);
   const int ss_x = cm->subsampling_x;
   const int ss_y = cm->subsampling_y;
+  int i;
 
   vp9_free_frame_buffers(cm);
 
@@ -172,7 +189,7 @@ int vp9_alloc_frame_buffers(VP9_COMMON *cm, int width, int height) {
 
   set_mb_mi(cm, aligned_width, aligned_height);
 
-  if (alloc_mi(cm, cm->mode_info_stride * (cm->mi_rows + MI_BLOCK_SIZE)))
+  if (alloc_mi(cm, cm->mi_stride * (cm->mi_rows + MI_BLOCK_SIZE)))
     goto fail;
 
   setup_mi(cm);
@@ -180,6 +197,19 @@ int vp9_alloc_frame_buffers(VP9_COMMON *cm, int width, int height) {
   // Create the segmentation map structure and set to 0.
   cm->last_frame_seg_map = (uint8_t *)vpx_calloc(cm->mi_rows * cm->mi_cols, 1);
   if (!cm->last_frame_seg_map)
+    goto fail;
+
+  cm->above_context =
+      (ENTROPY_CONTEXT *)vpx_calloc(2 * mi_cols_aligned_to_sb(cm->mi_cols) *
+                                        MAX_MB_PLANE,
+                                    sizeof(*cm->above_context));
+  if (!cm->above_context)
+    goto fail;
+
+  cm->above_seg_context =
+      (PARTITION_CONTEXT *)vpx_calloc(mi_cols_aligned_to_sb(cm->mi_cols),
+                                      sizeof(*cm->above_seg_context));
+  if (!cm->above_seg_context)
     goto fail;
 
   return 0;
@@ -192,10 +222,6 @@ int vp9_alloc_frame_buffers(VP9_COMMON *cm, int width, int height) {
 void vp9_remove_common(VP9_COMMON *cm) {
   vp9_free_frame_buffers(cm);
   vp9_free_internal_frame_buffers(&cm->int_frame_buffers);
-}
-
-void vp9_initialize_common() {
-  vp9_init_neighbors();
 }
 
 void vp9_update_frame_size(VP9_COMMON *cm) {
@@ -220,8 +246,8 @@ void vp9_swap_mi_and_prev_mi(VP9_COMMON *cm) {
   cm->mi_grid_base = temp2;
 
   // Update the upper left visible macroblock ptrs.
-  cm->mi = cm->mip + cm->mode_info_stride + 1;
-  cm->prev_mi = cm->prev_mip + cm->mode_info_stride + 1;
-  cm->mi_grid_visible = cm->mi_grid_base + cm->mode_info_stride + 1;
-  cm->prev_mi_grid_visible = cm->prev_mi_grid_base + cm->mode_info_stride + 1;
+  cm->mi = cm->mip + cm->mi_stride + 1;
+  cm->prev_mi = cm->prev_mip + cm->mi_stride + 1;
+  cm->mi_grid_visible = cm->mi_grid_base + cm->mi_stride + 1;
+  cm->prev_mi_grid_visible = cm->prev_mi_grid_base + cm->mi_stride + 1;
 }

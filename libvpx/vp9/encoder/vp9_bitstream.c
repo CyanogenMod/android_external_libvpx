@@ -192,7 +192,7 @@ static void write_segment_id(vp9_writer *w, const struct segmentation *seg,
 static void write_ref_frames(const VP9_COMP *cpi, vp9_writer *w) {
   const VP9_COMMON *const cm = &cpi->common;
   const MACROBLOCKD *const xd = &cpi->mb.e_mbd;
-  const MB_MODE_INFO *const mbmi = &xd->mi_8x8[0]->mbmi;
+  const MB_MODE_INFO *const mbmi = &xd->mi[0]->mbmi;
   const int is_compound = has_second_ref(mbmi);
   const int segment_id = mbmi->segment_id;
 
@@ -336,7 +336,7 @@ static void write_mb_modes_kf(const VP9_COMP *cpi, MODE_INFO **mi_8x8,
   const MACROBLOCKD *const xd = &cpi->mb.e_mbd;
   const struct segmentation *const seg = &cm->seg;
   const MODE_INFO *const mi = mi_8x8[0];
-  const MODE_INFO *const above_mi = mi_8x8[-xd->mode_info_stride];
+  const MODE_INFO *const above_mi = mi_8x8[-xd->mi_stride];
   const MODE_INFO *const left_mi = xd->left_available ? mi_8x8[-1] : NULL;
   const MB_MODE_INFO *const mbmi = &mi->mbmi;
   const BLOCK_SIZE bsize = mbmi->sb_type;
@@ -375,15 +375,15 @@ static void write_modes_b(VP9_COMP *cpi, const TileInfo *const tile,
   MACROBLOCKD *const xd = &cpi->mb.e_mbd;
   MODE_INFO *m;
 
-  xd->mi_8x8 = cm->mi_grid_visible + (mi_row * cm->mode_info_stride + mi_col);
-  m = xd->mi_8x8[0];
+  xd->mi = cm->mi_grid_visible + (mi_row * cm->mi_stride + mi_col);
+  m = xd->mi[0];
 
   set_mi_row_col(xd, tile,
                  mi_row, num_8x8_blocks_high_lookup[m->mbmi.sb_type],
                  mi_col, num_8x8_blocks_wide_lookup[m->mbmi.sb_type],
                  cm->mi_rows, cm->mi_cols);
   if (frame_is_intra_only(cm)) {
-    write_mb_modes_kf(cpi, xd->mi_8x8, w);
+    write_mb_modes_kf(cpi, xd->mi, w);
   } else {
     pack_inter_mode_mvs(cpi, m, w);
   }
@@ -392,12 +392,10 @@ static void write_modes_b(VP9_COMP *cpi, const TileInfo *const tile,
   pack_mb_tokens(w, tok, tok_end);
 }
 
-static void write_partition(VP9_COMP *cpi, int hbs, int mi_row, int mi_col,
+static void write_partition(VP9_COMMON *cm, MACROBLOCKD *xd,
+                            int hbs, int mi_row, int mi_col,
                             PARTITION_TYPE p, BLOCK_SIZE bsize, vp9_writer *w) {
-  VP9_COMMON *const cm = &cpi->common;
-  const int ctx = partition_plane_context(cpi->above_seg_context,
-                                          cpi->left_seg_context,
-                                          mi_row, mi_col, bsize);
+  const int ctx = partition_plane_context(xd, mi_row, mi_col, bsize);
   const vp9_prob *const probs = get_partition_probs(cm, ctx);
   const int has_rows = (mi_row + hbs) < cm->mi_rows;
   const int has_cols = (mi_col + hbs) < cm->mi_cols;
@@ -415,21 +413,24 @@ static void write_partition(VP9_COMP *cpi, int hbs, int mi_row, int mi_col,
   }
 }
 
-static void write_modes_sb(VP9_COMP *cpi, const TileInfo *const tile,
+static void write_modes_sb(VP9_COMP *cpi,
+                           const TileInfo *const tile,
                            vp9_writer *w, TOKENEXTRA **tok, TOKENEXTRA *tok_end,
                            int mi_row, int mi_col, BLOCK_SIZE bsize) {
   VP9_COMMON *const cm = &cpi->common;
+  MACROBLOCKD *const xd = &cpi->mb.e_mbd;
+
   const int bsl = b_width_log2(bsize);
   const int bs = (1 << bsl) / 4;
   PARTITION_TYPE partition;
   BLOCK_SIZE subsize;
-  MODE_INFO *m = cm->mi_grid_visible[mi_row * cm->mode_info_stride + mi_col];
+  MODE_INFO *m = cm->mi_grid_visible[mi_row * cm->mi_stride + mi_col];
 
   if (mi_row >= cm->mi_rows || mi_col >= cm->mi_cols)
     return;
 
   partition = partition_lookup[bsl][m->mbmi.sb_type];
-  write_partition(cpi, bs, mi_row, mi_col, partition, bsize, w);
+  write_partition(cm, xd, bs, mi_row, mi_col, partition, bsize, w);
   subsize = get_subsize(bsize, partition);
   if (subsize < BLOCK_8X8) {
     write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col);
@@ -465,29 +466,30 @@ static void write_modes_sb(VP9_COMP *cpi, const TileInfo *const tile,
   // update partition context
   if (bsize >= BLOCK_8X8 &&
       (bsize == BLOCK_8X8 || partition != PARTITION_SPLIT))
-    update_partition_context(cpi->above_seg_context, cpi->left_seg_context,
-                             mi_row, mi_col, subsize, bsize);
+    update_partition_context(xd, mi_row, mi_col, subsize, bsize);
 }
 
-static void write_modes(VP9_COMP *cpi, const TileInfo *const tile,
+static void write_modes(VP9_COMP *cpi,
+                        const TileInfo *const tile,
                         vp9_writer *w, TOKENEXTRA **tok, TOKENEXTRA *tok_end) {
   int mi_row, mi_col;
 
   for (mi_row = tile->mi_row_start; mi_row < tile->mi_row_end;
        mi_row += MI_BLOCK_SIZE) {
-      vp9_zero(cpi->left_seg_context);
+    vp9_zero(cpi->mb.e_mbd.left_seg_context);
     for (mi_col = tile->mi_col_start; mi_col < tile->mi_col_end;
          mi_col += MI_BLOCK_SIZE)
-      write_modes_sb(cpi, tile, w, tok, tok_end, mi_row, mi_col, BLOCK_64X64);
+      write_modes_sb(cpi, tile, w, tok, tok_end, mi_row, mi_col,
+                     BLOCK_64X64);
   }
 }
 
-static void build_tree_distribution(VP9_COMP *cpi, TX_SIZE tx_size) {
+static void build_tree_distribution(VP9_COMP *cpi, TX_SIZE tx_size,
+                                    vp9_coeff_stats *coef_branch_ct) {
   vp9_coeff_probs_model *coef_probs = cpi->frame_coef_probs[tx_size];
   vp9_coeff_count *coef_counts = cpi->coef_counts[tx_size];
   unsigned int (*eob_branch_ct)[REF_TYPES][COEF_BANDS][COEFF_CONTEXTS] =
       cpi->common.counts.eob_branch[tx_size];
-  vp9_coeff_stats *coef_branch_ct = cpi->frame_branch_ct[tx_size];
   int i, j, k, l, m;
 
   for (i = 0; i < PLANE_TYPES; ++i) {
@@ -510,16 +512,16 @@ static void build_tree_distribution(VP9_COMP *cpi, TX_SIZE tx_size) {
 }
 
 static void update_coef_probs_common(vp9_writer* const bc, VP9_COMP *cpi,
-                                     TX_SIZE tx_size) {
+                                     TX_SIZE tx_size,
+                                     vp9_coeff_stats *frame_branch_ct) {
   vp9_coeff_probs_model *new_frame_coef_probs = cpi->frame_coef_probs[tx_size];
   vp9_coeff_probs_model *old_frame_coef_probs =
       cpi->common.fc.coef_probs[tx_size];
-  vp9_coeff_stats *frame_branch_ct = cpi->frame_branch_ct[tx_size];
   const vp9_prob upd = DIFF_UPDATE_PROB;
   const int entropy_nodes_update = UNCONSTRAINED_NODES;
   int i, j, k, l, t;
   switch (cpi->sf.use_fast_coef_updates) {
-    case 0: {
+    case TWO_LOOP: {
       /* dry run to see if there is any udpate at all needed */
       int savings = 0;
       int update[2] = {0, 0};
@@ -594,14 +596,14 @@ static void update_coef_probs_common(vp9_writer* const bc, VP9_COMP *cpi,
       return;
     }
 
-    case 1:
-    case 2: {
+    case ONE_LOOP:
+    case ONE_LOOP_REDUCED: {
       const int prev_coef_contexts_to_update =
-          cpi->sf.use_fast_coef_updates == 2 ? COEFF_CONTEXTS >> 1
-                                             : COEFF_CONTEXTS;
+          cpi->sf.use_fast_coef_updates == ONE_LOOP_REDUCED ?
+              COEFF_CONTEXTS >> 1 : COEFF_CONTEXTS;
       const int coef_band_to_update =
-          cpi->sf.use_fast_coef_updates == 2 ? COEF_BANDS >> 1
-                                             : COEF_BANDS;
+          cpi->sf.use_fast_coef_updates == ONE_LOOP_REDUCED ?
+              COEF_BANDS >> 1 : COEF_BANDS;
       int updates = 0;
       int noupdates_before_first = 0;
       for (i = 0; i < PLANE_TYPES; ++i) {
@@ -667,13 +669,15 @@ static void update_coef_probs(VP9_COMP *cpi, vp9_writer* w) {
   const TX_MODE tx_mode = cpi->common.tx_mode;
   const TX_SIZE max_tx_size = tx_mode_to_biggest_tx_size[tx_mode];
   TX_SIZE tx_size;
+  vp9_coeff_stats frame_branch_ct[TX_SIZES][PLANE_TYPES];
+
   vp9_clear_system_state();
 
   for (tx_size = TX_4X4; tx_size <= TX_32X32; ++tx_size)
-    build_tree_distribution(cpi, tx_size);
+    build_tree_distribution(cpi, tx_size, frame_branch_ct[tx_size]);
 
   for (tx_size = TX_4X4; tx_size <= max_tx_size; ++tx_size)
-    update_coef_probs_common(w, cpi, tx_size);
+    update_coef_probs_common(w, cpi, tx_size, frame_branch_ct[tx_size]);
 }
 
 static void encode_loopfilter(struct loopfilter *lf,
@@ -930,7 +934,7 @@ static size_t encode_tiles(VP9_COMP *cpi, uint8_t *data_ptr) {
   const int tile_cols = 1 << cm->log2_tile_cols;
   const int tile_rows = 1 << cm->log2_tile_rows;
 
-  vpx_memset(cpi->above_seg_context, 0, sizeof(*cpi->above_seg_context) *
+  vpx_memset(cm->above_seg_context, 0, sizeof(*cm->above_seg_context) *
              mi_cols_aligned_to_sb(cm->mi_cols));
 
   tok[0][0] = cpi->tok;
@@ -1027,19 +1031,22 @@ static void write_sync_code(struct vp9_write_bit_buffer *wb) {
   vp9_wb_write_literal(wb, VP9_SYNC_CODE_2, 8);
 }
 
+static void write_profile(BITSTREAM_PROFILE profile,
+                          struct vp9_write_bit_buffer *wb) {
+  assert(profile < MAX_PROFILES);
+  vp9_wb_write_bit(wb, profile & 1);
+  vp9_wb_write_bit(wb, profile >> 1);
+}
+
 static void write_uncompressed_header(VP9_COMP *cpi,
                                       struct vp9_write_bit_buffer *wb) {
   VP9_COMMON *const cm = &cpi->common;
 
   vp9_wb_write_literal(wb, VP9_FRAME_MARKER, 2);
 
-  // bitstream version.
-  // 00 - profile 0. 4:2:0 only
-  // 10 - profile 1. adds 4:4:4, 4:2:2, alpha
-  vp9_wb_write_bit(wb, cm->version);
-  vp9_wb_write_bit(wb, 0);
+  write_profile(cm->profile, wb);
 
-  vp9_wb_write_bit(wb, 0);
+  vp9_wb_write_bit(wb, 0);  // show_existing_frame
   vp9_wb_write_bit(wb, cm->frame_type);
   vp9_wb_write_bit(wb, cm->show_frame);
   vp9_wb_write_bit(wb, cm->error_resilient_mode);
@@ -1047,16 +1054,20 @@ static void write_uncompressed_header(VP9_COMP *cpi,
   if (cm->frame_type == KEY_FRAME) {
     const COLOR_SPACE cs = UNKNOWN;
     write_sync_code(wb);
+    if (cm->profile > PROFILE_1) {
+      assert(cm->bit_depth > BITS_8);
+      vp9_wb_write_bit(wb, cm->bit_depth - BITS_10);
+    }
     vp9_wb_write_literal(wb, cs, 3);
     if (cs != SRGB) {
       vp9_wb_write_bit(wb, 0);  // 0: [16, 235] (i.e. xvYCC), 1: [0, 255]
-      if (cm->version == 1) {
+      if (cm->profile >= PROFILE_1) {
         vp9_wb_write_bit(wb, cm->subsampling_x);
         vp9_wb_write_bit(wb, cm->subsampling_y);
         vp9_wb_write_bit(wb, 0);  // has extra plane
       }
     } else {
-      assert(cm->version == 1);
+      assert(cm->profile == PROFILE_1);
       vp9_wb_write_bit(wb, 0);  // has extra plane
     }
 
@@ -1184,7 +1195,7 @@ static size_t write_compressed_header(VP9_COMP *cpi, uint8_t *data) {
 
 void vp9_pack_bitstream(VP9_COMP *cpi, uint8_t *dest, size_t *size) {
   uint8_t *data = dest;
-  size_t first_part_size;
+  size_t first_part_size, uncompressed_hdr_size;
   struct vp9_write_bit_buffer wb = {data, 0};
   struct vp9_write_bit_buffer saved_wb;
 
@@ -1192,7 +1203,8 @@ void vp9_pack_bitstream(VP9_COMP *cpi, uint8_t *dest, size_t *size) {
   saved_wb = wb;
   vp9_wb_write_literal(&wb, 0, 16);  // don't know in advance first part. size
 
-  data += vp9_rb_bytes_written(&wb);
+  uncompressed_hdr_size = vp9_rb_bytes_written(&wb);
+  data += uncompressed_hdr_size;
 
   vp9_compute_update_table();
 
