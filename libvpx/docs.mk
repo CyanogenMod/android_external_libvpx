@@ -30,6 +30,7 @@ TXT_DOX = $(call enabled,TXT_DOX)
 
 
 EXAMPLE_PATH += $(SRC_PATH_BARE) #for CHANGELOG, README, etc
+EXAMPLE_PATH += $(SRC_PATH_BARE)/examples
 
 doxyfile: $(if $(findstring examples, $(ALL_TARGETS)),examples.doxy)
 doxyfile: libs.doxy_template libs.doxy

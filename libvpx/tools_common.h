@@ -13,12 +13,21 @@
 #include <stdio.h>
 
 #include "./vpx_config.h"
+#include "vpx/vpx_codec.h"
+#include "vpx/vpx_image.h"
+#include "vpx/vpx_integer.h"
+
+#if CONFIG_ENCODERS
+#include "./y4minput.h"
+#endif
 
 #if defined(_MSC_VER)
-/* MSVS doesn't define off_t, and uses _f{seek,tell}i64. */
-typedef __int64 off_t;
+/* MSVS uses _f{seek,tell}i64. */
 #define fseeko _fseeki64
 #define ftello _ftelli64
+typedef long _off_t;  // NOLINT - MSVS compatible type
+typedef __int64 off_t;  // fseeki64 compatible type
+#define _OFF_T_DEFINED
 #elif defined(_WIN32)
 /* MinGW defines off_t as long and uses f{seek,tell}o64/off64_t for large
  * files. */
@@ -52,10 +61,52 @@ typedef long off_t;  /* NOLINT */
 #define PATH_MAX 512
 #endif
 
-#define VP8_FOURCC (0x30385056)
-#define VP9_FOURCC (0x30395056)
-#define VP8_FOURCC_MASK (0x00385056)
-#define VP9_FOURCC_MASK (0x00395056)
+#define IVF_FRAME_HDR_SZ (4 + 8)  /* 4 byte size + 8 byte timestamp */
+#define IVF_FILE_HDR_SZ 32
+
+#define RAW_FRAME_HDR_SZ sizeof(uint32_t)
+
+#define VP8_FOURCC 0x30385056
+#define VP9_FOURCC 0x30395056
+
+enum VideoFileType {
+  FILE_TYPE_RAW,
+  FILE_TYPE_IVF,
+  FILE_TYPE_Y4M,
+  FILE_TYPE_WEBM
+};
+
+struct FileTypeDetectionBuffer {
+  char buf[4];
+  size_t buf_read;
+  size_t position;
+};
+
+struct VpxRational {
+  int numerator;
+  int denominator;
+};
+
+struct VpxInputContext {
+  const char *filename;
+  FILE *file;
+  off_t length;
+  struct FileTypeDetectionBuffer detect;
+  enum VideoFileType file_type;
+  uint32_t width;
+  uint32_t height;
+  int use_i420;
+  int only_i420;
+  uint32_t fourcc;
+  struct VpxRational framerate;
+#if CONFIG_ENCODERS
+  y4m_input y4m;
+#endif
+};
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Sets a stdio stream into binary mode */
 FILE *set_binary_mode(FILE *stream);
@@ -64,7 +115,39 @@ void die(const char *fmt, ...);
 void fatal(const char *fmt, ...);
 void warn(const char *fmt, ...);
 
+void die_codec(vpx_codec_ctx_t *ctx, const char *s);
+
 /* The tool including this file must define usage_exit() */
 void usage_exit();
+
+int read_yuv_frame(struct VpxInputContext *input_ctx, vpx_image_t *yuv_frame);
+
+typedef struct VpxInterface {
+  const char *const name;
+  const uint32_t fourcc;
+  vpx_codec_iface_t *(*const interface)();
+} VpxInterface;
+
+int get_vpx_encoder_count();
+const VpxInterface *get_vpx_encoder_by_index(int i);
+const VpxInterface *get_vpx_encoder_by_name(const char *name);
+
+int get_vpx_decoder_count();
+const VpxInterface *get_vpx_decoder_by_index(int i);
+const VpxInterface *get_vpx_decoder_by_name(const char *name);
+const VpxInterface *get_vpx_decoder_by_fourcc(uint32_t fourcc);
+
+// TODO(dkovalev): move this function to vpx_image.{c, h}, so it will be part
+// of vpx_image_t support
+int vpx_img_plane_width(const vpx_image_t *img, int plane);
+int vpx_img_plane_height(const vpx_image_t *img, int plane);
+void vpx_img_write(const vpx_image_t *img, FILE *file);
+int vpx_img_read(vpx_image_t *img, FILE *file);
+
+double sse_to_psnr(double samples, double peak, double mse);
+
+#ifdef __cplusplus
+}  /* extern "C" */
+#endif
 
 #endif  // TOOLS_COMMON_H_

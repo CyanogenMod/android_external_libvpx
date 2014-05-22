@@ -10,29 +10,26 @@
 
 
 #include <limits.h>
+
 #include "vpx_mem/vpx_mem.h"
-#include "vp9/encoder/vp9_segmentation.h"
+
 #include "vp9/common/vp9_pred_common.h"
 #include "vp9/common/vp9_tile_common.h"
 
-void vp9_enable_segmentation(VP9_PTR ptr) {
-  VP9_COMP *cpi = (VP9_COMP *)ptr;
-  struct segmentation *const seg =  &cpi->common.seg;
+#include "vp9/encoder/vp9_cost.h"
+#include "vp9/encoder/vp9_segmentation.h"
 
+void vp9_enable_segmentation(struct segmentation *seg) {
   seg->enabled = 1;
   seg->update_map = 1;
   seg->update_data = 1;
 }
 
-void vp9_disable_segmentation(VP9_PTR ptr) {
-  VP9_COMP *cpi = (VP9_COMP *)ptr;
-  struct segmentation *const seg =  &cpi->common.seg;
+void vp9_disable_segmentation(struct segmentation *seg) {
   seg->enabled = 0;
 }
 
-void vp9_set_segmentation_map(VP9_PTR ptr,
-                              unsigned char *segmentation_map) {
-  VP9_COMP *cpi = (VP9_COMP *)ptr;
+void vp9_set_segmentation_map(VP9_COMP *cpi, unsigned char *segmentation_map) {
   struct segmentation *const seg = &cpi->common.seg;
 
   // Copy in the new segmentation map
@@ -44,12 +41,9 @@ void vp9_set_segmentation_map(VP9_PTR ptr,
   seg->update_data = 1;
 }
 
-void vp9_set_segment_data(VP9_PTR ptr,
+void vp9_set_segment_data(struct segmentation *seg,
                           signed char *feature_data,
                           unsigned char abs_delta) {
-  VP9_COMP *cpi = (VP9_COMP *)ptr;
-  struct segmentation *const seg = &cpi->common.seg;
-
   seg->abs_delta = abs_delta;
 
   vpx_memcpy(seg->feature_data, feature_data, sizeof(seg->feature_data));
@@ -57,6 +51,15 @@ void vp9_set_segment_data(VP9_PTR ptr,
   // TBD ?? Set the feature mask
   // vpx_memcpy(cpi->mb.e_mbd.segment_feature_mask, 0,
   //            sizeof(cpi->mb.e_mbd.segment_feature_mask));
+}
+void vp9_disable_segfeature(struct segmentation *seg, int segment_id,
+                            SEG_LVL_FEATURES feature_id) {
+  seg->feature_mask[segment_id] &= ~(1 << feature_id);
+}
+
+void vp9_clear_segdata(struct segmentation *seg, int segment_id,
+                       SEG_LVL_FEATURES feature_id) {
+  seg->feature_data[segment_id][feature_id] = 0;
 }
 
 // Based on set of segment counts calculate a probability tree
@@ -130,8 +133,8 @@ static void count_segs(VP9_COMP *cpi, const TileInfo *const tile,
   if (mi_row >= cm->mi_rows || mi_col >= cm->mi_cols)
     return;
 
-  xd->mi_8x8 = mi_8x8;
-  segment_id = xd->mi_8x8[0]->mbmi.segment_id;
+  xd->mi = mi_8x8;
+  segment_id = xd->mi[0]->mbmi.segment_id;
 
   set_mi_row_col(xd, tile, mi_row, bh, mi_col, bw, cm->mi_rows, cm->mi_cols);
 
@@ -149,7 +152,7 @@ static void count_segs(VP9_COMP *cpi, const TileInfo *const tile,
 
     // Store the prediction status for this mb and update counts
     // as appropriate
-    vp9_set_pred_flag_seg_id(xd, pred_flag);
+    xd->mi[0]->mbmi.seg_id_predicted = pred_flag;
     temporal_predictor_count[pred_context][pred_flag]++;
 
     if (!pred_flag)
@@ -166,7 +169,7 @@ static void count_segs_sb(VP9_COMP *cpi, const TileInfo *const tile,
                           int mi_row, int mi_col,
                           BLOCK_SIZE bsize) {
   const VP9_COMMON *const cm = &cpi->common;
-  const int mis = cm->mode_info_stride;
+  const int mis = cm->mi_stride;
   int bw, bh;
   const int bs = num_8x8_blocks_wide_lookup[bsize], hbs = bs / 2;
 
@@ -226,7 +229,7 @@ void vp9_choose_segmap_coding_method(VP9_COMP *cpi) {
   vp9_prob t_pred_tree[SEG_TREE_PROBS];
   vp9_prob t_nopred_prob[PREDICTION_PROBS];
 
-  const int mis = cm->mode_info_stride;
+  const int mis = cm->mi_stride;
   MODE_INFO **mi_ptr, **mi;
 
   // Set default state for the segment tree probabilities and the
@@ -286,4 +289,13 @@ void vp9_choose_segmap_coding_method(VP9_COMP *cpi) {
     seg->temporal_update = 0;
     vpx_memcpy(seg->tree_probs, no_pred_tree, sizeof(no_pred_tree));
   }
+}
+
+void vp9_reset_segment_features(struct segmentation *seg) {
+  // Set up default state for MB feature flags
+  seg->enabled = 0;
+  seg->update_map = 0;
+  seg->update_data = 0;
+  vpx_memset(seg->tree_probs, 255, sizeof(seg->tree_probs));
+  vp9_clearall_segfeatures(seg);
 }

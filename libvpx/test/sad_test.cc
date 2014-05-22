@@ -13,7 +13,6 @@
 #include <limits.h>
 #include <stdio.h>
 
-extern "C" {
 #include "./vpx_config.h"
 #if CONFIG_VP8_ENCODER
 #include "./vp8_rtcd.h"
@@ -22,7 +21,6 @@ extern "C" {
 #include "./vp9_rtcd.h"
 #endif
 #include "vpx_mem/vpx_mem.h"
-}
 
 #include "test/acm_random.h"
 #include "test/clear_system_state.h"
@@ -298,6 +296,8 @@ TEST_P(SADTest, MaxSAD) {
 
 using std::tr1::make_tuple;
 
+//------------------------------------------------------------------------------
+// C functions
 #if CONFIG_VP8_ENCODER
 const sad_m_by_n_fn_t sad_16x16_c = vp8_sad16x16_c;
 const sad_m_by_n_fn_t sad_8x16_c = vp8_sad8x16_c;
@@ -366,16 +366,20 @@ INSTANTIATE_TEST_CASE_P(C, SADx4Test, ::testing::Values(
                         make_tuple(8, 4, sad_8x4x4d_c),
                         make_tuple(4, 8, sad_4x8x4d_c),
                         make_tuple(4, 4, sad_4x4x4d_c)));
-#endif
+#endif  // CONFIG_VP9_ENCODER
 
-// ARM tests
+//------------------------------------------------------------------------------
+// ARM functions
 #if HAVE_MEDIA
+#if CONFIG_VP8_ENCODER
 const sad_m_by_n_fn_t sad_16x16_armv6 = vp8_sad16x16_armv6;
 INSTANTIATE_TEST_CASE_P(MEDIA, SADTest, ::testing::Values(
                         make_tuple(16, 16, sad_16x16_armv6)));
-
 #endif
+#endif
+
 #if HAVE_NEON
+#if CONFIG_VP8_ENCODER
 const sad_m_by_n_fn_t sad_16x16_neon = vp8_sad16x16_neon;
 const sad_m_by_n_fn_t sad_8x16_neon = vp8_sad8x16_neon;
 const sad_m_by_n_fn_t sad_16x8_neon = vp8_sad16x8_neon;
@@ -388,8 +392,10 @@ INSTANTIATE_TEST_CASE_P(NEON, SADTest, ::testing::Values(
                         make_tuple(8, 8, sad_8x8_neon),
                         make_tuple(4, 4, sad_4x4_neon)));
 #endif
+#endif
 
-// X86 tests
+//------------------------------------------------------------------------------
+// x86 functions
 #if HAVE_MMX
 #if CONFIG_VP8_ENCODER
 const sad_m_by_n_fn_t sad_16x16_mmx = vp8_sad16x16_mmx;
@@ -439,9 +445,9 @@ const sad_n_by_n_by_4_fn_t sad_4x4x4d_sse = vp9_sad4x4x4d_sse;
 INSTANTIATE_TEST_CASE_P(SSE, SADx4Test, ::testing::Values(
                         make_tuple(4, 8, sad_4x8x4d_sse),
                         make_tuple(4, 4, sad_4x4x4d_sse)));
-#endif
-#endif
-#endif
+#endif  // CONFIG_USE_X86INC
+#endif  // CONFIG_VP9_ENCODER
+#endif  // HAVE_SSE
 
 #if HAVE_SSE2
 #if CONFIG_VP8_ENCODER
@@ -539,9 +545,11 @@ INSTANTIATE_TEST_CASE_P(SSE3, SADx4Test, ::testing::Values(
 
 #if HAVE_SSSE3
 #if CONFIG_USE_X86INC
+#if CONFIG_VP8_ENCODER
 const sad_m_by_n_fn_t sad_16x16_sse3 = vp8_sad16x16_sse3;
 INSTANTIATE_TEST_CASE_P(SSE3, SADTest, ::testing::Values(
                         make_tuple(16, 16, sad_16x16_sse3)));
+#endif
 #endif
 #endif
 

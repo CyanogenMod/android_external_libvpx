@@ -71,11 +71,6 @@ static const unsigned char MV_REFERENCE_FRAME_colors[MAX_REF_FRAMES][3] =
 };
 #endif
 
-static const short kernel5[] =
-{
-    1, 1, 4, 1, 1
-};
-
 const short vp8_rv[] =
 {
     8, 5, 2, 2, 8, 12, 4, 9, 8, 3,
@@ -308,8 +303,8 @@ void vp8_mbpost_proc_down_c(unsigned char *dst, int pitch, int rows, int cols, i
             {
                 d[r&15] = (rv2[r&127] + sum + s[0]) >> 4;
             }
-
-            s[-8*pitch] = d[(r-8)&15];
+            if (r >= 8)
+              s[-8*pitch] = d[(r-8)&15];
             s += pitch;
         }
     }

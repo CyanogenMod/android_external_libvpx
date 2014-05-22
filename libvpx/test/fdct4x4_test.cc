@@ -18,12 +18,13 @@
 #include "test/register_state_check.h"
 #include "test/util.h"
 
-extern "C" {
-#include "vp9/common/vp9_entropy.h"
 #include "./vp9_rtcd.h"
+#include "vp9/common/vp9_entropy.h"
+#include "vpx/vpx_integer.h"
+
+extern "C" {
 void vp9_idct4x4_16_add_c(const int16_t *input, uint8_t *output, int pitch);
 }
-#include "vpx/vpx_integer.h"
 
 using libvpx_test::ACMRandom;
 
@@ -36,12 +37,15 @@ typedef void (*fht_t) (const int16_t *in, int16_t *out, int stride,
 typedef void (*iht_t) (const int16_t *in, uint8_t *out, int stride,
                        int tx_type);
 
+typedef std::tr1::tuple<fdct_t, idct_t, int> dct_4x4_param_t;
+typedef std::tr1::tuple<fht_t, iht_t, int> ht_4x4_param_t;
+
 void fdct4x4_ref(const int16_t *in, int16_t *out, int stride, int tx_type) {
   vp9_fdct4x4_c(in, out, stride);
 }
 
 void fht4x4_ref(const int16_t *in, int16_t *out, int stride, int tx_type) {
-  vp9_short_fht4x4_c(in, out, stride, tx_type);
+  vp9_fht4x4_c(in, out, stride, tx_type);
 }
 
 class Trans4x4TestBase {
@@ -183,7 +187,7 @@ class Trans4x4TestBase {
 
 class Trans4x4DCT
     : public Trans4x4TestBase,
-      public PARAMS(fdct_t, idct_t, int) {
+      public ::testing::TestWithParam<dct_4x4_param_t> {
  public:
   virtual ~Trans4x4DCT() {}
 
@@ -226,7 +230,7 @@ TEST_P(Trans4x4DCT, InvAccuracyCheck) {
 
 class Trans4x4HT
     : public Trans4x4TestBase,
-      public PARAMS(fht_t, iht_t, int) {
+      public ::testing::TestWithParam<ht_4x4_param_t> {
  public:
   virtual ~Trans4x4HT() {}
 
@@ -277,10 +281,25 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     C, Trans4x4HT,
     ::testing::Values(
-        make_tuple(&vp9_short_fht4x4_c, &vp9_iht4x4_16_add_c, 0),
-        make_tuple(&vp9_short_fht4x4_c, &vp9_iht4x4_16_add_c, 1),
-        make_tuple(&vp9_short_fht4x4_c, &vp9_iht4x4_16_add_c, 2),
-        make_tuple(&vp9_short_fht4x4_c, &vp9_iht4x4_16_add_c, 3)));
+        make_tuple(&vp9_fht4x4_c, &vp9_iht4x4_16_add_c, 0),
+        make_tuple(&vp9_fht4x4_c, &vp9_iht4x4_16_add_c, 1),
+        make_tuple(&vp9_fht4x4_c, &vp9_iht4x4_16_add_c, 2),
+        make_tuple(&vp9_fht4x4_c, &vp9_iht4x4_16_add_c, 3)));
+
+#if HAVE_NEON
+INSTANTIATE_TEST_CASE_P(
+    NEON, Trans4x4DCT,
+    ::testing::Values(
+        make_tuple(&vp9_fdct4x4_c,
+                   &vp9_idct4x4_16_add_neon, 0)));
+INSTANTIATE_TEST_CASE_P(
+    DISABLED_NEON, Trans4x4HT,
+    ::testing::Values(
+        make_tuple(&vp9_fht4x4_c, &vp9_iht4x4_16_add_neon, 0),
+        make_tuple(&vp9_fht4x4_c, &vp9_iht4x4_16_add_neon, 1),
+        make_tuple(&vp9_fht4x4_c, &vp9_iht4x4_16_add_neon, 2),
+        make_tuple(&vp9_fht4x4_c, &vp9_iht4x4_16_add_neon, 3)));
+#endif
 
 #if HAVE_SSE2
 INSTANTIATE_TEST_CASE_P(
@@ -291,10 +310,10 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     SSE2, Trans4x4HT,
     ::testing::Values(
-        make_tuple(&vp9_short_fht4x4_sse2, &vp9_iht4x4_16_add_sse2, 0),
-        make_tuple(&vp9_short_fht4x4_sse2, &vp9_iht4x4_16_add_sse2, 1),
-        make_tuple(&vp9_short_fht4x4_sse2, &vp9_iht4x4_16_add_sse2, 2),
-        make_tuple(&vp9_short_fht4x4_sse2, &vp9_iht4x4_16_add_sse2, 3)));
+        make_tuple(&vp9_fht4x4_sse2, &vp9_iht4x4_16_add_sse2, 0),
+        make_tuple(&vp9_fht4x4_sse2, &vp9_iht4x4_16_add_sse2, 1),
+        make_tuple(&vp9_fht4x4_sse2, &vp9_iht4x4_16_add_sse2, 2),
+        make_tuple(&vp9_fht4x4_sse2, &vp9_iht4x4_16_add_sse2, 3)));
 #endif
 
 }  // namespace

@@ -11,11 +11,14 @@
 #ifndef VP9_ENCODER_VP9_BLOCK_H_
 #define VP9_ENCODER_VP9_BLOCK_H_
 
-#include "vp9/common/vp9_onyx.h"
 #include "vp9/common/vp9_entropymv.h"
 #include "vp9/common/vp9_entropy.h"
 #include "vpx_ports/mem.h"
 #include "vp9/common/vp9_onyxc_int.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // motion search site
 typedef struct {
@@ -41,12 +44,10 @@ typedef struct {
   int is_coded;
   int num_4x4_blk;
   int skip;
-  int_mv best_ref_mv;
-  int_mv second_best_ref_mv;
+  int_mv best_ref_mv[2];
   int_mv ref_mvs[MAX_REF_FRAMES][MAX_MV_REF_CANDIDATES];
   int rate;
   int distortion;
-  int64_t intra_error;
   int best_mode_index;
   int rddiv;
   int rdmult;
@@ -59,17 +60,14 @@ typedef struct {
   // motion vector cache for adaptive motion search control in partition
   // search loop
   int_mv pred_mv[MAX_REF_FRAMES];
-
-  // Bit flag for each mode whether it has high error in comparison to others.
-  unsigned int modes_with_high_error;
-
-  // Bit flag for each ref frame whether it has high error compared to others.
-  unsigned int frames_with_high_error;
+  INTERP_FILTER pred_interp_filter;
 } PICK_MODE_CONTEXT;
 
 struct macroblock_plane {
   DECLARE_ALIGNED(16, int16_t, src_diff[64 * 64]);
+  int16_t *qcoeff;
   int16_t *coeff;
+  uint16_t *eobs;
   struct buf_2d src;
 
   // Quantizer setings
@@ -84,8 +82,8 @@ struct macroblock_plane {
 
 /* The [2] dimension is for whether we skip the EOB node (i.e. if previous
  * coefficient in this block was zero) or not. */
-typedef unsigned int vp9_coeff_cost[BLOCK_TYPES][REF_TYPES][COEF_BANDS][2]
-                                   [PREV_COEF_CONTEXTS][MAX_ENTROPY_TOKENS];
+typedef unsigned int vp9_coeff_cost[PLANE_TYPES][REF_TYPES][COEF_BANDS][2]
+                                   [COEFF_CONTEXTS][ENTROPY_TOKENS];
 
 typedef struct macroblock MACROBLOCK;
 struct macroblock {
@@ -115,6 +113,8 @@ struct macroblock {
   int mv_best_ref_index[MAX_REF_FRAMES];
   unsigned int max_mv_context[MAX_REF_FRAMES];
   unsigned int source_variance;
+  unsigned int pred_sse[MAX_REF_FRAMES];
+  int pred_mv_sad[MAX_REF_FRAMES];
 
   int nmvjointcost[MV_JOINTS];
   int nmvcosts[2][MV_VALS];
@@ -130,9 +130,9 @@ struct macroblock {
   int *nmvsadcost_hp[2];
   int **mvsadcost;
 
-  int mbmode_cost[MB_MODE_COUNT];
+  int mbmode_cost[INTRA_MODES];
   unsigned inter_mode_cost[INTER_MODE_CONTEXTS][INTER_MODES];
-  int intra_uv_mode_cost[2][MB_MODE_COUNT];
+  int intra_uv_mode_cost[FRAME_TYPES][INTRA_MODES];
   int y_mode_costs[INTRA_MODES][INTRA_MODES][INTRA_MODES];
   int switchable_interp_costs[SWITCHABLE_FILTER_CONTEXTS][SWITCHABLE_FILTERS];
 
@@ -153,11 +153,10 @@ struct macroblock {
 
   int encode_breakout;
 
-  unsigned char *active_ptr;
+  int in_active_map;
 
   // note that token_costs is the cost when eob node is skipped
   vp9_coeff_cost token_costs[TX_SIZES];
-  DECLARE_ALIGNED(16, uint8_t, token_cache[1024]);
 
   int optimize;
 
@@ -166,9 +165,7 @@ struct macroblock {
   int skip_encode;
 
   // Used to store sub partition's choices.
-  int fast_ms;
   int_mv pred_mv[MAX_REF_FRAMES];
-  int subblock_ref;
 
   // TODO(jingning): Need to refactor the structure arrays that buffers the
   // coding mode decisions of each partition type.
@@ -199,7 +196,8 @@ struct macroblock {
 // TODO(jingning): the variables used here are little complicated. need further
 // refactoring on organizing the temporary buffers, when recursive
 // partition down to 4x4 block size is enabled.
-static PICK_MODE_CONTEXT *get_block_context(MACROBLOCK *x, BLOCK_SIZE bsize) {
+static INLINE PICK_MODE_CONTEXT *get_block_context(MACROBLOCK *x,
+                                                   BLOCK_SIZE bsize) {
   switch (bsize) {
     case BLOCK_64X64:
       return &x->sb64_context;
@@ -233,23 +231,8 @@ static PICK_MODE_CONTEXT *get_block_context(MACROBLOCK *x, BLOCK_SIZE bsize) {
   }
 }
 
-struct rdcost_block_args {
-  MACROBLOCK *x;
-  ENTROPY_CONTEXT t_above[16];
-  ENTROPY_CONTEXT t_left[16];
-  TX_SIZE tx_size;
-  int bw;
-  int bh;
-  int rate;
-  int64_t dist;
-  int64_t sse;
-  int this_rate;
-  int64_t this_dist;
-  int64_t this_sse;
-  int64_t this_rd;
-  int64_t best_rd;
-  int skip;
-  const int16_t *scan, *nb;
-};
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 #endif  // VP9_ENCODER_VP9_BLOCK_H_

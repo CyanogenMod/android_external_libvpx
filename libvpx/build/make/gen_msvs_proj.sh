@@ -155,14 +155,15 @@ generate_filter() {
                             tag Tool \
                                 Name="VCCustomBuildTool" \
                                 Description="Assembling \$(InputFileName)" \
-                                CommandLine="$(eval echo \$asm_${cfg}_cmdline) -o \$(IntDir)$objf" \
-                                Outputs="\$(IntDir)$objf" \
+                                CommandLine="$(eval echo \$asm_${cfg}_cmdline) -o \$(IntDir)\\$objf" \
+                                Outputs="\$(IntDir)\\$objf" \
 
                             close_tag FileConfiguration
                         done
                     done
                 fi
-                if [ "$pat" == "c" ] || [ "$pat" == "cc" ] ; then
+                if [ "$pat" == "c" ] || \
+                   [ "$pat" == "cc" ] || [ "$pat" == "cpp" ]; then
                     for plat in "${platforms[@]}"; do
                         for cfg in Debug Release; do
                             open_tag FileConfiguration \
@@ -170,7 +171,7 @@ generate_filter() {
 
                             tag Tool \
                                 Name="VCCLCompilerTool" \
-                                ObjectFile="\$(IntDir)$objf" \
+                                ObjectFile="\$(IntDir)\\$objf" \
 
                             close_tag FileConfiguration
                         done
@@ -371,7 +372,7 @@ generate_vcproj() {
                     vpx)
                         tag Tool \
                             Name="VCPreBuildEventTool" \
-                            CommandLine="call obj_int_extract.bat $src_path_bare" \
+                            CommandLine="call obj_int_extract.bat $src_path_bare $plat_no_ws\\\$(ConfigurationName)" \
 
                         tag Tool \
                             Name="VCCLCompilerTool" \
@@ -412,7 +413,6 @@ generate_vcproj() {
                             obj_int_extract)
                                 tag Tool \
                                     Name="VCLinkerTool" \
-                                    OutputFile="${name}.exe" \
                                     GenerateDebugInformation="true" \
                             ;;
                             *)
@@ -479,7 +479,7 @@ generate_vcproj() {
                     vpx)
                         tag Tool \
                             Name="VCPreBuildEventTool" \
-                            CommandLine="call obj_int_extract.bat $src_path_bare" \
+                            CommandLine="call obj_int_extract.bat $src_path_bare $plat_no_ws\\\$(ConfigurationName)" \
 
                         tag Tool \
                             Name="VCCLCompilerTool" \
@@ -522,7 +522,6 @@ generate_vcproj() {
                             obj_int_extract)
                                 tag Tool \
                                     Name="VCLinkerTool" \
-                                    OutputFile="${name}.exe" \
                                     GenerateDebugInformation="true" \
                             ;;
                             *)
@@ -563,7 +562,7 @@ generate_vcproj() {
     close_tag Configurations
 
     open_tag Files
-    generate_filter srcs   "Source Files"   "c;cc;def;odl;idl;hpj;bat;asm;asmx"
+    generate_filter srcs   "Source Files"   "c;cc;cpp;def;odl;idl;hpj;bat;asm;asmx"
     generate_filter hdrs   "Header Files"   "h;hm;inl;inc;xsd"
     generate_filter resrcs "Resource Files" "rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav"
     generate_filter resrcs "Build Files"    "mk"
