@@ -80,7 +80,6 @@ vp8/common/x86/loopfilter_x86.c
 vp8/common/x86/mfqe_sse2.asm
 vp8/common/x86/postproc_mmx.asm
 vp8/common/x86/postproc_sse2.asm
-vp8/common/x86/postproc_x86.c
 vp8/common/x86/recon_mmx.asm
 vp8/common/x86/recon_sse2.asm
 vp8/common/x86/recon_wrapper_sse2.c
