@@ -82,13 +82,11 @@ void vp8_dequant_idct_add_v6(short *input, short *dq, unsigned char *output, int
 
 void vp8_dequant_idct_add_uv_block_c(short *q, short *dq, unsigned char *dst_u, unsigned char *dst_v, int stride, char *eobs);
 void vp8_dequant_idct_add_uv_block_v6(short *q, short *dq, unsigned char *dst_u, unsigned char *dst_v, int stride, char *eobs);
-void vp8_dequant_idct_add_uv_block_neon(short *q, short *dq, unsigned char *dst_u, unsigned char *dst_v, int stride, char *eobs);
-#define vp8_dequant_idct_add_uv_block vp8_dequant_idct_add_uv_block_neon
+#define vp8_dequant_idct_add_uv_block vp8_dequant_idct_add_uv_block_v6
 
 void vp8_dequant_idct_add_y_block_c(short *q, short *dq, unsigned char *dst, int stride, char *eobs);
 void vp8_dequant_idct_add_y_block_v6(short *q, short *dq, unsigned char *dst, int stride, char *eobs);
-void vp8_dequant_idct_add_y_block_neon(short *q, short *dq, unsigned char *dst, int stride, char *eobs);
-#define vp8_dequant_idct_add_y_block vp8_dequant_idct_add_y_block_neon
+#define vp8_dequant_idct_add_y_block vp8_dequant_idct_add_y_block_v6
 
 void vp8_dequantize_b_c(struct blockd*, short *dqc);
 void vp8_dequantize_b_v6(struct blockd*, short *dqc);
@@ -99,19 +97,16 @@ int vp8_diamond_search_sad_c(struct macroblock *x, struct block *b, struct block
 
 void vp8_fast_quantize_b_c(struct block *, struct blockd *);
 void vp8_fast_quantize_b_armv6(struct block *, struct blockd *);
-void vp8_fast_quantize_b_neon(struct block *, struct blockd *);
-#define vp8_fast_quantize_b vp8_fast_quantize_b_neon
+#define vp8_fast_quantize_b vp8_fast_quantize_b_armv6
 
 void vp8_fast_quantize_b_pair_c(struct block *b1, struct block *b2, struct blockd *d1, struct blockd *d2);
-void vp8_fast_quantize_b_pair_neon(struct block *b1, struct block *b2, struct blockd *d1, struct blockd *d2);
-#define vp8_fast_quantize_b_pair vp8_fast_quantize_b_pair_neon
+#define vp8_fast_quantize_b_pair vp8_fast_quantize_b_pair_c
 
 int vp8_full_search_sad_c(struct macroblock *x, struct block *b, struct blockd *d, union int_mv *ref_mv, int sad_per_bit, int distance, struct variance_vtable *fn_ptr, int *mvcost[2], union int_mv *center_mv);
 #define vp8_full_search_sad vp8_full_search_sad_c
 
 unsigned int vp8_get4x4sse_cs_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride);
-unsigned int vp8_get4x4sse_cs_neon(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride);
-#define vp8_get4x4sse_cs vp8_get4x4sse_cs_neon
+#define vp8_get4x4sse_cs vp8_get4x4sse_cs_c
 
 unsigned int vp8_get_mb_ss_c(const short *);
 #define vp8_get_mb_ss vp8_get_mb_ss_c
@@ -122,13 +117,11 @@ void vp8_intra4x4_predict_armv6(unsigned char *Above, unsigned char *yleft, int 
 
 void vp8_loop_filter_bh_c(unsigned char *y, unsigned char *u, unsigned char *v, int ystride, int uv_stride, struct loop_filter_info *lfi);
 void vp8_loop_filter_bh_armv6(unsigned char *y, unsigned char *u, unsigned char *v, int ystride, int uv_stride, struct loop_filter_info *lfi);
-void vp8_loop_filter_bh_neon(unsigned char *y, unsigned char *u, unsigned char *v, int ystride, int uv_stride, struct loop_filter_info *lfi);
-#define vp8_loop_filter_bh vp8_loop_filter_bh_neon
+#define vp8_loop_filter_bh vp8_loop_filter_bh_armv6
 
 void vp8_loop_filter_bv_c(unsigned char *y, unsigned char *u, unsigned char *v, int ystride, int uv_stride, struct loop_filter_info *lfi);
 void vp8_loop_filter_bv_armv6(unsigned char *y, unsigned char *u, unsigned char *v, int ystride, int uv_stride, struct loop_filter_info *lfi);
-void vp8_loop_filter_bv_neon(unsigned char *y, unsigned char *u, unsigned char *v, int ystride, int uv_stride, struct loop_filter_info *lfi);
-#define vp8_loop_filter_bv vp8_loop_filter_bv_neon
+#define vp8_loop_filter_bv vp8_loop_filter_bv_armv6
 
 void vp8_loop_filter_mbh_c(unsigned char *y, unsigned char *u, unsigned char *v, int ystride, int uv_stride, struct loop_filter_info *lfi);
 void vp8_loop_filter_mbh_armv6(unsigned char *y, unsigned char *u, unsigned char *v, int ystride, int uv_stride, struct loop_filter_info *lfi);
@@ -144,8 +137,7 @@ void vp8_loop_filter_bhs_armv6(unsigned char *y, int ystride, const unsigned cha
 
 void vp8_loop_filter_bvs_c(unsigned char *y, int ystride, const unsigned char *blimit);
 void vp8_loop_filter_bvs_armv6(unsigned char *y, int ystride, const unsigned char *blimit);
-void vp8_loop_filter_bvs_neon(unsigned char *y, int ystride, const unsigned char *blimit);
-#define vp8_loop_filter_simple_bv vp8_loop_filter_bvs_neon
+#define vp8_loop_filter_simple_bv vp8_loop_filter_bvs_armv6
 
 void vp8_loop_filter_simple_horizontal_edge_c(unsigned char *y, int ystride, const unsigned char *blimit);
 void vp8_loop_filter_simple_horizontal_edge_armv6(unsigned char *y, int ystride, const unsigned char *blimit);
@@ -153,8 +145,7 @@ void vp8_loop_filter_simple_horizontal_edge_armv6(unsigned char *y, int ystride,
 
 void vp8_loop_filter_simple_vertical_edge_c(unsigned char *y, int ystride, const unsigned char *blimit);
 void vp8_loop_filter_simple_vertical_edge_armv6(unsigned char *y, int ystride, const unsigned char *blimit);
-void vp8_loop_filter_mbvs_neon(unsigned char *y, int ystride, const unsigned char *blimit);
-#define vp8_loop_filter_simple_mbv vp8_loop_filter_mbvs_neon
+#define vp8_loop_filter_simple_mbv vp8_loop_filter_simple_vertical_edge_armv6
 
 int vp8_mbblock_error_c(struct macroblock *mb, int dc);
 #define vp8_mbblock_error vp8_mbblock_error_c
@@ -164,8 +155,7 @@ int vp8_mbuverror_c(struct macroblock *mb);
 
 unsigned int vp8_mse16x16_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
 unsigned int vp8_mse16x16_armv6(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
-unsigned int vp8_mse16x16_neon(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
-#define vp8_mse16x16 vp8_mse16x16_neon
+#define vp8_mse16x16 vp8_mse16x16_armv6
 
 void vp8_quantize_mb_c(struct macroblock *);
 #define vp8_quantize_mb vp8_quantize_mb_c
@@ -248,13 +238,11 @@ void vp8_sad8x8x8_c(const unsigned char *src_ptr, int src_stride, const unsigned
 
 void vp8_short_fdct4x4_c(short *input, short *output, int pitch);
 void vp8_short_fdct4x4_armv6(short *input, short *output, int pitch);
-void vp8_short_fdct4x4_neon(short *input, short *output, int pitch);
-#define vp8_short_fdct4x4 vp8_short_fdct4x4_neon
+#define vp8_short_fdct4x4 vp8_short_fdct4x4_armv6
 
 void vp8_short_fdct8x4_c(short *input, short *output, int pitch);
 void vp8_short_fdct8x4_armv6(short *input, short *output, int pitch);
-void vp8_short_fdct8x4_neon(short *input, short *output, int pitch);
-#define vp8_short_fdct8x4 vp8_short_fdct8x4_neon
+#define vp8_short_fdct8x4 vp8_short_fdct8x4_armv6
 
 void vp8_short_idct4x4llm_c(short *input, unsigned char *pred, int pitch, unsigned char *dst, int dst_stride);
 void vp8_short_idct4x4llm_v6_dual(short *input, unsigned char *pred, int pitch, unsigned char *dst, int dst_stride);
@@ -269,8 +257,7 @@ void vp8_short_inv_walsh4x4_1_c(short *input, short *output);
 
 void vp8_short_walsh4x4_c(short *input, short *output, int pitch);
 void vp8_short_walsh4x4_armv6(short *input, short *output, int pitch);
-void vp8_short_walsh4x4_neon(short *input, short *output, int pitch);
-#define vp8_short_walsh4x4 vp8_short_walsh4x4_neon
+#define vp8_short_walsh4x4 vp8_short_walsh4x4_armv6
 
 void vp8_sixtap_predict16x16_c(unsigned char *src, int src_pitch, int xofst, int yofst, unsigned char *dst, int dst_pitch);
 void vp8_sixtap_predict16x16_armv6(unsigned char *src, int src_pitch, int xofst, int yofst, unsigned char *dst, int dst_pitch);
@@ -293,8 +280,7 @@ unsigned int vp8_sub_pixel_mse16x16_c(const unsigned char  *src_ptr, int  source
 
 unsigned int vp8_sub_pixel_variance16x16_c(const unsigned char  *src_ptr, int  source_stride, int  xoffset, int  yoffset, const unsigned char *ref_ptr, int Refstride, unsigned int *sse);
 unsigned int vp8_sub_pixel_variance16x16_armv6(const unsigned char  *src_ptr, int  source_stride, int  xoffset, int  yoffset, const unsigned char *ref_ptr, int Refstride, unsigned int *sse);
-unsigned int vp8_sub_pixel_variance16x16_neon(const unsigned char  *src_ptr, int  source_stride, int  xoffset, int  yoffset, const unsigned char *ref_ptr, int Refstride, unsigned int *sse);
-#define vp8_sub_pixel_variance16x16 vp8_sub_pixel_variance16x16_neon
+#define vp8_sub_pixel_variance16x16 vp8_sub_pixel_variance16x16_armv6
 
 unsigned int vp8_sub_pixel_variance16x8_c(const unsigned char  *src_ptr, int  source_stride, int  xoffset, int  yoffset, const unsigned char *ref_ptr, int Refstride, unsigned int *sse);
 #define vp8_sub_pixel_variance16x8 vp8_sub_pixel_variance16x8_c
@@ -307,23 +293,19 @@ unsigned int vp8_sub_pixel_variance8x16_c(const unsigned char  *src_ptr, int  so
 
 unsigned int vp8_sub_pixel_variance8x8_c(const unsigned char  *src_ptr, int  source_stride, int  xoffset, int  yoffset, const unsigned char *ref_ptr, int Refstride, unsigned int *sse);
 unsigned int vp8_sub_pixel_variance8x8_armv6(const unsigned char  *src_ptr, int  source_stride, int  xoffset, int  yoffset, const unsigned char *ref_ptr, int Refstride, unsigned int *sse);
-unsigned int vp8_sub_pixel_variance8x8_neon(const unsigned char  *src_ptr, int  source_stride, int  xoffset, int  yoffset, const unsigned char *ref_ptr, int Refstride, unsigned int *sse);
-#define vp8_sub_pixel_variance8x8 vp8_sub_pixel_variance8x8_neon
+#define vp8_sub_pixel_variance8x8 vp8_sub_pixel_variance8x8_armv6
 
 void vp8_subtract_b_c(struct block *be, struct blockd *bd, int pitch);
 void vp8_subtract_b_armv6(struct block *be, struct blockd *bd, int pitch);
-void vp8_subtract_b_neon(struct block *be, struct blockd *bd, int pitch);
-#define vp8_subtract_b vp8_subtract_b_neon
+#define vp8_subtract_b vp8_subtract_b_armv6
 
 void vp8_subtract_mbuv_c(short *diff, unsigned char *usrc, unsigned char *vsrc, int src_stride, unsigned char *upred, unsigned char *vpred, int pred_stride);
 void vp8_subtract_mbuv_armv6(short *diff, unsigned char *usrc, unsigned char *vsrc, int src_stride, unsigned char *upred, unsigned char *vpred, int pred_stride);
-void vp8_subtract_mbuv_neon(short *diff, unsigned char *usrc, unsigned char *vsrc, int src_stride, unsigned char *upred, unsigned char *vpred, int pred_stride);
-#define vp8_subtract_mbuv vp8_subtract_mbuv_neon
+#define vp8_subtract_mbuv vp8_subtract_mbuv_armv6
 
 void vp8_subtract_mby_c(short *diff, unsigned char *src, int src_stride, unsigned char *pred, int pred_stride);
 void vp8_subtract_mby_armv6(short *diff, unsigned char *src, int src_stride, unsigned char *pred, int pred_stride);
-void vp8_subtract_mby_neon(short *diff, unsigned char *src, int src_stride, unsigned char *pred, int pred_stride);
-#define vp8_subtract_mby vp8_subtract_mby_neon
+#define vp8_subtract_mby vp8_subtract_mby_armv6
 
 unsigned int vp8_variance16x16_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
 unsigned int vp8_variance16x16_armv6(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
@@ -344,22 +326,18 @@ unsigned int vp8_variance8x8_armv6(const unsigned char *src_ptr, int source_stri
 
 unsigned int vp8_variance_halfpixvar16x16_h_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
 unsigned int vp8_variance_halfpixvar16x16_h_armv6(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
-unsigned int vp8_variance_halfpixvar16x16_h_neon(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
-#define vp8_variance_halfpixvar16x16_h vp8_variance_halfpixvar16x16_h_neon
+#define vp8_variance_halfpixvar16x16_h vp8_variance_halfpixvar16x16_h_armv6
 
 unsigned int vp8_variance_halfpixvar16x16_hv_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
 unsigned int vp8_variance_halfpixvar16x16_hv_armv6(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
-unsigned int vp8_variance_halfpixvar16x16_hv_neon(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
-#define vp8_variance_halfpixvar16x16_hv vp8_variance_halfpixvar16x16_hv_neon
+#define vp8_variance_halfpixvar16x16_hv vp8_variance_halfpixvar16x16_hv_armv6
 
 unsigned int vp8_variance_halfpixvar16x16_v_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
 unsigned int vp8_variance_halfpixvar16x16_v_armv6(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
-unsigned int vp8_variance_halfpixvar16x16_v_neon(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
-#define vp8_variance_halfpixvar16x16_v vp8_variance_halfpixvar16x16_v_neon
+#define vp8_variance_halfpixvar16x16_v vp8_variance_halfpixvar16x16_v_armv6
 
 void vp8_yv12_copy_partial_frame_c(struct yv12_buffer_config *src_ybc, struct yv12_buffer_config *dst_ybc);
-void vp8_yv12_copy_partial_frame_neon(struct yv12_buffer_config *src_ybc, struct yv12_buffer_config *dst_ybc);
-#define vp8_yv12_copy_partial_frame vp8_yv12_copy_partial_frame_neon
+#define vp8_yv12_copy_partial_frame vp8_yv12_copy_partial_frame_c
 
 void vp8_rtcd(void);
 
