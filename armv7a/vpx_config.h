@@ -19,7 +19,7 @@
 #define HAVE_EDSP 1
 #define HAVE_MEDIA 1
 #define HAVE_NEON 0
-#define HAVE_NEON_ASM 1
+#define HAVE_NEON_ASM 0
 #define HAVE_MIPS32 0
 #define HAVE_DSPR2 0
 #define HAVE_MMX 0
