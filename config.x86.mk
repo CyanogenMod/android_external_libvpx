@@ -5,6 +5,8 @@
 
 libvpx_target := x86
 
+YASM := prebuilts/misc/$(BUILD_OS)-$(HOST_PREBUILT_ARCH)/yasm/yasm
+
 libvpx_config_dir_x86 := $(LOCAL_PATH)/$(libvpx_target)
 libvpx_codec_srcs := $(sort $(shell cat $(libvpx_config_dir_x86)/libvpx_srcs.txt))
 
