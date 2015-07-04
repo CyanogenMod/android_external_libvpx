@@ -3,7 +3,7 @@
 # libvpx_codec_srcs_c_x86
 # libvpx_codec_srcs_asm_x86
 
-libvpx_target := x86
+libvpx_target := generic
 
 YASM := prebuilts/misc/$(BUILD_OS)-$(HOST_PREBUILT_ARCH)/yasm/yasm
 
@@ -15,5 +15,4 @@ libvpx_codec_srcs_c_x86 := $(addprefix libvpx/, $(filter-out vpx_config.c, \
     $(filter %.c, $(libvpx_codec_srcs)))) \
     $(libvpx_target)/vpx_config.c
 
-# X86 asm files are processed by the system and sent to yasm
-libvpx_codec_srcs_c_x86 += $(addprefix libvpx/, $(filter %.asm, $(libvpx_codec_srcs)))
+libvpx_codec_srcs_asm_x86 := $(filter %.asm.s, $(libvpx_codec_srcs))

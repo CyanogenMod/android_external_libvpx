@@ -464,6 +464,7 @@ sym(vp9_mbpost_proc_down_mmx):
 ;                            unsigned char whiteclamp[16],
 ;                            unsigned char bothclamp[16],
 ;                            unsigned int width, unsigned int height, int pitch)
+extern sym(rand)
 global sym(vp9_plane_add_noise_mmx) PRIVATE
 sym(vp9_plane_add_noise_mmx):
     push        rbp
@@ -475,7 +476,7 @@ sym(vp9_plane_add_noise_mmx):
     ; end prolog
 
 .addnoise_loop:
-    call sym(LIBVPX_RAND) WRT_PLT
+    call sym(rand) WRT_PLT
     mov     rcx, arg(1) ;noise
     and     rax, 0xff
     add     rcx, rax
