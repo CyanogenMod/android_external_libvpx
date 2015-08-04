@@ -233,7 +233,7 @@ specialize vp8_bilinear_predict8x4 mmx media neon
 vp8_bilinear_predict8x4_media=vp8_bilinear_predict8x4_armv6
 
 prototype void vp8_bilinear_predict4x4 "unsigned char *src, int src_pitch, int xofst, int yofst, unsigned char *dst, int dst_pitch"
-specialize vp8_bilinear_predict4x4 mmx media neon
+specialize vp8_bilinear_predict4x4 mmx media
 vp8_bilinear_predict4x4_media=vp8_bilinear_predict4x4_armv6
 
 #

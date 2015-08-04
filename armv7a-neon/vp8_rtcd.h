@@ -165,8 +165,7 @@ void vp8_bilinear_predict8x4_neon(unsigned char *src, int src_pitch, int xofst, 
 
 void vp8_bilinear_predict4x4_c(unsigned char *src, int src_pitch, int xofst, int yofst, unsigned char *dst, int dst_pitch);
 void vp8_bilinear_predict4x4_armv6(unsigned char *src, int src_pitch, int xofst, int yofst, unsigned char *dst, int dst_pitch);
-void vp8_bilinear_predict4x4_neon(unsigned char *src, int src_pitch, int xofst, int yofst, unsigned char *dst, int dst_pitch);
-#define vp8_bilinear_predict4x4 vp8_bilinear_predict4x4_neon
+#define vp8_bilinear_predict4x4 vp8_bilinear_predict4x4_armv6
 
 unsigned int vp8_variance4x4_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, unsigned int *sse);
 #define vp8_variance4x4 vp8_variance4x4_c
