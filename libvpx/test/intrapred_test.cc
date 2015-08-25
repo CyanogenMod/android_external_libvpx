@@ -8,15 +8,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-
 #include <string.h>
-#include "test/acm_random.h"
-#include "test/clear_system_state.h"
-#include "test/register_state_check.h"
+
 #include "third_party/googletest/src/include/gtest/gtest.h"
 
 #include "./vpx_config.h"
 #include "./vp8_rtcd.h"
+#include "test/acm_random.h"
+#include "test/clear_system_state.h"
+#include "test/register_state_check.h"
 #include "vp8/common/blockd.h"
 #include "vpx_mem/vpx_mem.h"
 
@@ -294,6 +294,16 @@ INSTANTIATE_TEST_CASE_P(SSSE3, IntraPredYTest,
                         ::testing::Values(
                             vp8_build_intra_predictors_mby_s_ssse3));
 #endif
+#if HAVE_NEON
+INSTANTIATE_TEST_CASE_P(NEON, IntraPredYTest,
+                        ::testing::Values(
+                            vp8_build_intra_predictors_mby_s_neon));
+#endif
+#if HAVE_MSA
+INSTANTIATE_TEST_CASE_P(MSA, IntraPredYTest,
+                        ::testing::Values(
+                            vp8_build_intra_predictors_mby_s_msa));
+#endif
 
 typedef void (*IntraPredUvFunc)(MACROBLOCKD *x,
                                 uint8_t *uabove_row,
@@ -381,6 +391,16 @@ INSTANTIATE_TEST_CASE_P(SSE2, IntraPredUVTest,
 INSTANTIATE_TEST_CASE_P(SSSE3, IntraPredUVTest,
                         ::testing::Values(
                             vp8_build_intra_predictors_mbuv_s_ssse3));
+#endif
+#if HAVE_NEON
+INSTANTIATE_TEST_CASE_P(NEON, IntraPredUVTest,
+                        ::testing::Values(
+                            vp8_build_intra_predictors_mbuv_s_neon));
+#endif
+#if HAVE_MSA
+INSTANTIATE_TEST_CASE_P(MSA, IntraPredUVTest,
+                        ::testing::Values(
+                            vp8_build_intra_predictors_mbuv_s_msa));
 #endif
 
 }  // namespace
