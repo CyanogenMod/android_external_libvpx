@@ -4,8 +4,10 @@ include $(CLEAR_VARS)
 # Clang arm assembler cannot compile libvpx .s files yet.
 LOCAL_CLANG_ASFLAGS_arm += -no-integrated-as
 # Pass incude path to GCC assembler.
-LOCAL_CLANG_ASFLAGS := \
+LOCAL_CLANG_ASFLAGS_$(TARGET_ARCH) += \
      -Wa,-I$(TARGET_OUT_INTERMEDIATES)/STATIC_LIBRARIES/libvpx_intermediates/vp8/encoder
+LOCAL_CLANG_ASFLAGS_$(TARGET_2ND_ARCH) += \
+     -Wa,-I$($(TARGET_2ND_ARCH_VAR_PREFIX)TARGET_OUT_INTERMEDIATES)/STATIC_LIBRARIES/libvpx_intermediates/vp8/encoder
 
 # vp9_mcomp.c:93:10: error: address of array 'x->nmvsadcost' will always evaluate to 'true'
 LOCAL_CLANG_CFLAGS += -Wno-pointer-bool-conversion
