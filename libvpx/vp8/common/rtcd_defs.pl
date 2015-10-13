@@ -233,7 +233,7 @@ specialize qw/vp8_bilinear_predict8x4 mmx media neon/;
 $vp8_bilinear_predict8x4_media=vp8_bilinear_predict8x4_armv6;
 
 add_proto qw/void vp8_bilinear_predict4x4/, "unsigned char *src, int src_pitch, int xofst, int yofst, unsigned char *dst, int dst_pitch";
-specialize qw/vp8_bilinear_predict4x4 mmx media neon/;
+specialize qw/vp8_bilinear_predict4x4 mmx media/;
 $vp8_bilinear_predict4x4_media=vp8_bilinear_predict4x4_armv6;
 
 #
