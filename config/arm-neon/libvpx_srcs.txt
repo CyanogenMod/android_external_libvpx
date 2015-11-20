@@ -14,7 +14,6 @@ vp8/common/arm/armv6/dequantize_v6.asm
 vp8/common/arm/armv6/filter_v6.asm
 vp8/common/arm/armv6/idct_blk_v6.c
 vp8/common/arm/armv6/idct_v6.asm
-vp8/common/arm/armv6/intra4x4_predict_v6.asm
 vp8/common/arm/armv6/iwalsh_v6.asm
 vp8/common/arm/armv6/loopfilter_v6.asm
 vp8/common/arm/armv6/simpleloopfilter_v6.asm
@@ -36,7 +35,6 @@ vp8/common/arm/neon/iwalsh_neon.c
 vp8/common/arm/neon/loopfiltersimplehorizontaledge_neon.c
 vp8/common/arm/neon/loopfiltersimpleverticaledge_neon.c
 vp8/common/arm/neon/mbloopfilter_neon.c
-vp8/common/arm/neon/reconintra_neon.c
 vp8/common/arm/neon/shortidct4x4llm_neon.c
 vp8/common/arm/neon/sixtappredict_neon.c
 vp8/common/arm/neon/vp8_loopfilter_neon.c
@@ -80,6 +78,7 @@ vp8/common/quant_common.h
 vp8/common/reconinter.c
 vp8/common/reconinter.h
 vp8/common/reconintra.c
+vp8/common/reconintra.h
 vp8/common/reconintra4x4.c
 vp8/common/reconintra4x4.h
 vp8/common/rtcd.c
@@ -298,6 +297,7 @@ vp9/encoder/vp9_treewriter.h
 vp9/vp9_common.mk
 vp9/vp9_cx_iface.c
 vp9/vp9_dx_iface.c
+vp9/vp9_dx_iface.h
 vp9/vp9_iface_common.h
 vp9/vp9cx.mk
 vp9/vp9dx.mk

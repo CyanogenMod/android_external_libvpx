@@ -23,6 +23,7 @@
 #include "vp8/common/entropymode.h"
 #include "vp8/common/quant_common.h"
 #include "vpx_scale/vpx_scale.h"
+#include "vp8/common/reconintra.h"
 #include "vp8/common/setupintrarecon.h"
 
 #include "decodemv.h"
@@ -34,6 +35,7 @@
 #include "vp8/common/threading.h"
 #include "decoderthreading.h"
 #include "dboolhuff.h"
+#include "vpx_dsp/vpx_dsp_common.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -1021,7 +1023,7 @@ int vp8_decode_frame(VP8D_COMP *pbi)
         const unsigned char *clear = data;
         if (pbi->decrypt_cb)
         {
-            int n = (int)MIN(sizeof(clear_buffer), data_end - data);
+            int n = (int)VPXMIN(sizeof(clear_buffer), data_end - data);
             pbi->decrypt_cb(pbi->decrypt_state, data, clear_buffer, n);
             clear = clear_buffer;
         }

@@ -18,66 +18,18 @@
 #include "vpx/vp8dx.h"
 #include "vpx/vpx_decoder.h"
 #include "vpx_dsp/bitreader_buffer.h"
+#include "vpx_dsp/vpx_dsp_common.h"
 #include "vpx_util/vpx_thread.h"
 
 #include "vp9/common/vp9_alloccommon.h"
 #include "vp9/common/vp9_frame_buffers.h"
 
-#include "vp9/decoder/vp9_decoder.h"
 #include "vp9/decoder/vp9_decodeframe.h"
 
+#include "vp9/vp9_dx_iface.h"
 #include "vp9/vp9_iface_common.h"
 
 #define VP9_CAP_POSTPROC (CONFIG_VP9_POSTPROC ? VPX_CODEC_CAP_POSTPROC : 0)
-
-typedef vpx_codec_stream_info_t vp9_stream_info_t;
-
-// This limit is due to framebuffer numbers.
-// TODO(hkuang): Remove this limit after implementing ondemand framebuffers.
-#define FRAME_CACHE_SIZE 6   // Cache maximum 6 decoded frames.
-
-typedef struct cache_frame {
-  int fb_idx;
-  vpx_image_t img;
-} cache_frame;
-
-struct vpx_codec_alg_priv {
-  vpx_codec_priv_t        base;
-  vpx_codec_dec_cfg_t     cfg;
-  vp9_stream_info_t       si;
-  int                     postproc_cfg_set;
-  vp8_postproc_cfg_t      postproc_cfg;
-  vpx_decrypt_cb          decrypt_cb;
-  void                    *decrypt_state;
-  vpx_image_t             img;
-  int                     img_avail;
-  int                     flushed;
-  int                     invert_tile_order;
-  int                     last_show_frame;  // Index of last output frame.
-  int                     byte_alignment;
-  int                     skip_loop_filter;
-
-  // Frame parallel related.
-  int                     frame_parallel_decode;  // frame-based threading.
-  VPxWorker               *frame_workers;
-  int                     num_frame_workers;
-  int                     next_submit_worker_id;
-  int                     last_submit_worker_id;
-  int                     next_output_worker_id;
-  int                     available_threads;
-  cache_frame             frame_cache[FRAME_CACHE_SIZE];
-  int                     frame_cache_write;
-  int                     frame_cache_read;
-  int                     num_cache_frames;
-  int                     need_resync;      // wait for key/intra-only frame
-  // BufferPool that holds all reference frames. Shared by all the FrameWorkers.
-  BufferPool              *buffer_pool;
-
-  // External frame buffer info to save for VP9 common.
-  void *ext_priv;  // Private data associated with the external frame buffers.
-  vpx_get_frame_buffer_cb_fn_t get_ext_fb_cb;
-  vpx_release_frame_buffer_cb_fn_t release_ext_fb_cb;
-};
 
 static vpx_codec_err_t decoder_init(vpx_codec_ctx_t *ctx,
                                     vpx_codec_priv_enc_mr_cfg_t *data) {
@@ -87,7 +39,8 @@ static vpx_codec_err_t decoder_init(vpx_codec_ctx_t *ctx,
   (void)data;
 
   if (!ctx->priv) {
-    vpx_codec_alg_priv_t *const priv = vpx_calloc(1, sizeof(*priv));
+    vpx_codec_alg_priv_t *const priv =
+        (vpx_codec_alg_priv_t *)vpx_calloc(1, sizeof(*priv));
     if (priv == NULL)
       return VPX_CODEC_MEM_ERROR;
 
@@ -183,7 +136,7 @@ static vpx_codec_err_t decoder_peek_si_internal(const uint8_t *data,
   si->w = si->h = 0;
 
   if (decrypt_cb) {
-    data_sz = MIN(sizeof(clear_buffer), data_sz);
+    data_sz = VPXMIN(sizeof(clear_buffer), data_sz);
     decrypt_cb(decrypt_state, data, clear_buffer, data_sz);
     data = clear_buffer;
   }
@@ -977,9 +930,9 @@ static vpx_codec_err_t ctrl_get_frame_size(vpx_codec_alg_priv_t *ctx,
   return VPX_CODEC_INVALID_PARAM;
 }
 
-static vpx_codec_err_t ctrl_get_display_size(vpx_codec_alg_priv_t *ctx,
-                                             va_list args) {
-  int *const display_size = va_arg(args, int *);
+static vpx_codec_err_t ctrl_get_render_size(vpx_codec_alg_priv_t *ctx,
+                                            va_list args) {
+  int *const render_size = va_arg(args, int *);
 
   // Only support this function in serial decode.
   if (ctx->frame_parallel_decode) {
@@ -987,14 +940,14 @@ static vpx_codec_err_t ctrl_get_display_size(vpx_codec_alg_priv_t *ctx,
     return VPX_CODEC_INCAPABLE;
   }
 
-  if (display_size) {
+  if (render_size) {
     if (ctx->frame_workers) {
       VPxWorker *const worker = ctx->frame_workers;
       FrameWorkerData *const frame_worker_data =
           (FrameWorkerData *)worker->data1;
       const VP9_COMMON *const cm = &frame_worker_data->pbi->common;
-      display_size[0] = cm->display_width;
-      display_size[1] = cm->display_height;
+      render_size[0] = cm->render_width;
+      render_size[1] = cm->render_height;
       return VPX_CODEC_OK;
     } else {
       return VPX_CODEC_ERROR;
@@ -1093,7 +1046,7 @@ static vpx_codec_ctrl_fn_map_t decoder_ctrl_maps[] = {
   {VP8D_GET_LAST_REF_UPDATES,     ctrl_get_last_ref_updates},
   {VP8D_GET_FRAME_CORRUPTED,      ctrl_get_frame_corrupted},
   {VP9_GET_REFERENCE,             ctrl_get_reference},
-  {VP9D_GET_DISPLAY_SIZE,         ctrl_get_display_size},
+  {VP9D_GET_DISPLAY_SIZE,         ctrl_get_render_size},
   {VP9D_GET_BIT_DEPTH,            ctrl_get_bit_depth},
   {VP9D_GET_FRAME_SIZE,           ctrl_get_frame_size},
 

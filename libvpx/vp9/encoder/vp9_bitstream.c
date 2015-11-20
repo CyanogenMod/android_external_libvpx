@@ -14,6 +14,7 @@
 
 #include "vpx/vpx_encoder.h"
 #include "vpx_dsp/bitwriter_buffer.h"
+#include "vpx_dsp/vpx_dsp_common.h"
 #include "vpx_mem/vpx_mem.h"
 #include "vpx_ports/mem_ops.h"
 #include "vpx_ports/system_state.h"
@@ -175,12 +176,10 @@ static void pack_mb_tokens(vpx_writer *w,
         const unsigned char *pb = b->prob;
         int v = e >> 1;
         int n = l;              /* number of bits in v, assumed nonzero */
-        int i = 0;
 
         do {
           const int bb = (v >> --n) & 1;
-          vpx_write(w, bb, pb[i >> 1]);
-          i = b->tree[i + bb];
+          vpx_write(w, bb, *pb++);
         } while (n);
       }
 
@@ -815,7 +814,7 @@ static void encode_segmentation(VP9_COMMON *cm, MACROBLOCKD *xd,
 static void encode_txfm_probs(VP9_COMMON *cm, vpx_writer *w,
                               FRAME_COUNTS *counts) {
   // Mode
-  vpx_write_literal(w, MIN(cm->tx_mode, ALLOW_32X32), 2);
+  vpx_write_literal(w, VPXMIN(cm->tx_mode, ALLOW_32X32), 2);
   if (cm->tx_mode >= ALLOW_32X32)
     vpx_write_bit(w, cm->tx_mode == TX_MODE_SELECT);
 
@@ -968,14 +967,14 @@ static size_t encode_tiles(VP9_COMP *cpi, uint8_t *data_ptr) {
   return total_size;
 }
 
-static void write_display_size(const VP9_COMMON *cm,
-                               struct vpx_write_bit_buffer *wb) {
-  const int scaling_active = cm->width != cm->display_width ||
-                             cm->height != cm->display_height;
+static void write_render_size(const VP9_COMMON *cm,
+                              struct vpx_write_bit_buffer *wb) {
+  const int scaling_active = cm->width != cm->render_width ||
+                             cm->height != cm->render_height;
   vpx_wb_write_bit(wb, scaling_active);
   if (scaling_active) {
-    vpx_wb_write_literal(wb, cm->display_width - 1, 16);
-    vpx_wb_write_literal(wb, cm->display_height - 1, 16);
+    vpx_wb_write_literal(wb, cm->render_width - 1, 16);
+    vpx_wb_write_literal(wb, cm->render_height - 1, 16);
   }
 }
 
@@ -984,7 +983,7 @@ static void write_frame_size(const VP9_COMMON *cm,
   vpx_wb_write_literal(wb, cm->width - 1, 16);
   vpx_wb_write_literal(wb, cm->height - 1, 16);
 
-  write_display_size(cm, wb);
+  write_render_size(cm, wb);
 }
 
 static void write_frame_size_with_refs(VP9_COMP *cpi,
@@ -1022,7 +1021,7 @@ static void write_frame_size_with_refs(VP9_COMP *cpi,
     vpx_wb_write_literal(wb, cm->height - 1, 16);
   }
 
-  write_display_size(cm, wb);
+  write_render_size(cm, wb);
 }
 
 static void write_sync_code(struct vpx_write_bit_buffer *wb) {
@@ -1059,7 +1058,8 @@ static void write_bitdepth_colorspace_sampling(
   }
   vpx_wb_write_literal(wb, cm->color_space, 3);
   if (cm->color_space != VPX_CS_SRGB) {
-    vpx_wb_write_bit(wb, 0);  // 0: [16, 235] (i.e. xvYCC), 1: [0, 255]
+    // 0: [16, 235] (i.e. xvYCC), 1: [0, 255]
+    vpx_wb_write_bit(wb, cm->color_range);
     if (cm->profile == PROFILE_1 || cm->profile == PROFILE_3) {
       assert(cm->subsampling_x != 1 || cm->subsampling_y != 1);
       vpx_wb_write_bit(wb, cm->subsampling_x);

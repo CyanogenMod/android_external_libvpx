@@ -10,9 +10,11 @@
 
 #include <math.h>
 
+#include "vp9/encoder/vp9_aq_cyclicrefresh.h"
 #include "vp9/encoder/vp9_encoder.h"
 #include "vp9/encoder/vp9_svc_layercontext.h"
 #include "vp9/encoder/vp9_extend.h"
+#include "vpx_dsp/vpx_dsp_common.h"
 
 #define SMALL_FRAME_FB_IDX 7
 #define SMALL_FRAME_WIDTH  32
@@ -21,11 +23,14 @@
 void vp9_init_layer_context(VP9_COMP *const cpi) {
   SVC *const svc = &cpi->svc;
   const VP9EncoderConfig *const oxcf = &cpi->oxcf;
+  int mi_rows = cpi->common.mi_rows;
+  int mi_cols = cpi->common.mi_cols;
   int sl, tl;
   int alt_ref_idx = svc->number_spatial_layers;
 
   svc->spatial_layer_id = 0;
   svc->temporal_layer_id = 0;
+  svc->first_spatial_layer_to_encode = 0;
 
   if (cpi->oxcf.error_resilient_mode == 0 && cpi->oxcf.pass == 2) {
     if (vpx_realloc_frame_buffer(&cpi->svc.empty_frame.img,
@@ -93,6 +98,26 @@ void vp9_init_layer_context(VP9_COMP *const cpi) {
       lrc->buffer_level = oxcf->starting_buffer_level_ms *
                               lc->target_bandwidth / 1000;
       lrc->bits_off_target = lrc->buffer_level;
+
+      // Initialize the cyclic refresh parameters. If spatial layers are used
+      // (i.e., ss_number_layers > 1), these need to be updated per spatial
+      // layer.
+      // Cyclic refresh is only applied on base temporal layer.
+      if (oxcf->ss_number_layers > 1 &&
+          tl == 0) {
+        size_t last_coded_q_map_size;
+        size_t consec_zero_mv_size;
+        lc->sb_index = 0;
+        lc->map = vpx_malloc(mi_rows * mi_cols * sizeof(signed char));
+        memset(lc->map, 0, mi_rows * mi_cols);
+        last_coded_q_map_size = mi_rows * mi_cols * sizeof(uint8_t);
+        lc->last_coded_q_map = vpx_malloc(last_coded_q_map_size);
+        assert(MAXQ <= 255);
+        memset(lc->last_coded_q_map, MAXQ, last_coded_q_map_size);
+        consec_zero_mv_size = mi_rows * mi_cols * sizeof(uint8_t);
+        lc->consec_zero_mv = vpx_malloc(consec_zero_mv_size);
+        memset(lc->consec_zero_mv, 0, consec_zero_mv_size);
+       }
     }
   }
 
@@ -113,8 +138,6 @@ void vp9_update_layer_context_change_config(VP9_COMP *const cpi,
 
   if (svc->temporal_layering_mode != VP9E_TEMPORAL_LAYERING_MODE_NOLAYERING) {
     for (sl = 0; sl < oxcf->ss_number_layers; ++sl) {
-      spatial_layer_target = 0;
-
       for (tl = 0; tl < oxcf->ts_number_layers; ++tl) {
         layer = LAYER_IDS_TO_IDX(sl, tl, oxcf->ts_number_layers);
         svc->layer_context[layer].target_bandwidth =
@@ -141,8 +164,8 @@ void vp9_update_layer_context_change_config(VP9_COMP *const cpi,
         lrc->maximum_buffer_size =
             (int64_t)(rc->maximum_buffer_size * bitrate_alloc);
         lrc->bits_off_target =
-            MIN(lrc->bits_off_target, lrc->maximum_buffer_size);
-        lrc->buffer_level = MIN(lrc->buffer_level, lrc->maximum_buffer_size);
+            VPXMIN(lrc->bits_off_target, lrc->maximum_buffer_size);
+        lrc->buffer_level = VPXMIN(lrc->buffer_level, lrc->maximum_buffer_size);
         lc->framerate = cpi->framerate / oxcf->ts_rate_decimator[tl];
         lrc->avg_frame_bandwidth = (int)(lc->target_bandwidth / lc->framerate);
         lrc->max_frame_bandwidth = rc->max_frame_bandwidth;
@@ -173,9 +196,9 @@ void vp9_update_layer_context_change_config(VP9_COMP *const cpi,
           (int64_t)(rc->optimal_buffer_level * bitrate_alloc);
       lrc->maximum_buffer_size =
           (int64_t)(rc->maximum_buffer_size * bitrate_alloc);
-      lrc->bits_off_target = MIN(lrc->bits_off_target,
-                                 lrc->maximum_buffer_size);
-      lrc->buffer_level = MIN(lrc->buffer_level, lrc->maximum_buffer_size);
+      lrc->bits_off_target = VPXMIN(lrc->bits_off_target,
+                                    lrc->maximum_buffer_size);
+      lrc->buffer_level = VPXMIN(lrc->buffer_level, lrc->maximum_buffer_size);
       // Update framerate-related quantities.
       if (svc->number_temporal_layers > 1 && cpi->oxcf.rc_mode == VPX_CBR) {
         lc->framerate = cpi->framerate / oxcf->ts_rate_decimator[layer];
@@ -258,6 +281,24 @@ void vp9_restore_layer_context(VP9_COMP *const cpi) {
     cpi->rc.frames_since_key = old_frame_since_key;
     cpi->rc.frames_to_key = old_frame_to_key;
   }
+
+  // For spatial-svc, allow cyclic-refresh to be applied on the spatial layers,
+  // for the base temporal layer.
+  if (cpi->oxcf.aq_mode == CYCLIC_REFRESH_AQ &&
+      cpi->svc.number_spatial_layers > 1 &&
+      cpi->svc.temporal_layer_id == 0) {
+    CYCLIC_REFRESH *const cr = cpi->cyclic_refresh;
+    signed char *temp = cr->map;
+    uint8_t *temp2 = cr->last_coded_q_map;
+    uint8_t *temp3 = cr->consec_zero_mv;
+    cr->map = lc->map;
+    lc->map = temp;
+    cr->last_coded_q_map = lc->last_coded_q_map;
+    lc->last_coded_q_map = temp2;
+    cr->consec_zero_mv = lc->consec_zero_mv;
+    lc->consec_zero_mv = temp3;
+    cr->sb_index = lc->sb_index;
+  }
 }
 
 void vp9_save_layer_context(VP9_COMP *const cpi) {
@@ -268,6 +309,24 @@ void vp9_save_layer_context(VP9_COMP *const cpi) {
   lc->twopass = cpi->twopass;
   lc->target_bandwidth = (int)oxcf->target_bandwidth;
   lc->alt_ref_source = cpi->alt_ref_source;
+
+  // For spatial-svc, allow cyclic-refresh to be applied on the spatial layers,
+  // for the base temporal layer.
+  if (cpi->oxcf.aq_mode == CYCLIC_REFRESH_AQ &&
+      cpi->svc.number_spatial_layers > 1 &&
+      cpi->svc.temporal_layer_id == 0) {
+    CYCLIC_REFRESH *const cr = cpi->cyclic_refresh;
+    signed char *temp = lc->map;
+    uint8_t *temp2 = lc->last_coded_q_map;
+    uint8_t *temp3 = lc->consec_zero_mv;
+    lc->map = cr->map;
+    cr->map = temp;
+    lc->last_coded_q_map = cr->last_coded_q_map;
+    cr->last_coded_q_map = temp2;
+    lc->consec_zero_mv = cr->consec_zero_mv;
+    cr->consec_zero_mv = temp3;
+    lc->sb_index = cr->sb_index;
+  }
 }
 
 void vp9_init_second_pass_spatial_svc(VP9_COMP *cpi) {
@@ -492,18 +551,34 @@ int vp9_one_pass_cbr_svc_start_layer(VP9_COMP *const cpi) {
     set_flags_and_fb_idx_for_temporal_mode2(cpi);
   } else if (cpi->svc.temporal_layering_mode ==
       VP9E_TEMPORAL_LAYERING_MODE_BYPASS) {
-    // VP9E_TEMPORAL_LAYERING_MODE_BYPASS :
-    // if the code goes here, it means the encoder will be relying on the
-    // flags from outside for layering.
-    // However, since when spatial+temporal layering is used, the buffer indices
-    // cannot be derived automatically, the bypass mode will only work when the
-    // number of spatial layers equals 1.
-    assert(cpi->svc.number_spatial_layers == 1);
+    // In the BYPASS/flexible mode, the encoder is relying on the application
+    // to specify, for each spatial layer, the flags and buffer indices for the
+    // layering.
+    // Note that the check (cpi->ext_refresh_frame_flags_pending == 0) is
+    // needed to support the case where the frame flags may be passed in via
+    // vpx_codec_encode(), which can be used for the temporal-only svc case.
+    if (cpi->ext_refresh_frame_flags_pending == 0) {
+      int sl;
+      cpi->svc.spatial_layer_id = cpi->svc.spatial_layer_to_encode;
+      sl = cpi->svc.spatial_layer_id;
+      vp9_apply_encoding_flags(cpi, cpi->svc.ext_frame_flags[sl]);
+      cpi->lst_fb_idx = cpi->svc.ext_lst_fb_idx[sl];
+      cpi->gld_fb_idx = cpi->svc.ext_gld_fb_idx[sl];
+      cpi->alt_fb_idx = cpi->svc.ext_alt_fb_idx[sl];
+    }
   }
 
   lc = &cpi->svc.layer_context[cpi->svc.spatial_layer_id *
                                cpi->svc.number_temporal_layers +
                                cpi->svc.temporal_layer_id];
+
+  // Setting the worst/best_quality via the encoder control: SET_SVC_PARAMETERS,
+  // only for non-BYPASS mode for now.
+  if (cpi->svc.temporal_layering_mode != VP9E_TEMPORAL_LAYERING_MODE_BYPASS) {
+    RATE_CONTROL *const lrc = &lc->rc;
+    lrc->worst_quality = vp9_quantizer_to_qindex(lc->max_q);
+    lrc->best_quality =  vp9_quantizer_to_qindex(lc->min_q);
+  }
 
   get_layer_resolution(cpi->oxcf.width, cpi->oxcf.height,
                        lc->scaling_factor_num, lc->scaling_factor_den,
@@ -642,4 +717,22 @@ struct lookahead_entry *vp9_svc_lookahead_pop(VP9_COMP *const cpi,
     }
   }
   return buf;
+}
+
+void vp9_free_svc_cyclic_refresh(VP9_COMP *const cpi) {
+  int sl, tl;
+  SVC *const svc = &cpi->svc;
+  const VP9EncoderConfig *const oxcf = &cpi->oxcf;
+  for (sl = 0; sl < oxcf->ss_number_layers; ++sl) {
+    for (tl = 0; tl < oxcf->ts_number_layers; ++tl) {
+      int layer = LAYER_IDS_TO_IDX(sl, tl, oxcf->ts_number_layers);
+      LAYER_CONTEXT *const lc = &svc->layer_context[layer];
+        if (lc->map)
+          vpx_free(lc->map);
+        if (lc->last_coded_q_map)
+          vpx_free(lc->last_coded_q_map);
+        if (lc->consec_zero_mv)
+          vpx_free(lc->consec_zero_mv);
+    }
+  }
 }

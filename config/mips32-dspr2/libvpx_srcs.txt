@@ -50,6 +50,7 @@ vp8/common/quant_common.h
 vp8/common/reconinter.c
 vp8/common/reconinter.h
 vp8/common/reconintra.c
+vp8/common/reconintra.h
 vp8/common/reconintra4x4.c
 vp8/common/reconintra4x4.h
 vp8/common/rtcd.c
@@ -257,6 +258,7 @@ vp9/encoder/vp9_treewriter.h
 vp9/vp9_common.mk
 vp9/vp9_cx_iface.c
 vp9/vp9_dx_iface.c
+vp9/vp9_dx_iface.h
 vp9/vp9_iface_common.h
 vp9/vp9cx.mk
 vp9/vp9dx.mk

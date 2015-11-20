@@ -112,10 +112,11 @@ typedef struct BufferPool {
 typedef struct VP9Common {
   struct vpx_internal_error_info  error;
   vpx_color_space_t color_space;
+  vpx_color_range_t color_range;
   int width;
   int height;
-  int display_width;
-  int display_height;
+  int render_width;
+  int render_height;
   int last_width;
   int last_height;
 
@@ -357,13 +358,12 @@ static INLINE void vp9_init_macroblockd(VP9_COMMON *cm, MACROBLOCKD *xd,
     xd->above_context[i] = cm->above_context +
         i * sizeof(*cm->above_context) * 2 * mi_cols_aligned_to_sb(cm->mi_cols);
 
-    if (xd->plane[i].plane_type == PLANE_TYPE_Y) {
+    if (get_plane_type(i) == PLANE_TYPE_Y) {
       memcpy(xd->plane[i].seg_dequant, cm->y_dequant, sizeof(cm->y_dequant));
     } else {
       memcpy(xd->plane[i].seg_dequant, cm->uv_dequant, sizeof(cm->uv_dequant));
     }
     xd->fc = cm->fc;
-    xd->frame_parallel_decoding_mode = cm->frame_parallel_decoding_mode;
   }
 
   xd->above_seg_context = cm->above_seg_context;

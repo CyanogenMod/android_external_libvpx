@@ -47,6 +47,7 @@ vp8/common/quant_common.h
 vp8/common/reconinter.c
 vp8/common/reconinter.h
 vp8/common/reconintra.c
+vp8/common/reconintra.h
 vp8/common/reconintra4x4.c
 vp8/common/reconintra4x4.h
 vp8/common/rtcd.c
@@ -79,7 +80,6 @@ vp8/common/x86/postproc_mmx.asm
 vp8/common/x86/postproc_sse2.asm
 vp8/common/x86/recon_mmx.asm
 vp8/common/x86/recon_sse2.asm
-vp8/common/x86/recon_wrapper_sse2.c
 vp8/common/x86/subpixel_mmx.asm
 vp8/common/x86/subpixel_sse2.asm
 vp8/common/x86/subpixel_ssse3.asm
@@ -293,6 +293,7 @@ vp9/encoder/x86/vp9_temporal_filter_apply_sse2.asm
 vp9/vp9_common.mk
 vp9/vp9_cx_iface.c
 vp9/vp9_dx_iface.c
+vp9/vp9_dx_iface.h
 vp9/vp9_iface_common.h
 vp9/vp9cx.mk
 vp9/vp9dx.mk
@@ -349,6 +350,8 @@ vpx_dsp/x86/fwd_dct32x32_impl_sse2.h
 vpx_dsp/x86/fwd_txfm_impl_sse2.h
 vpx_dsp/x86/fwd_txfm_sse2.c
 vpx_dsp/x86/fwd_txfm_sse2.h
+vpx_dsp/x86/halfpix_variance_impl_sse2.asm
+vpx_dsp/x86/halfpix_variance_sse2.c
 vpx_dsp/x86/intrapred_sse2.asm
 vpx_dsp/x86/intrapred_ssse3.asm
 vpx_dsp/x86/inv_txfm_sse2.c

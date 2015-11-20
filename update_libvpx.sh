@@ -10,7 +10,7 @@
 # Usage:
 #
 # $ ./update_libvpx.sh [branch | revision | file or url containing a revision]
-# When specifying a branch it must be prefixed with origin/
+# When specifying a branch it may be necessary to prefix with origin/
 
 # Tools required for running this tool:
 #
@@ -113,7 +113,7 @@ rm -rf .git .gitignore .gitattributes
 
 # Add and remove files.
 echo "$add" | xargs -I {} git add {}
-echo "$delete" | xargs -I {} git rm {}
+echo "$delete" | xargs -I {} git rm --ignore-unmatch {}
 
 # Find empty directories and remove them.
 find . -type d -empty -exec git rm {} \;

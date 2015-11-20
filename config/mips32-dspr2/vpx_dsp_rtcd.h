@@ -102,6 +102,18 @@ void vpx_d207_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *a
 void vpx_d207_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vpx_d207_predictor_8x8 vpx_d207_predictor_8x8_c
 
+void vpx_d207e_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d207e_predictor_16x16 vpx_d207e_predictor_16x16_c
+
+void vpx_d207e_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d207e_predictor_32x32 vpx_d207e_predictor_32x32_c
+
+void vpx_d207e_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d207e_predictor_4x4 vpx_d207e_predictor_4x4_c
+
+void vpx_d207e_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d207e_predictor_8x8 vpx_d207e_predictor_8x8_c
+
 void vpx_d45_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vpx_d45_predictor_16x16 vpx_d45_predictor_16x16_c
 
@@ -114,6 +126,18 @@ void vpx_d45_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *ab
 void vpx_d45_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vpx_d45_predictor_8x8 vpx_d45_predictor_8x8_c
 
+void vpx_d45e_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d45e_predictor_16x16 vpx_d45e_predictor_16x16_c
+
+void vpx_d45e_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d45e_predictor_32x32 vpx_d45e_predictor_32x32_c
+
+void vpx_d45e_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d45e_predictor_4x4 vpx_d45e_predictor_4x4_c
+
+void vpx_d45e_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d45e_predictor_8x8 vpx_d45e_predictor_8x8_c
+
 void vpx_d63_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vpx_d63_predictor_16x16 vpx_d63_predictor_16x16_c
 
@@ -125,6 +149,21 @@ void vpx_d63_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *ab
 
 void vpx_d63_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vpx_d63_predictor_8x8 vpx_d63_predictor_8x8_c
+
+void vpx_d63e_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d63e_predictor_16x16 vpx_d63e_predictor_16x16_c
+
+void vpx_d63e_predictor_32x32_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d63e_predictor_32x32 vpx_d63e_predictor_32x32_c
+
+void vpx_d63e_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d63e_predictor_4x4 vpx_d63e_predictor_4x4_c
+
+void vpx_d63e_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d63e_predictor_8x8 vpx_d63e_predictor_8x8_c
+
+void vpx_d63f_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_d63f_predictor_4x4 vpx_d63f_predictor_4x4_c
 
 void vpx_dc_128_predictor_16x16_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vpx_dc_128_predictor_16x16 vpx_dc_128_predictor_16x16_c
@@ -230,6 +269,9 @@ void vpx_h_predictor_4x4_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *
 void vpx_h_predictor_8x8_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 void vpx_h_predictor_8x8_dspr2(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
 #define vpx_h_predictor_8x8 vpx_h_predictor_8x8_dspr2
+
+void vpx_he_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_he_predictor_4x4 vpx_he_predictor_4x4_c
 
 void vpx_idct16x16_10_add_c(const tran_low_t *input, uint8_t *dest, int dest_stride);
 void vpx_idct16x16_10_add_dspr2(const tran_low_t *input, uint8_t *dest, int dest_stride);
@@ -680,6 +722,9 @@ uint32_t vpx_variance_halfpixvar16x16_hv_c(const unsigned char *src_ptr, int sou
 
 uint32_t vpx_variance_halfpixvar16x16_v_c(const unsigned char *src_ptr, int source_stride, const unsigned char *ref_ptr, int  ref_stride, uint32_t *sse);
 #define vpx_variance_halfpixvar16x16_v vpx_variance_halfpixvar16x16_v_c
+
+void vpx_ve_predictor_4x4_c(uint8_t *dst, ptrdiff_t y_stride, const uint8_t *above, const uint8_t *left);
+#define vpx_ve_predictor_4x4 vpx_ve_predictor_4x4_c
 
 void vpx_dsp_rtcd(void);
 

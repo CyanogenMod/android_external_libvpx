@@ -17,6 +17,7 @@
 
 #include "vpx_dsp/bitreader_buffer.h"
 #include "vpx_dsp/bitreader.h"
+#include "vpx_dsp/vpx_dsp_common.h"
 #include "vpx_mem/vpx_mem.h"
 #include "vpx_ports/mem.h"
 #include "vpx_ports/mem_ops.h"
@@ -658,7 +659,7 @@ static void dec_build_inter_predictors(VP9Decoder *const pbi, MACROBLOCKD *xd,
     // pixels of each superblock row can be changed by next superblock row.
     if (pbi->frame_parallel_decode)
       vp9_frameworker_wait(pbi->frame_worker_owner, ref_frame_buf,
-                           MAX(0, (y1 + 7)) << (plane == 0 ? 0 : 1));
+                           VPXMAX(0, (y1 + 7)) << (plane == 0 ? 0 : 1));
 
     // Skip border extension if block is inside the frame.
     if (x0 < 0 || x0 > frame_width - 1 || x1 < 0 || x1 > frame_width - 1 ||
@@ -686,7 +687,7 @@ static void dec_build_inter_predictors(VP9Decoder *const pbi, MACROBLOCKD *xd,
      if (pbi->frame_parallel_decode) {
        const int y1 = (y0_16 + (h - 1) * ys) >> SUBPEL_BITS;
        vp9_frameworker_wait(pbi->frame_worker_owner, ref_frame_buf,
-                            MAX(0, (y1 + 7)) << (plane == 0 ? 0 : 1));
+                            VPXMAX(0, (y1 + 7)) << (plane == 0 ? 0 : 1));
      }
   }
 #if CONFIG_VP9_HIGHBITDEPTH
@@ -757,8 +758,8 @@ static void dec_build_inter_predictors_sb(VP9Decoder *const pbi,
 static INLINE TX_SIZE dec_get_uv_tx_size(const MB_MODE_INFO *mbmi,
                                          int n4_wl, int n4_hl) {
   // get minimum log2 num4x4s dimension
-  const int x = MIN(n4_wl, n4_hl);
-  return MIN(mbmi->tx_size,  x);
+  const int x = VPXMIN(n4_wl, n4_hl);
+  return VPXMIN(mbmi->tx_size,  x);
 }
 
 static INLINE void dec_reset_skip_context(MACROBLOCKD *xd) {
@@ -819,8 +820,8 @@ static void decode_block(VP9Decoder *const pbi, MACROBLOCKD *const xd,
   const int less8x8 = bsize < BLOCK_8X8;
   const int bw = 1 << (bwl - 1);
   const int bh = 1 << (bhl - 1);
-  const int x_mis = MIN(bw, cm->mi_cols - mi_col);
-  const int y_mis = MIN(bh, cm->mi_rows - mi_row);
+  const int x_mis = VPXMIN(bw, cm->mi_cols - mi_col);
+  const int y_mis = VPXMIN(bh, cm->mi_rows - mi_row);
 
   MB_MODE_INFO *mbmi = set_offsets(cm, xd, bsize, mi_row, mi_col,
                                    bw, bh, x_mis, y_mis, bwl, bhl);
@@ -895,6 +896,10 @@ static void decode_block(VP9Decoder *const pbi, MACROBLOCKD *const xd,
   }
 
   xd->corrupted |= vpx_reader_has_error(r);
+
+  if (cm->lf.filter_level) {
+    vp9_build_mask(cm, mbmi, mi_row, mi_col, bw, bh);
+  }
 }
 
 static INLINE int dec_partition_plane_context(const MACROBLOCKD *xd,
@@ -1180,11 +1185,11 @@ static INTERP_FILTER read_interp_filter(struct vpx_read_bit_buffer *rb) {
                              : literal_to_filter[vpx_rb_read_literal(rb, 2)];
 }
 
-static void setup_display_size(VP9_COMMON *cm, struct vpx_read_bit_buffer *rb) {
-  cm->display_width = cm->width;
-  cm->display_height = cm->height;
+static void setup_render_size(VP9_COMMON *cm, struct vpx_read_bit_buffer *rb) {
+  cm->render_width = cm->width;
+  cm->render_height = cm->height;
   if (vpx_rb_read_bit(rb))
-    vp9_read_frame_size(rb, &cm->display_width, &cm->display_height);
+    vp9_read_frame_size(rb, &cm->render_width, &cm->render_height);
 }
 
 static void resize_mv_buffer(VP9_COMMON *cm) {
@@ -1232,7 +1237,7 @@ static void setup_frame_size(VP9_COMMON *cm, struct vpx_read_bit_buffer *rb) {
   BufferPool *const pool = cm->buffer_pool;
   vp9_read_frame_size(rb, &width, &height);
   resize_context_buffers(cm, width, height);
-  setup_display_size(cm, rb);
+  setup_render_size(cm, rb);
 
   lock_buffer_pool(pool);
   if (vpx_realloc_frame_buffer(
@@ -1255,6 +1260,9 @@ static void setup_frame_size(VP9_COMMON *cm, struct vpx_read_bit_buffer *rb) {
   pool->frame_bufs[cm->new_fb_idx].buf.subsampling_y = cm->subsampling_y;
   pool->frame_bufs[cm->new_fb_idx].buf.bit_depth = (unsigned int)cm->bit_depth;
   pool->frame_bufs[cm->new_fb_idx].buf.color_space = cm->color_space;
+  pool->frame_bufs[cm->new_fb_idx].buf.color_range = cm->color_range;
+  pool->frame_bufs[cm->new_fb_idx].buf.render_width  = cm->render_width;
+  pool->frame_bufs[cm->new_fb_idx].buf.render_height = cm->render_height;
 }
 
 static INLINE int valid_ref_frame_img_fmt(vpx_bit_depth_t ref_bit_depth,
@@ -1313,7 +1321,7 @@ static void setup_frame_size_with_refs(VP9_COMMON *cm,
   }
 
   resize_context_buffers(cm, width, height);
-  setup_display_size(cm, rb);
+  setup_render_size(cm, rb);
 
   lock_buffer_pool(pool);
   if (vpx_realloc_frame_buffer(
@@ -1336,6 +1344,9 @@ static void setup_frame_size_with_refs(VP9_COMMON *cm,
   pool->frame_bufs[cm->new_fb_idx].buf.subsampling_y = cm->subsampling_y;
   pool->frame_bufs[cm->new_fb_idx].buf.bit_depth = (unsigned int)cm->bit_depth;
   pool->frame_bufs[cm->new_fb_idx].buf.color_space = cm->color_space;
+  pool->frame_bufs[cm->new_fb_idx].buf.color_range = cm->color_range;
+  pool->frame_bufs[cm->new_fb_idx].buf.render_width  = cm->render_width;
+  pool->frame_bufs[cm->new_fb_idx].buf.render_height = cm->render_height;
 }
 
 static void setup_tile_info(VP9_COMMON *cm, struct vpx_read_bit_buffer *rb) {
@@ -1357,12 +1368,6 @@ static void setup_tile_info(VP9_COMMON *cm, struct vpx_read_bit_buffer *rb) {
   if (cm->log2_tile_rows)
     cm->log2_tile_rows += vpx_rb_read_bit(rb);
 }
-
-typedef struct TileBuffer {
-  const uint8_t *data;
-  size_t size;
-  int col;  // only used with multi-threaded decoding
-} TileBuffer;
 
 // Reads the next tile returning its size and adjusting '*data' accordingly
 // based on 'is_last'.
@@ -1460,6 +1465,8 @@ static const uint8_t *decode_tiles(VP9Decoder *pbi,
 
   memset(cm->above_seg_context, 0,
          sizeof(*cm->above_seg_context) * aligned_cols);
+
+  vp9_reset_lfm(cm);
 
   get_tile_buffers(pbi, data, data_end, tile_cols, tile_rows, tile_buffers);
 
@@ -1560,30 +1567,54 @@ static const uint8_t *decode_tiles(VP9Decoder *pbi,
   return vpx_reader_find_end(&tile_data->bit_reader);
 }
 
+// On entry 'tile_data->data_end' points to the end of the input frame, on exit
+// it is updated to reflect the bitreader position of the final tile column if
+// present in the tile buffer group or NULL otherwise.
 static int tile_worker_hook(TileWorkerData *const tile_data,
-                            const TileInfo *const tile) {
-  int mi_row, mi_col;
+                            VP9Decoder *const pbi) {
+  TileInfo *volatile tile = &tile_data->xd.tile;
+  const int final_col = (1 << pbi->common.log2_tile_cols) - 1;
+  const uint8_t *volatile bit_reader_end = NULL;
+  volatile int n = tile_data->buf_start;
+  tile_data->error_info.setjmp = 1;
 
   if (setjmp(tile_data->error_info.jmp)) {
     tile_data->error_info.setjmp = 0;
     tile_data->xd.corrupted = 1;
+    tile_data->data_end = NULL;
     return 0;
   }
 
-  tile_data->error_info.setjmp = 1;
   tile_data->xd.error_info = &tile_data->error_info;
+  tile_data->xd.corrupted = 0;
 
-  for (mi_row = tile->mi_row_start; mi_row < tile->mi_row_end;
-       mi_row += MI_BLOCK_SIZE) {
-    vp9_zero(tile_data->xd.left_context);
-    vp9_zero(tile_data->xd.left_seg_context);
-    for (mi_col = tile->mi_col_start; mi_col < tile->mi_col_end;
-         mi_col += MI_BLOCK_SIZE) {
-      decode_partition(tile_data->pbi, &tile_data->xd,
-                       mi_row, mi_col, &tile_data->bit_reader,
-                       BLOCK_64X64, 4);
+  do {
+    int mi_row, mi_col;
+    const TileBuffer *const buf = pbi->tile_buffers + n;
+    vp9_zero(tile_data->dqcoeff);
+    vp9_tile_init(tile, &pbi->common, 0, buf->col);
+    setup_token_decoder(buf->data, tile_data->data_end, buf->size,
+                        &tile_data->error_info, &tile_data->bit_reader,
+                        pbi->decrypt_cb, pbi->decrypt_state);
+    vp9_init_macroblockd(&pbi->common, &tile_data->xd, tile_data->dqcoeff);
+
+    for (mi_row = tile->mi_row_start; mi_row < tile->mi_row_end;
+         mi_row += MI_BLOCK_SIZE) {
+      vp9_zero(tile_data->xd.left_context);
+      vp9_zero(tile_data->xd.left_seg_context);
+      for (mi_col = tile->mi_col_start; mi_col < tile->mi_col_end;
+           mi_col += MI_BLOCK_SIZE) {
+        decode_partition(pbi, &tile_data->xd, mi_row, mi_col,
+                         &tile_data->bit_reader, BLOCK_64X64, 4);
+      }
     }
-  }
+
+    if (buf->col == final_col) {
+      bit_reader_end = vpx_reader_find_end(&tile_data->bit_reader);
+    }
+  } while (!tile_data->xd.corrupted && ++n <= tile_data->buf_end);
+
+  tile_data->data_end = bit_reader_end;
   return !tile_data->xd.corrupted;
 }
 
@@ -1603,20 +1634,15 @@ static const uint8_t *decode_tiles_mt(VP9Decoder *pbi,
   const int aligned_mi_cols = mi_cols_aligned_to_sb(cm->mi_cols);
   const int tile_cols = 1 << cm->log2_tile_cols;
   const int tile_rows = 1 << cm->log2_tile_rows;
-  const int num_workers = MIN(pbi->max_threads & ~1, tile_cols);
-  TileBuffer tile_buffers[1][1 << 6];
+  const int num_workers = VPXMIN(pbi->max_threads, tile_cols);
   int n;
-  int final_worker = -1;
 
   assert(tile_cols <= (1 << 6));
   assert(tile_rows == 1);
   (void)tile_rows;
 
-  // TODO(jzern): See if we can remove the restriction of passing in max
-  // threads to the decoder.
   if (pbi->num_tile_workers == 0) {
-    const int num_threads = pbi->max_threads & ~1;
-    int i;
+    const int num_threads = pbi->max_threads;
     CHECK_MEM_ERROR(cm, pbi->tile_workers,
                     vpx_malloc(num_threads * sizeof(*pbi->tile_workers)));
     // Ensure tile data offsets will be properly aligned. This may fail on
@@ -1625,14 +1651,12 @@ static const uint8_t *decode_tiles_mt(VP9Decoder *pbi,
     CHECK_MEM_ERROR(cm, pbi->tile_worker_data,
                     vpx_memalign(32, num_threads *
                                  sizeof(*pbi->tile_worker_data)));
-    CHECK_MEM_ERROR(cm, pbi->tile_worker_info,
-                    vpx_malloc(num_threads * sizeof(*pbi->tile_worker_info)));
-    for (i = 0; i < num_threads; ++i) {
-      VPxWorker *const worker = &pbi->tile_workers[i];
+    for (n = 0; n < num_threads; ++n) {
+      VPxWorker *const worker = &pbi->tile_workers[n];
       ++pbi->num_tile_workers;
 
       winterface->init(worker);
-      if (i < num_threads - 1 && !winterface->reset(worker)) {
+      if (n < num_threads - 1 && !winterface->reset(worker)) {
         vpx_internal_error(&cm->error, VPX_CODEC_ERROR,
                            "Tile decoder thread creation failed");
       }
@@ -1642,10 +1666,14 @@ static const uint8_t *decode_tiles_mt(VP9Decoder *pbi,
   // Reset tile decoding hook
   for (n = 0; n < num_workers; ++n) {
     VPxWorker *const worker = &pbi->tile_workers[n];
+    TileWorkerData *const tile_data = &pbi->tile_worker_data[n];
     winterface->sync(worker);
+    tile_data->xd = pbi->mb;
+    tile_data->xd.counts =
+        cm->frame_parallel_decoding_mode ? NULL : &tile_data->counts;
     worker->hook = (VPxWorkerHook)tile_worker_hook;
-    worker->data1 = &pbi->tile_worker_data[n];
-    worker->data2 = &pbi->tile_worker_info[n];
+    worker->data1 = tile_data;
+    worker->data2 = pbi;
   }
 
   // Note: this memset assumes above_context[0], [1] and [2]
@@ -1655,101 +1683,95 @@ static const uint8_t *decode_tiles_mt(VP9Decoder *pbi,
   memset(cm->above_seg_context, 0,
          sizeof(*cm->above_seg_context) * aligned_mi_cols);
 
+  vp9_reset_lfm(cm);
+
   // Load tile data into tile_buffers
-  get_tile_buffers(pbi, data, data_end, tile_cols, tile_rows, tile_buffers);
+  get_tile_buffers(pbi, data, data_end, tile_cols, tile_rows,
+                   &pbi->tile_buffers);
 
   // Sort the buffers based on size in descending order.
-  qsort(tile_buffers[0], tile_cols, sizeof(tile_buffers[0][0]),
+  qsort(pbi->tile_buffers, tile_cols, sizeof(pbi->tile_buffers[0]),
         compare_tile_buffers);
 
-  // Rearrange the tile buffers such that per-tile group the largest, and
-  // presumably the most difficult, tile will be decoded in the main thread.
-  // This should help minimize the number of instances where the main thread is
-  // waiting for a worker to complete.
-  {
-    int group_start = 0;
-    while (group_start < tile_cols) {
-      const TileBuffer largest = tile_buffers[0][group_start];
-      const int group_end = MIN(group_start + num_workers, tile_cols) - 1;
-      memmove(tile_buffers[0] + group_start, tile_buffers[0] + group_start + 1,
-              (group_end - group_start) * sizeof(tile_buffers[0][0]));
-      tile_buffers[0][group_end] = largest;
-      group_start = group_end + 1;
+  if (num_workers == tile_cols) {
+    // Rearrange the tile buffers such that the largest, and
+    // presumably the most difficult, tile will be decoded in the main thread.
+    // This should help minimize the number of instances where the main thread
+    // is waiting for a worker to complete.
+    const TileBuffer largest = pbi->tile_buffers[0];
+    memmove(pbi->tile_buffers, pbi->tile_buffers + 1,
+            (tile_cols - 1) * sizeof(pbi->tile_buffers[0]));
+    pbi->tile_buffers[tile_cols - 1] = largest;
+  } else {
+    int start = 0, end = tile_cols - 2;
+    TileBuffer tmp;
+
+    // Interleave the tiles to distribute the load between threads, assuming a
+    // larger tile implies it is more difficult to decode.
+    while (start < end) {
+      tmp = pbi->tile_buffers[start];
+      pbi->tile_buffers[start] = pbi->tile_buffers[end];
+      pbi->tile_buffers[end] = tmp;
+      start += 2;
+      end -= 2;
     }
   }
 
   // Initialize thread frame counts.
   if (!cm->frame_parallel_decoding_mode) {
-    int i;
-
-    for (i = 0; i < num_workers; ++i) {
+    for (n = 0; n < num_workers; ++n) {
       TileWorkerData *const tile_data =
-          (TileWorkerData*)pbi->tile_workers[i].data1;
+          (TileWorkerData*)pbi->tile_workers[n].data1;
       vp9_zero(tile_data->counts);
     }
   }
 
-  n = 0;
-  while (n < tile_cols) {
-    int i;
-    for (i = 0; i < num_workers && n < tile_cols; ++i) {
-      VPxWorker *const worker = &pbi->tile_workers[i];
-      TileWorkerData *const tile_data = (TileWorkerData*)worker->data1;
-      TileInfo *const tile = (TileInfo*)worker->data2;
-      TileBuffer *const buf = &tile_buffers[0][n];
+  {
+    const int base = tile_cols / num_workers;
+    const int remain = tile_cols % num_workers;
+    int buf_start = 0;
 
-      tile_data->pbi = pbi;
-      tile_data->xd = pbi->mb;
-      tile_data->xd.corrupted = 0;
-      tile_data->xd.counts = cm->frame_parallel_decoding_mode ?
-                             0 : &tile_data->counts;
-      vp9_zero(tile_data->dqcoeff);
-      vp9_tile_init(tile, cm, 0, buf->col);
-      vp9_tile_init(&tile_data->xd.tile, cm, 0, buf->col);
-      setup_token_decoder(buf->data, data_end, buf->size, &cm->error,
-                          &tile_data->bit_reader, pbi->decrypt_cb,
-                          pbi->decrypt_state);
-      vp9_init_macroblockd(cm, &tile_data->xd, tile_data->dqcoeff);
+    for (n = 0; n < num_workers; ++n) {
+      const int count = base + (remain + n) / num_workers;
+      VPxWorker *const worker = &pbi->tile_workers[n];
+      TileWorkerData *const tile_data = (TileWorkerData*)worker->data1;
+
+      tile_data->buf_start = buf_start;
+      tile_data->buf_end = buf_start + count - 1;
+      tile_data->data_end = data_end;
+      buf_start += count;
 
       worker->had_error = 0;
-      if (i == num_workers - 1 || n == tile_cols - 1) {
+      if (n == num_workers - 1) {
+        assert(tile_data->buf_end == tile_cols - 1);
         winterface->execute(worker);
       } else {
         winterface->launch(worker);
       }
-
-      if (buf->col == tile_cols - 1) {
-        final_worker = i;
-      }
-
-      ++n;
     }
 
-    for (; i > 0; --i) {
-      VPxWorker *const worker = &pbi->tile_workers[i - 1];
+    for (; n > 0; --n) {
+      VPxWorker *const worker = &pbi->tile_workers[n - 1];
+      TileWorkerData *const tile_data = (TileWorkerData*)worker->data1;
       // TODO(jzern): The tile may have specific error data associated with
       // its vpx_internal_error_info which could be propagated to the main info
       // in cm. Additionally once the threads have been synced and an error is
       // detected, there's no point in continuing to decode tiles.
       pbi->mb.corrupted |= !winterface->sync(worker);
-    }
-    if (final_worker > -1) {
-      TileWorkerData *const tile_data =
-          (TileWorkerData*)pbi->tile_workers[final_worker].data1;
-      bit_reader_end = vpx_reader_find_end(&tile_data->bit_reader);
-      final_worker = -1;
-    }
-
-    // Accumulate thread frame counts.
-    if (n >= tile_cols && !cm->frame_parallel_decoding_mode) {
-      for (i = 0; i < num_workers; ++i) {
-        TileWorkerData *const tile_data =
-            (TileWorkerData*)pbi->tile_workers[i].data1;
-        vp9_accumulate_frame_counts(cm, &tile_data->counts, 1);
-      }
+      if (!bit_reader_end) bit_reader_end = tile_data->data_end;
     }
   }
 
+  // Accumulate thread frame counts.
+  if (!cm->frame_parallel_decoding_mode) {
+    for (n = 0; n < num_workers; ++n) {
+      TileWorkerData *const tile_data =
+          (TileWorkerData*)pbi->tile_workers[n].data1;
+      vp9_accumulate_frame_counts(&cm->counts, &tile_data->counts, 1);
+    }
+  }
+
+  assert(bit_reader_end || pbi->mb.corrupted);
   return bit_reader_end;
 }
 
@@ -1773,7 +1795,7 @@ static void read_bitdepth_colorspace_sampling(
   }
   cm->color_space = vpx_rb_read_literal(rb, 3);
   if (cm->color_space != VPX_CS_SRGB) {
-    vpx_rb_read_bit(rb);  // [16,235] (including xvycc) vs [0,255] range
+    cm->color_range = (vpx_color_range_t)vpx_rb_read_bit(rb);
     if (cm->profile == PROFILE_1 || cm->profile == PROFILE_3) {
       cm->subsampling_x = vpx_rb_read_bit(rb);
       cm->subsampling_y = vpx_rb_read_bit(rb);
@@ -1787,6 +1809,7 @@ static void read_bitdepth_colorspace_sampling(
       cm->subsampling_y = cm->subsampling_x = 1;
     }
   } else {
+    cm->color_range = VPX_CR_FULL_RANGE;
     if (cm->profile == PROFILE_1 || cm->profile == PROFILE_3) {
       // Note if colorspace is SRGB then 4:4:4 chroma sampling is assumed.
       // 4:2:2 or 4:4:0 chroma sampling is not allowed.
@@ -1892,6 +1915,7 @@ static size_t read_uncompressed_header(VP9Decoder *pbi,
         // specifies that the default color format should be YUV 4:2:0 in this
         // case (normative).
         cm->color_space = VPX_CS_BT_601;
+        cm->color_range = VPX_CR_STUDIO_RANGE;
         cm->subsampling_y = cm->subsampling_x = 1;
         cm->bit_depth = VPX_BITS_8;
 #if CONFIG_VP9_HIGHBITDEPTH
@@ -1942,6 +1966,9 @@ static size_t read_uncompressed_header(VP9Decoder *pbi,
   get_frame_new_buffer(cm)->bit_depth = cm->bit_depth;
 #endif
   get_frame_new_buffer(cm)->color_space = cm->color_space;
+  get_frame_new_buffer(cm)->color_range = cm->color_range;
+  get_frame_new_buffer(cm)->render_width  = cm->render_width;
+  get_frame_new_buffer(cm)->render_height = cm->render_height;
 
   if (pbi->need_resync) {
     vpx_internal_error(&cm->error, VPX_CODEC_CORRUPT_FRAME,
@@ -2102,7 +2129,7 @@ static struct vpx_read_bit_buffer *init_read_bit_buffer(
   rb->error_handler = error_handler;
   rb->error_handler_data = &pbi->common;
   if (pbi->decrypt_cb) {
-    const int n = (int)MIN(MAX_VP9_HEADER_SIZE, data_end - data);
+    const int n = (int)VPXMIN(MAX_VP9_HEADER_SIZE, data_end - data);
     pbi->decrypt_cb(pbi->decrypt_state, data, clear_data, n);
     rb->bit_buffer = clear_data;
     rb->bit_buffer_end = clear_data + n;

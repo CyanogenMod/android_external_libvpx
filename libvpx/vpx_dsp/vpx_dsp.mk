@@ -36,13 +36,13 @@ DSP_SRCS-yes += bitreader_buffer.h
 endif
 
 # intra predictions
-ifneq ($(filter yes,$(CONFIG_VP9) $(CONFIG_VP10)),)
 DSP_SRCS-yes += intrapred.c
 
 ifeq ($(CONFIG_USE_X86INC),yes)
 DSP_SRCS-$(HAVE_SSE) += x86/intrapred_sse2.asm
 DSP_SRCS-$(HAVE_SSE2) += x86/intrapred_sse2.asm
 DSP_SRCS-$(HAVE_SSSE3) += x86/intrapred_ssse3.asm
+DSP_SRCS-$(HAVE_SSSE3) += x86/vpx_subpixel_8t_ssse3.asm
 endif  # CONFIG_USE_X86INC
 
 ifeq ($(CONFIG_VP9_HIGHBITDEPTH),yes)
@@ -58,7 +58,6 @@ DSP_SRCS-$(HAVE_MSA) += mips/intrapred_msa.c
 DSP_SRCS-$(HAVE_DSPR2)  += mips/intrapred4_dspr2.c
 DSP_SRCS-$(HAVE_DSPR2)  += mips/intrapred8_dspr2.c
 DSP_SRCS-$(HAVE_DSPR2)  += mips/intrapred16_dspr2.c
-endif  # CONFIG_VP9 || CONFIG_VP10
 
 DSP_SRCS-$(HAVE_DSPR2)  += mips/common_dspr2.h
 DSP_SRCS-$(HAVE_DSPR2)  += mips/common_dspr2.c
@@ -249,7 +248,8 @@ DSP_SRCS-$(HAVE_SSE2)   += x86/highbd_quantize_intrin_sse2.c
 endif
 ifeq ($(ARCH_X86_64),yes)
 ifeq ($(CONFIG_USE_X86INC),yes)
-DSP_SRCS-$(HAVE_SSSE3) += x86/quantize_ssse3_x86_64.asm
+DSP_SRCS-$(HAVE_SSSE3)  += x86/quantize_ssse3_x86_64.asm
+DSP_SRCS-$(HAVE_AVX)    += x86/quantize_avx_x86_64.asm
 endif
 endif
 endif  # CONFIG_VP9_ENCODER || CONFIG_VP10_ENCODER
@@ -308,6 +308,8 @@ DSP_SRCS-$(HAVE_MMX)    += x86/variance_mmx.c
 DSP_SRCS-$(HAVE_MMX)    += x86/variance_impl_mmx.asm
 DSP_SRCS-$(HAVE_SSE)    += x86/variance_sse2.c
 DSP_SRCS-$(HAVE_SSE2)   += x86/variance_sse2.c  # Contains SSE2 and SSSE3
+DSP_SRCS-$(HAVE_SSE2)   += x86/halfpix_variance_sse2.c
+DSP_SRCS-$(HAVE_SSE2)   += x86/halfpix_variance_impl_sse2.asm
 DSP_SRCS-$(HAVE_AVX2)   += x86/variance_avx2.c
 DSP_SRCS-$(HAVE_AVX2)   += x86/variance_impl_avx2.c
 
