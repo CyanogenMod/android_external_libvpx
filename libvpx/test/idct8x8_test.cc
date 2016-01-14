@@ -14,10 +14,7 @@
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
 
-extern "C" {
-#include "./vp9_rtcd.h"
-}
-
+#include "./vpx_dsp_rtcd.h"
 #include "test/acm_random.h"
 #include "vpx/vpx_integer.h"
 
@@ -111,7 +108,8 @@ TEST(VP9Idct8x8Test, AccuracyCheck) {
   ACMRandom rnd(ACMRandom::DeterministicSeed());
   const int count_test_block = 10000;
   for (int i = 0; i < count_test_block; ++i) {
-    int16_t input[64], coeff[64];
+    int16_t input[64];
+    tran_low_t coeff[64];
     double output_r[64];
     uint8_t dst[64], src[64];
 
@@ -126,7 +124,7 @@ TEST(VP9Idct8x8Test, AccuracyCheck) {
     reference_dct_2d(input, output_r);
     for (int j = 0; j < 64; ++j)
       coeff[j] = round(output_r[j]);
-    vp9_idct8x8_64_add_c(coeff, dst, 8);
+    vpx_idct8x8_64_add_c(coeff, dst, 8);
     for (int j = 0; j < 64; ++j) {
       const int diff = dst[j] - src[j];
       const int error = diff * diff;
