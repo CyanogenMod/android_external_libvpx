@@ -21,6 +21,7 @@ class SuperframeTest : public ::libvpx_test::EncoderTest,
  protected:
   SuperframeTest() : EncoderTest(GET_PARAM(0)), modified_buf_(NULL),
       last_sf_pts_(0) {}
+  virtual ~SuperframeTest() {}
 
   virtual void SetUp() {
     InitializeConfig();
@@ -92,5 +93,8 @@ TEST_P(SuperframeTest, TestSuperframeIndexIsOptional) {
 }
 
 VP9_INSTANTIATE_TEST_CASE(SuperframeTest, ::testing::Values(
+    ::libvpx_test::kTwoPassGood));
+
+VP10_INSTANTIATE_TEST_CASE(SuperframeTest, ::testing::Values(
     ::libvpx_test::kTwoPassGood));
 }  // namespace

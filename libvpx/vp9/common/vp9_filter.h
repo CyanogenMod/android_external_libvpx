@@ -13,39 +13,30 @@
 
 #include "./vpx_config.h"
 #include "vpx/vpx_integer.h"
+#include "vpx_dsp/vpx_filter.h"
+#include "vpx_ports/mem.h"
 
-#define FILTER_BITS 7
 
-#define SUBPEL_BITS 4
-#define SUBPEL_MASK ((1 << SUBPEL_BITS) - 1)
-#define SUBPEL_SHIFTS (1 << SUBPEL_BITS)
-#define SUBPEL_TAPS 8
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-typedef enum {
-  EIGHTTAP = 0,
-  EIGHTTAP_SMOOTH = 1,
-  EIGHTTAP_SHARP = 2,
-  BILINEAR = 3,
-  SWITCHABLE = 4  /* should be the last one */
-} INTERPOLATION_TYPE;
+#define EIGHTTAP            0
+#define EIGHTTAP_SMOOTH     1
+#define EIGHTTAP_SHARP      2
+#define SWITCHABLE_FILTERS  3 /* Number of switchable filters */
+#define BILINEAR            3
+// The codec can operate in four possible inter prediction filter mode:
+// 8-tap, 8-tap-smooth, 8-tap-sharp, and switching between the three.
+#define SWITCHABLE_FILTER_CONTEXTS (SWITCHABLE_FILTERS + 1)
+#define SWITCHABLE 4 /* should be the last one */
 
-typedef int16_t subpel_kernel[SUBPEL_TAPS];
+typedef uint8_t INTERP_FILTER;
 
-struct subpix_fn_table {
-  const subpel_kernel *filter_x;
-  const subpel_kernel *filter_y;
-};
+extern const InterpKernel *vp9_filter_kernels[4];
 
-const subpel_kernel *vp9_get_filter_kernel(INTERPOLATION_TYPE type);
-
-extern const subpel_kernel vp9_bilinear_filters[SUBPEL_SHIFTS];
-extern const subpel_kernel vp9_sub_pel_filters_8[SUBPEL_SHIFTS];
-extern const subpel_kernel vp9_sub_pel_filters_8s[SUBPEL_SHIFTS];
-extern const subpel_kernel vp9_sub_pel_filters_8lp[SUBPEL_SHIFTS];
-
-// The VP9_BILINEAR_FILTERS_2TAP macro returns a pointer to the bilinear
-// filter kernel as a 2 tap filter.
-#define BILINEAR_FILTERS_2TAP(x) \
-  (vp9_bilinear_filters[(x)] + SUBPEL_TAPS/2 - 1)
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 #endif  // VP9_COMMON_VP9_FILTER_H_
