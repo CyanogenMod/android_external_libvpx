@@ -29,14 +29,14 @@ include $(LOCAL_PATH)/config.$(TARGET_ARCH).mk
 LOCAL_SRC_FILES_$(TARGET_ARCH) := $(libvpx_codec_srcs_c_$(TARGET_ARCH))
 LOCAL_C_INCLUDES_$(TARGET_ARCH) := $(libvpx_config_dir_$(TARGET_ARCH))
 libvpx_2nd_arch :=
-include $(LOCAL_PATH)/libvpx-offsets.mk
+include $(LOCAL_PATH)/libvpx-asm-translation.mk
 
 ifdef TARGET_2ND_ARCH
 include $(LOCAL_PATH)/config.$(TARGET_2ND_ARCH).mk
 LOCAL_SRC_FILES_$(TARGET_2ND_ARCH) := $(libvpx_codec_srcs_c_$(TARGET_2ND_ARCH))
 LOCAL_C_INCLUDES_$(TARGET_2ND_ARCH) := $(libvpx_config_dir_$(TARGET_2ND_ARCH))
 libvpx_2nd_arch := $(TARGET_2ND_ARCH_VAR_PREFIX)
-include $(LOCAL_PATH)/libvpx-offsets.mk
+include $(LOCAL_PATH)/libvpx-asm-translation.mk
 libvpx_2nd_arch :=
 endif
 

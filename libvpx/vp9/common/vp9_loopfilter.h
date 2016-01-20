@@ -29,6 +29,12 @@ extern "C" {
 #define MAX_REF_LF_DELTAS       4
 #define MAX_MODE_LF_DELTAS      2
 
+enum lf_path {
+  LF_PATH_420,
+  LF_PATH_444,
+  LF_PATH_SLOW,
+};
+
 struct loopfilter {
   int filter_level;
 
@@ -92,10 +98,20 @@ void vp9_setup_mask(struct VP9Common *const cm,
                     MODE_INFO **mi_8x8, const int mode_info_stride,
                     LOOP_FILTER_MASK *lfm);
 
-void vp9_filter_block_plane(struct VP9Common *const cm,
-                            struct macroblockd_plane *const plane,
-                            int mi_row,
-                            LOOP_FILTER_MASK *lfm);
+void vp9_filter_block_plane_ss00(struct VP9Common *const cm,
+                                 struct macroblockd_plane *const plane,
+                                 int mi_row,
+                                 LOOP_FILTER_MASK *lfm);
+
+void vp9_filter_block_plane_ss11(struct VP9Common *const cm,
+                                 struct macroblockd_plane *const plane,
+                                 int mi_row,
+                                 LOOP_FILTER_MASK *lfm);
+
+void vp9_filter_block_plane_non420(struct VP9Common *cm,
+                                   struct macroblockd_plane *plane,
+                                   MODE_INFO **mi_8x8,
+                                   int mi_row, int mi_col);
 
 void vp9_loop_filter_init(struct VP9Common *cm);
 
@@ -111,26 +127,27 @@ void vp9_loop_filter_frame(YV12_BUFFER_CONFIG *frame,
                            int y_only, int partial_frame);
 
 // Apply the loop filter to [start, stop) macro block rows in frame_buffer.
-void vp9_loop_filter_rows(const YV12_BUFFER_CONFIG *frame_buffer,
+void vp9_loop_filter_rows(YV12_BUFFER_CONFIG *frame_buffer,
                           struct VP9Common *cm,
                           struct macroblockd_plane planes[MAX_MB_PLANE],
                           int start, int stop, int y_only);
 
 typedef struct LoopFilterWorkerData {
-  const YV12_BUFFER_CONFIG *frame_buffer;
+  YV12_BUFFER_CONFIG *frame_buffer;
   struct VP9Common *cm;
   struct macroblockd_plane planes[MAX_MB_PLANE];
 
   int start;
   int stop;
   int y_only;
-
-  struct VP9LfSyncData *lf_sync;
-  int num_lf_workers;
 } LFWorkerData;
 
-// Operates on the rows described by LFWorkerData passed as 'arg1'.
-int vp9_loop_filter_worker(void *arg1, void *arg2);
+void vp9_loop_filter_data_reset(
+    LFWorkerData *lf_data, YV12_BUFFER_CONFIG *frame_buffer,
+    struct VP9Common *cm, const struct macroblockd_plane planes[MAX_MB_PLANE]);
+
+// Operates on the rows described by 'lf_data'.
+int vp9_loop_filter_worker(LFWorkerData *const lf_data, void *unused);
 #ifdef __cplusplus
 }  // extern "C"
 #endif
