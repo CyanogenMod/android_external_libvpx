@@ -22,14 +22,6 @@ enum TestDecodeFatality {
   TEST_DECODE_WARN,
 };
 
-typedef enum {
-  I420,  // 4:2:0 8+ bit-depth
-  I422,  // 4:2:2 8+ bit-depth
-  I444,  // 4:4:4 8+ bit-depth
-  I440,  // 4:4:0 8+ bit-depth
-  YV12,  // 4:2:0 with uv flipped, only 8-bit depth
-} ColorInputType;
-
 struct VpxInterface;
 
 /* Configuration elements common to all streams. */
@@ -39,7 +31,7 @@ struct VpxEncoderConfig {
   int pass;
   int usage;
   int deadline;
-  ColorInputType color_type;
+  int use_i420;
   int quiet;
   int verbose;
   int limit;

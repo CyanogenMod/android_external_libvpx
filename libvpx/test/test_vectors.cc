@@ -161,14 +161,10 @@ const char *const kVP9TestVectors[] = {
   "vp90-2-08-tile-4x1.webm", "vp90-2-09-subpixel-00.ivf",
   "vp90-2-02-size-lf-1920x1080.webm", "vp90-2-09-aq2.webm",
   "vp90-2-09-lf_deltas.webm", "vp90-2-10-show-existing-frame.webm",
-  "vp90-2-10-show-existing-frame2.webm",
   "vp90-2-11-size-351x287.webm", "vp90-2-11-size-351x288.webm",
   "vp90-2-11-size-352x287.webm", "vp90-2-12-droppable_1.ivf",
   "vp90-2-12-droppable_2.ivf", "vp90-2-12-droppable_3.ivf",
-#if !CONFIG_SIZE_LIMIT || \
-    (DECODE_WIDTH_LIMIT >= 20400 && DECODE_HEIGHT_LIMIT >= 120)
-  "vp90-2-13-largescaling.webm",
-#endif
+  "vp90-2-13-largescaling.webm", "vp91-2-04-yv444.webm",
   "vp90-2-14-resize-fp-tiles-1-16.webm",
   "vp90-2-14-resize-fp-tiles-1-2-4-8-16.webm",
   "vp90-2-14-resize-fp-tiles-1-2.webm", "vp90-2-14-resize-fp-tiles-1-4.webm",
@@ -181,20 +177,7 @@ const char *const kVP9TestVectors[] = {
   "vp90-2-14-resize-fp-tiles-4-16.webm", "vp90-2-14-resize-fp-tiles-4-1.webm",
   "vp90-2-14-resize-fp-tiles-4-2.webm", "vp90-2-14-resize-fp-tiles-4-8.webm",
   "vp90-2-14-resize-fp-tiles-8-16.webm", "vp90-2-14-resize-fp-tiles-8-1.webm",
-  "vp90-2-14-resize-fp-tiles-8-2.webm", "vp90-2-14-resize-fp-tiles-8-4.webm",
-  "vp90-2-15-segkey.webm", "vp90-2-15-segkey_adpq.webm",
-  "vp90-2-16-intra-only.webm", "vp90-2-17-show-existing-frame.webm",
-  "vp90-2-18-resize.ivf", "vp90-2-19-skip.webm",
-  "vp90-2-19-skip-01.webm", "vp90-2-19-skip-02.webm",
-  "vp91-2-04-yuv444.webm",
-  "vp91-2-04-yuv422.webm", "vp91-2-04-yuv440.webm",
-#if CONFIG_VP9_HIGHBITDEPTH
-  "vp92-2-20-10bit-yuv420.webm", "vp92-2-20-12bit-yuv420.webm",
-  "vp93-2-20-10bit-yuv422.webm", "vp93-2-20-12bit-yuv422.webm",
-  "vp93-2-20-10bit-yuv440.webm", "vp93-2-20-12bit-yuv440.webm",
-  "vp93-2-20-10bit-yuv444.webm", "vp93-2-20-12bit-yuv444.webm",
-#endif  // CONFIG_VP9_HIGHBITDEPTH`
-  "vp90-2-20-big_superframe-01.webm", "vp90-2-20-big_superframe-02.webm",
+  "vp90-2-14-resize-fp-tiles-8-2.webm", "vp90-2-14-resize-fp-tiles-8-4.webm"
 };
 const int kNumVP9TestVectors = NELEMENTS(kVP9TestVectors);
 #endif  // CONFIG_VP9_DECODER

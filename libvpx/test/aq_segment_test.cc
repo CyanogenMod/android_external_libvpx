@@ -7,6 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
+#include <climits>
+#include <vector>
 #include "third_party/googletest/src/include/gtest/gtest.h"
 #include "test/codec_factory.h"
 #include "test/encode_test_driver.h"
@@ -15,12 +17,11 @@
 
 namespace {
 
-class AqSegmentTest
-    : public ::libvpx_test::EncoderTest,
-      public ::libvpx_test::CodecTestWith2Params<libvpx_test::TestMode, int> {
+class AqSegmentTest : public ::libvpx_test::EncoderTest,
+    public ::libvpx_test::CodecTestWith2Params<
+        libvpx_test::TestMode, int> {
  protected:
   AqSegmentTest() : EncoderTest(GET_PARAM(0)) {}
-  virtual ~AqSegmentTest() {}
 
   virtual void SetUp() {
     InitializeConfig();
@@ -38,6 +39,10 @@ class AqSegmentTest
     }
   }
 
+  virtual void FramePktHook(const vpx_codec_cx_pkt_t *pkt) {
+    if (pkt->data.frame.flags & VPX_FRAME_IS_KEY) {
+    }
+  }
   int set_cpu_used_;
   int aq_mode_;
 };
@@ -102,8 +107,13 @@ TEST_P(AqSegmentTest, TestNoMisMatchAQ3) {
   ASSERT_NO_FATAL_FAILURE(RunLoop(&video));
 }
 
+using std::tr1::make_tuple;
+
+#define VP9_FACTORY \
+  static_cast<const libvpx_test::CodecFactory*> (&libvpx_test::kVP9)
+
 VP9_INSTANTIATE_TEST_CASE(AqSegmentTest,
                           ::testing::Values(::libvpx_test::kRealTime,
                                             ::libvpx_test::kOnePassGood),
-                          ::testing::Range(3, 9));
+                                            ::testing::Range(3, 9));
 }  // namespace

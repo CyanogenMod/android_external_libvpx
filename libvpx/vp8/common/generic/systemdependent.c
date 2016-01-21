@@ -17,7 +17,6 @@
 #include "vpx_ports/x86.h"
 #endif
 #include "vp8/common/onyxc_int.h"
-#include "vp8/common/systemdependent.h"
 
 #if CONFIG_MULTITHREAD
 #if HAVE_UNISTD_H && !defined(__OS2__)
@@ -45,10 +44,6 @@ static int get_cpu_count()
 #endif
 #elif defined(_WIN32)
     {
-#if _WIN32_WINNT >= 0x0501
-        SYSTEM_INFO sysinfo;
-        GetNativeSystemInfo(&sysinfo);
-#else
         PGNSI pGNSI;
         SYSTEM_INFO sysinfo;
 
@@ -61,7 +56,6 @@ static int get_cpu_count()
             pGNSI(&sysinfo);
         else
             GetSystemInfo(&sysinfo);
-#endif
 
         core_count = sysinfo.dwNumberOfProcessors;
     }
