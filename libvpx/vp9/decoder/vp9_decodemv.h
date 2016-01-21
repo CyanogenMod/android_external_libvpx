@@ -11,20 +11,13 @@
 #ifndef VP9_DECODER_VP9_DECODEMV_H_
 #define VP9_DECODER_VP9_DECODEMV_H_
 
-#include "vpx_dsp/bitreader.h"
+#include "vp9/decoder/vp9_onyxd_int.h"
+#include "vp9/decoder/vp9_dboolhuff.h"
 
-#include "vp9/decoder/vp9_decoder.h"
+struct TileInfo;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void vpx_read_mode_info(VP9Decoder *const pbi, MACROBLOCKD *xd,
-                        int mi_row, int mi_col, vpx_reader *r,
-                        int x_mis, int y_mis);
-
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+void vp9_read_mode_info(VP9_COMMON *cm, MACROBLOCKD *xd,
+                        const struct TileInfo *const tile,
+                        int mi_row, int mi_col, vp9_reader *r);
 
 #endif  // VP9_DECODER_VP9_DECODEMV_H_

@@ -20,7 +20,6 @@ class ConfigTest : public ::libvpx_test::EncoderTest,
  protected:
   ConfigTest() : EncoderTest(GET_PARAM(0)),
                  frame_count_in_(0), frame_count_out_(0), frame_count_max_(0) {}
-  virtual ~ConfigTest() {}
 
   virtual void SetUp() {
     InitializeConfig();

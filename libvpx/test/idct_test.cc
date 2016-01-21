@@ -8,20 +8,21 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+extern "C" {
 #include "./vpx_config.h"
 #include "./vp8_rtcd.h"
-
-#include "third_party/googletest/src/include/gtest/gtest.h"
-
+}
 #include "test/clear_system_state.h"
 #include "test/register_state_check.h"
+#include "third_party/googletest/src/include/gtest/gtest.h"
+
 #include "vpx/vpx_integer.h"
 
-typedef void (*IdctFunc)(int16_t *input, unsigned char *pred_ptr,
-                         int pred_stride, unsigned char *dst_ptr,
-                         int dst_stride);
+typedef void (*idct_fn_t)(int16_t *input, unsigned char *pred_ptr,
+                          int pred_stride, unsigned char *dst_ptr,
+                          int dst_stride);
 namespace {
-class IDCTTest : public ::testing::TestWithParam<IdctFunc> {
+class IDCTTest : public ::testing::TestWithParam<idct_fn_t> {
  protected:
   virtual void SetUp() {
     int i;
@@ -34,7 +35,7 @@ class IDCTTest : public ::testing::TestWithParam<IdctFunc> {
 
   virtual void TearDown() { libvpx_test::ClearSystemState(); }
 
-  IdctFunc UUT;
+  idct_fn_t UUT;
   int16_t input[16];
   unsigned char output[256];
   unsigned char predict[256];
@@ -53,7 +54,7 @@ TEST_P(IDCTTest, TestGuardBlocks) {
 TEST_P(IDCTTest, TestAllZeros) {
   int i;
 
-  ASM_REGISTER_STATE_CHECK(UUT(input, output, 16, output, 16));
+  REGISTER_STATE_CHECK(UUT(input, output, 16, output, 16));
 
   for (i = 0; i < 256; i++)
     if ((i & 0xF) < 4 && i < 64)
@@ -66,7 +67,7 @@ TEST_P(IDCTTest, TestAllOnes) {
   int i;
 
   input[0] = 4;
-  ASM_REGISTER_STATE_CHECK(UUT(input, output, 16, output, 16));
+  REGISTER_STATE_CHECK(UUT(input, output, 16, output, 16));
 
   for (i = 0; i < 256; i++)
     if ((i & 0xF) < 4 && i < 64)
@@ -80,7 +81,7 @@ TEST_P(IDCTTest, TestAddOne) {
 
   for (i = 0; i < 256; i++) predict[i] = i;
   input[0] = 4;
-  ASM_REGISTER_STATE_CHECK(UUT(input, predict, 16, output, 16));
+  REGISTER_STATE_CHECK(UUT(input, predict, 16, output, 16));
 
   for (i = 0; i < 256; i++)
     if ((i & 0xF) < 4 && i < 64)
@@ -94,7 +95,7 @@ TEST_P(IDCTTest, TestWithData) {
 
   for (i = 0; i < 16; i++) input[i] = i;
 
-  ASM_REGISTER_STATE_CHECK(UUT(input, output, 16, output, 16));
+  REGISTER_STATE_CHECK(UUT(input, output, 16, output, 16));
 
   for (i = 0; i < 256; i++)
     if ((i & 0xF) > 3 || i > 63)
@@ -113,9 +114,5 @@ INSTANTIATE_TEST_CASE_P(C, IDCTTest, ::testing::Values(vp8_short_idct4x4llm_c));
 #if HAVE_MMX
 INSTANTIATE_TEST_CASE_P(MMX, IDCTTest,
                         ::testing::Values(vp8_short_idct4x4llm_mmx));
-#endif
-#if HAVE_MSA
-INSTANTIATE_TEST_CASE_P(MSA, IDCTTest,
-                        ::testing::Values(vp8_short_idct4x4llm_msa));
 #endif
 }

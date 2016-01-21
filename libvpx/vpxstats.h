@@ -15,10 +15,6 @@
 
 #include "vpx/vpx_encoder.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* This structure is used to abstract the different ways of handling
  * first pass statistics
  */
@@ -36,8 +32,6 @@ void stats_close(stats_io_t *stats, int last_pass);
 void stats_write(stats_io_t *stats, const void *pkt, size_t len);
 vpx_fixed_buf_t stats_get(stats_io_t *stats);
 
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+double vp8_mse2psnr(double samples, double peak, double mse);
 
 #endif  // VPXSTATS_H_

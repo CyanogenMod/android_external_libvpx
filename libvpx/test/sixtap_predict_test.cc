@@ -1,41 +1,38 @@
 /*
- *  Copyright (c) 2013 The WebM project authors. All Rights Reserved.
- *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
- */
+*  Copyright (c) 2012 The WebM project authors. All Rights Reserved.
+*
+*  Use of this source code is governed by a BSD-style license
+*  that can be found in the LICENSE file in the root of the source
+*  tree. An additional intellectual property rights grant can be found
+*  in the file PATENTS.  All contributing project authors may
+*  be found in the AUTHORS file in the root of the source tree.
+*/
 
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "third_party/googletest/src/include/gtest/gtest.h"
-
-#include "./vpx_config.h"
-#include "./vp8_rtcd.h"
 #include "test/acm_random.h"
 #include "test/clear_system_state.h"
 #include "test/register_state_check.h"
 #include "test/util.h"
+#include "third_party/googletest/src/include/gtest/gtest.h"
+extern "C" {
+#include "./vpx_config.h"
+#include "./vp8_rtcd.h"
 #include "vpx/vpx_integer.h"
 #include "vpx_mem/vpx_mem.h"
+}
 
 namespace {
 
-typedef void (*SixtapPredictFunc)(uint8_t *src_ptr,
-                                  int src_pixels_per_line,
-                                  int xoffset,
-                                  int yoffset,
-                                  uint8_t *dst_ptr,
-                                  int dst_pitch);
+typedef void (*sixtap_predict_fn_t)(uint8_t *src_ptr,
+                                    int  src_pixels_per_line,
+                                    int  xoffset,
+                                    int  yoffset,
+                                    uint8_t *dst_ptr,
+                                    int  dst_pitch);
 
-typedef std::tr1::tuple<int, int, SixtapPredictFunc> SixtapPredictParam;
-
-class SixtapPredictTest
-    : public ::testing::TestWithParam<SixtapPredictParam> {
+class SixtapPredictTest : public PARAMS(int, int, sixtap_predict_fn_t) {
  public:
   static void SetUpTestCase() {
     src_ = reinterpret_cast<uint8_t*>(vpx_memalign(kDataAlignment, kSrcSize));
@@ -76,7 +73,7 @@ class SixtapPredictTest
 
   int width_;
   int height_;
-  SixtapPredictFunc sixtap_predict_;
+  sixtap_predict_fn_t sixtap_predict_;
   // The src stores the macroblock we will filter on, and makes it 1 byte larger
   // in order to test unaligned access. The result is stored in dst and dst_c(c
   // reference code result).
@@ -145,9 +142,8 @@ TEST_P(SixtapPredictTest, TestWithPresetData) {
 
   uint8_t *src = const_cast<uint8_t*>(test_data);
 
-  ASM_REGISTER_STATE_CHECK(
-      sixtap_predict_(&src[kSrcStride * 2 + 2 + 1], kSrcStride,
-                      2, 2, dst_, kDstStride));
+  REGISTER_STATE_CHECK(sixtap_predict_(&src[kSrcStride * 2 + 2 + 1], kSrcStride,
+                                       2, 2, dst_, kDstStride));
 
   for (int i = 0; i < height_; ++i)
     for (int j = 0; j < width_; ++j)
@@ -172,7 +168,7 @@ TEST_P(SixtapPredictTest, TestWithRandomData) {
                                 xoffset, yoffset, dst_c_, kDstStride);
 
       // Run test.
-      ASM_REGISTER_STATE_CHECK(
+      REGISTER_STATE_CHECK(
           sixtap_predict_(&src_[kSrcStride * 2 + 2 + 1], kSrcStride,
                           xoffset, yoffset, dst_, kDstStride));
 
@@ -186,31 +182,21 @@ TEST_P(SixtapPredictTest, TestWithRandomData) {
 
 using std::tr1::make_tuple;
 
-const SixtapPredictFunc sixtap_16x16_c = vp8_sixtap_predict16x16_c;
-const SixtapPredictFunc sixtap_8x8_c = vp8_sixtap_predict8x8_c;
-const SixtapPredictFunc sixtap_8x4_c = vp8_sixtap_predict8x4_c;
-const SixtapPredictFunc sixtap_4x4_c = vp8_sixtap_predict4x4_c;
+const sixtap_predict_fn_t sixtap_16x16_c = vp8_sixtap_predict16x16_c;
+const sixtap_predict_fn_t sixtap_8x8_c = vp8_sixtap_predict8x8_c;
+const sixtap_predict_fn_t sixtap_8x4_c = vp8_sixtap_predict8x4_c;
+const sixtap_predict_fn_t sixtap_4x4_c = vp8_sixtap_predict4x4_c;
 INSTANTIATE_TEST_CASE_P(
     C, SixtapPredictTest, ::testing::Values(
         make_tuple(16, 16, sixtap_16x16_c),
         make_tuple(8, 8, sixtap_8x8_c),
         make_tuple(8, 4, sixtap_8x4_c),
         make_tuple(4, 4, sixtap_4x4_c)));
-#if HAVE_NEON
-const SixtapPredictFunc sixtap_16x16_neon = vp8_sixtap_predict16x16_neon;
-const SixtapPredictFunc sixtap_8x8_neon = vp8_sixtap_predict8x8_neon;
-const SixtapPredictFunc sixtap_8x4_neon = vp8_sixtap_predict8x4_neon;
-INSTANTIATE_TEST_CASE_P(
-    DISABLED_NEON, SixtapPredictTest, ::testing::Values(
-        make_tuple(16, 16, sixtap_16x16_neon),
-        make_tuple(8, 8, sixtap_8x8_neon),
-        make_tuple(8, 4, sixtap_8x4_neon)));
-#endif
 #if HAVE_MMX
-const SixtapPredictFunc sixtap_16x16_mmx = vp8_sixtap_predict16x16_mmx;
-const SixtapPredictFunc sixtap_8x8_mmx = vp8_sixtap_predict8x8_mmx;
-const SixtapPredictFunc sixtap_8x4_mmx = vp8_sixtap_predict8x4_mmx;
-const SixtapPredictFunc sixtap_4x4_mmx = vp8_sixtap_predict4x4_mmx;
+const sixtap_predict_fn_t sixtap_16x16_mmx = vp8_sixtap_predict16x16_mmx;
+const sixtap_predict_fn_t sixtap_8x8_mmx = vp8_sixtap_predict8x8_mmx;
+const sixtap_predict_fn_t sixtap_8x4_mmx = vp8_sixtap_predict8x4_mmx;
+const sixtap_predict_fn_t sixtap_4x4_mmx = vp8_sixtap_predict4x4_mmx;
 INSTANTIATE_TEST_CASE_P(
     MMX, SixtapPredictTest, ::testing::Values(
         make_tuple(16, 16, sixtap_16x16_mmx),
@@ -219,9 +205,9 @@ INSTANTIATE_TEST_CASE_P(
         make_tuple(4, 4, sixtap_4x4_mmx)));
 #endif
 #if HAVE_SSE2
-const SixtapPredictFunc sixtap_16x16_sse2 = vp8_sixtap_predict16x16_sse2;
-const SixtapPredictFunc sixtap_8x8_sse2 = vp8_sixtap_predict8x8_sse2;
-const SixtapPredictFunc sixtap_8x4_sse2 = vp8_sixtap_predict8x4_sse2;
+const sixtap_predict_fn_t sixtap_16x16_sse2 = vp8_sixtap_predict16x16_sse2;
+const sixtap_predict_fn_t sixtap_8x8_sse2 = vp8_sixtap_predict8x8_sse2;
+const sixtap_predict_fn_t sixtap_8x4_sse2 = vp8_sixtap_predict8x4_sse2;
 INSTANTIATE_TEST_CASE_P(
     SSE2, SixtapPredictTest, ::testing::Values(
         make_tuple(16, 16, sixtap_16x16_sse2),
@@ -229,27 +215,15 @@ INSTANTIATE_TEST_CASE_P(
         make_tuple(8, 4, sixtap_8x4_sse2)));
 #endif
 #if HAVE_SSSE3
-const SixtapPredictFunc sixtap_16x16_ssse3 = vp8_sixtap_predict16x16_ssse3;
-const SixtapPredictFunc sixtap_8x8_ssse3 = vp8_sixtap_predict8x8_ssse3;
-const SixtapPredictFunc sixtap_8x4_ssse3 = vp8_sixtap_predict8x4_ssse3;
-const SixtapPredictFunc sixtap_4x4_ssse3 = vp8_sixtap_predict4x4_ssse3;
+const sixtap_predict_fn_t sixtap_16x16_ssse3 = vp8_sixtap_predict16x16_ssse3;
+const sixtap_predict_fn_t sixtap_8x8_ssse3 = vp8_sixtap_predict8x8_ssse3;
+const sixtap_predict_fn_t sixtap_8x4_ssse3 = vp8_sixtap_predict8x4_ssse3;
+const sixtap_predict_fn_t sixtap_4x4_ssse3 = vp8_sixtap_predict4x4_ssse3;
 INSTANTIATE_TEST_CASE_P(
     SSSE3, SixtapPredictTest, ::testing::Values(
         make_tuple(16, 16, sixtap_16x16_ssse3),
         make_tuple(8, 8, sixtap_8x8_ssse3),
         make_tuple(8, 4, sixtap_8x4_ssse3),
         make_tuple(4, 4, sixtap_4x4_ssse3)));
-#endif
-#if HAVE_MSA
-const SixtapPredictFunc sixtap_16x16_msa = vp8_sixtap_predict16x16_msa;
-const SixtapPredictFunc sixtap_8x8_msa = vp8_sixtap_predict8x8_msa;
-const SixtapPredictFunc sixtap_8x4_msa = vp8_sixtap_predict8x4_msa;
-const SixtapPredictFunc sixtap_4x4_msa = vp8_sixtap_predict4x4_msa;
-INSTANTIATE_TEST_CASE_P(
-    MSA, SixtapPredictTest, ::testing::Values(
-        make_tuple(16, 16, sixtap_16x16_msa),
-        make_tuple(8, 8, sixtap_8x8_msa),
-        make_tuple(8, 4, sixtap_8x4_msa),
-        make_tuple(4, 4, sixtap_4x4_msa)));
 #endif
 }  // namespace

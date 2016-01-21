@@ -18,15 +18,17 @@
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
 #include "test/acm_random.h"
-#include "vp8/encoder/onyx_int.h"
 #include "vpx/vpx_integer.h"
 #include "vpx_mem/vpx_mem.h"
+extern "C" {
+#include "vp8/encoder/onyx_int.h"
+}
 
 using libvpx_test::ACMRandom;
 
 namespace {
 
-TEST(VP8RoiMapTest, ParameterCheck) {
+TEST(Vp8RoiMapTest, ParameterCheck) {
   ACMRandom rnd(ACMRandom::DeterministicSeed());
   int delta_q[MAX_MB_SEGMENTS] = { -2, -25, 0, 31 };
   int delta_lf[MAX_MB_SEGMENTS] = { -2, -25, 0, 31 };
@@ -53,7 +55,7 @@ TEST(VP8RoiMapTest, ParameterCheck) {
   cpi.common.mb_rows = 240 >> 4;
   cpi.common.mb_cols = 320 >> 4;
   const int mbs = (cpi.common.mb_rows * cpi.common.mb_cols);
-  memset(cpi.segment_feature_data, 0, sizeof(cpi.segment_feature_data));
+  vpx_memset(cpi.segment_feature_data, 0, sizeof(cpi.segment_feature_data));
 
   // Segment map
   cpi.segmentation_map = reinterpret_cast<unsigned char *>(vpx_calloc(mbs, 1));
@@ -61,9 +63,9 @@ TEST(VP8RoiMapTest, ParameterCheck) {
   // Allocate memory for the source memory map.
   unsigned char *roi_map =
     reinterpret_cast<unsigned char *>(vpx_calloc(mbs, 1));
-  memset(&roi_map[mbs >> 2], 1, (mbs >> 2));
-  memset(&roi_map[mbs >> 1], 2, (mbs >> 2));
-  memset(&roi_map[mbs -(mbs >> 2)], 3, (mbs >> 2));
+  vpx_memset(&roi_map[mbs >> 2], 1, (mbs >> 2));
+  vpx_memset(&roi_map[mbs >> 1], 2, (mbs >> 2));
+  vpx_memset(&roi_map[mbs -(mbs >> 2)], 3, (mbs >> 2));
 
   // Do a test call with valid parameters.
   int roi_retval = vp8_set_roimap(&cpi, roi_map, cpi.common.mb_rows,

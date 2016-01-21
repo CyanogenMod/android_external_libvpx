@@ -21,7 +21,6 @@ class KeyframeTest : public ::libvpx_test::EncoderTest,
     public ::libvpx_test::CodecTestWithParam<libvpx_test::TestMode> {
  protected:
   KeyframeTest() : EncoderTest(GET_PARAM(0)) {}
-  virtual ~KeyframeTest() {}
 
   virtual void SetUp() {
     InitializeConfig();

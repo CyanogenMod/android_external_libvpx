@@ -14,7 +14,9 @@
 #include <limits.h>
 #include "args.h"
 
-#include "vpx_ports/msvc.h"
+#ifdef _MSC_VER
+#define snprintf _snprintf
+#endif
 
 #if defined(__GNUC__) && __GNUC__
 extern void die(const char *fmt, ...) __attribute__((noreturn));

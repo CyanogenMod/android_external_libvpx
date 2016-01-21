@@ -56,9 +56,6 @@ class DiffHunk(object):
         elif line[0] == " ":
             self.left.Append(line)
             self.right.Append(line)
-        elif line[0] == "\\":
-            # Ignore newline messages from git diff.
-            pass
         else:
             assert False, ("Unrecognized character at start of diff line "
                            "%r" % line[0])
