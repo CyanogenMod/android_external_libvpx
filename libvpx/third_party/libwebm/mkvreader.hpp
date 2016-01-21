@@ -12,34 +12,35 @@
 #include "mkvparser.hpp"
 #include <cstdio>
 
-namespace mkvparser {
+namespace mkvparser
+{
 
-class MkvReader : public IMkvReader {
- public:
-  MkvReader();
-  explicit MkvReader(FILE* fp);
-  virtual ~MkvReader();
+class MkvReader : public IMkvReader
+{
+    MkvReader(const MkvReader&);
+    MkvReader& operator=(const MkvReader&);
+public:
+    MkvReader();
+    MkvReader(FILE* fp);
+    virtual ~MkvReader();
 
-  int Open(const char*);
-  void Close();
+    int Open(const char*);
+    void Close();
 
-  virtual int Read(long long position, long length, unsigned char* buffer);
-  virtual int Length(long long* total, long long* available);
+    virtual int Read(long long position, long length, unsigned char* buffer);
+    virtual int Length(long long* total, long long* available);
+private:
 
- private:
-  MkvReader(const MkvReader&);
-  MkvReader& operator=(const MkvReader&);
+    // Determines the size of the file. This is called either by the constructor
+    // or by the Open function depending on file ownership. Returns true on
+    // success.
+    bool GetFileSize();
 
-  // Determines the size of the file. This is called either by the constructor
-  // or by the Open function depending on file ownership. Returns true on
-  // success.
-  bool GetFileSize();
-
-  long long m_length;
-  FILE* m_file;
-  bool reader_owns_file_;
+    long long m_length;
+    FILE* m_file;
+    bool reader_owns_file_;
 };
 
-}  // end namespace mkvparser
+}  //end namespace mkvparser
 
-#endif  // MKVREADER_HPP
+#endif //MKVREADER_HPP

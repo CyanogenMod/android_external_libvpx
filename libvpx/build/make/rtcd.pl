@@ -3,7 +3,7 @@
 no strict 'refs';
 use warnings;
 use Getopt::Long;
-Getopt::Long::Configure("auto_help") if $Getopt::Long::VERSION > 2.32;
+Getopt::Long::Configure("auto_help");
 
 my %ALL_FUNCS = ();
 my @ALL_ARCHS;
@@ -49,7 +49,7 @@ open CONFIG_FILE, $opts{config} or
 
 my %config = ();
 while (<CONFIG_FILE>) {
-  next if !/^(?:CONFIG_|HAVE_)/;
+  next if !/^CONFIG_/;
   chomp;
   my @pair = split /=/;
   $config{$pair[0]} = $pair[1];
@@ -209,16 +209,14 @@ sub common_top() {
 #define RTCD_EXTERN extern
 #endif
 
-EOF
-
-process_forward_decls();
-print <<EOF;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 EOF
+
+process_forward_decls();
+print "\n";
 declare_function_pointers("c", @ALL_ARCHS);
 
 print <<EOF;
@@ -274,9 +272,6 @@ sub arm() {
   # Assign the helper variable for each enabled extension
   foreach my $opt (@ALL_ARCHS) {
     my $opt_uc = uc $opt;
-    # Enable neon assembly based on HAVE_NEON logic instead of adding new
-    # HAVE_NEON_ASM logic
-    if ($opt eq 'neon_asm') { $opt_uc = 'NEON' }
     eval "\$have_${opt}=\"flags & HAS_${opt_uc}\"";
   }
 
@@ -319,14 +314,13 @@ EOF
 
   print <<EOF;
 #if HAVE_DSPR2
-void vpx_dsputil_static_init();
 #if CONFIG_VP8
 void dsputil_static_init();
-#endif
-
-vpx_dsputil_static_init();
-#if CONFIG_VP8
 dsputil_static_init();
+#endif
+#if CONFIG_VP9
+void vp9_dsputil_static_init();
+vp9_dsputil_static_init();
 #endif
 #endif
 }
@@ -368,32 +362,26 @@ if ($opts{arch} eq 'x86') {
   @REQUIRES = filter(keys %required ? keys %required : qw/mmx sse sse2/);
   &require(@REQUIRES);
   x86;
-} elsif ($opts{arch} eq 'mips32' || $opts{arch} eq 'mips64') {
-  @ALL_ARCHS = filter("$opts{arch}");
+} elsif ($opts{arch} eq 'mips32') {
+  @ALL_ARCHS = filter(qw/mips32/);
   open CONFIG_FILE, $opts{config} or
     die "Error opening config file '$opts{config}': $!\n";
   while (<CONFIG_FILE>) {
     if (/HAVE_DSPR2=yes/) {
-      @ALL_ARCHS = filter("$opts{arch}", qw/dspr2/);
-      last;
-    }
-    if (/HAVE_MSA=yes/) {
-      @ALL_ARCHS = filter("$opts{arch}", qw/msa/);
+      @ALL_ARCHS = filter(qw/mips32 dspr2/);
       last;
     }
   }
   close CONFIG_FILE;
   mips;
+} elsif ($opts{arch} eq 'armv5te') {
+  @ALL_ARCHS = filter(qw/edsp/);
+  arm;
 } elsif ($opts{arch} eq 'armv6') {
-  @ALL_ARCHS = filter(qw/media/);
+  @ALL_ARCHS = filter(qw/edsp media/);
   arm;
-} elsif ($opts{arch} =~ /armv7\w?/) {
-  @ALL_ARCHS = filter(qw/media neon_asm neon/);
-  @REQUIRES = filter(keys %required ? keys %required : qw/media/);
-  &require(@REQUIRES);
-  arm;
-} elsif ($opts{arch} eq 'armv8' || $opts{arch} eq 'arm64' ) {
-  @ALL_ARCHS = filter(qw/neon/);
+} elsif ($opts{arch} eq 'armv7') {
+  @ALL_ARCHS = filter(qw/edsp media neon/);
   arm;
 } else {
   unoptimized;

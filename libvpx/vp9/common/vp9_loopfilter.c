@@ -9,16 +9,14 @@
  */
 
 #include "./vpx_config.h"
-#include "./vpx_dsp_rtcd.h"
 #include "vp9/common/vp9_loopfilter.h"
 #include "vp9/common/vp9_onyxc_int.h"
 #include "vp9/common/vp9_reconinter.h"
 #include "vpx_mem/vpx_mem.h"
-#include "vpx_ports/mem.h"
 
 #include "vp9/common/vp9_seg_common.h"
 
-// 64 bit masks for left transform size. Each 1 represents a position where
+// 64 bit masks for left transform size.  Each 1 represents a position where
 // we should apply a loop filter across the left border of an 8x8 block
 // boundary.
 //
@@ -36,13 +34,13 @@
 //
 // A loopfilter should be applied to every other 8x8 horizontally.
 static const uint64_t left_64x64_txform_mask[TX_SIZES]= {
-  0xffffffffffffffffULL,  // TX_4X4
-  0xffffffffffffffffULL,  // TX_8x8
-  0x5555555555555555ULL,  // TX_16x16
-  0x1111111111111111ULL,  // TX_32x32
+    0xffffffffffffffff,  // TX_4X4
+    0xffffffffffffffff,  // TX_8x8
+    0x5555555555555555,  // TX_16x16
+    0x1111111111111111,  // TX_32x32
 };
 
-// 64 bit masks for above transform size. Each 1 represents a position where
+// 64 bit masks for above transform size.  Each 1 represents a position where
 // we should apply a loop filter across the top border of an 8x8 block
 // boundary.
 //
@@ -60,15 +58,15 @@ static const uint64_t left_64x64_txform_mask[TX_SIZES]= {
 //
 // A loopfilter should be applied to every other 4 the row vertically.
 static const uint64_t above_64x64_txform_mask[TX_SIZES]= {
-  0xffffffffffffffffULL,  // TX_4X4
-  0xffffffffffffffffULL,  // TX_8x8
-  0x00ff00ff00ff00ffULL,  // TX_16x16
-  0x000000ff000000ffULL,  // TX_32x32
+    0xffffffffffffffff,  // TX_4X4
+    0xffffffffffffffff,  // TX_8x8
+    0x00ff00ff00ff00ff,  // TX_16x16
+    0x000000ff000000ff,  // TX_32x32
 };
 
-// 64 bit masks for prediction sizes (left). Each 1 represents a position
-// where left border of an 8x8 block. These are aligned to the right most
-// appropriate bit, and then shifted into place.
+// 64 bit masks for prediction sizes (left).  Each 1 represents a position
+// where left border of an 8x8 block.  These are aligned to the right most
+// appropriate bit,  and then shifted into place.
 //
 // In the case of TX_16x32 ->  ( low order byte first ) we end up with
 // a mask that looks like this :
@@ -82,123 +80,123 @@ static const uint64_t above_64x64_txform_mask[TX_SIZES]= {
 //  00000000
 //  00000000
 static const uint64_t left_prediction_mask[BLOCK_SIZES] = {
-  0x0000000000000001ULL,  // BLOCK_4X4,
-  0x0000000000000001ULL,  // BLOCK_4X8,
-  0x0000000000000001ULL,  // BLOCK_8X4,
-  0x0000000000000001ULL,  // BLOCK_8X8,
-  0x0000000000000101ULL,  // BLOCK_8X16,
-  0x0000000000000001ULL,  // BLOCK_16X8,
-  0x0000000000000101ULL,  // BLOCK_16X16,
-  0x0000000001010101ULL,  // BLOCK_16X32,
-  0x0000000000000101ULL,  // BLOCK_32X16,
-  0x0000000001010101ULL,  // BLOCK_32X32,
-  0x0101010101010101ULL,  // BLOCK_32X64,
-  0x0000000001010101ULL,  // BLOCK_64X32,
-  0x0101010101010101ULL,  // BLOCK_64X64
+    0x0000000000000001,  // BLOCK_4X4,
+    0x0000000000000001,  // BLOCK_4X8,
+    0x0000000000000001,  // BLOCK_8X4,
+    0x0000000000000001,  // BLOCK_8X8,
+    0x0000000000000101,  // BLOCK_8X16,
+    0x0000000000000001,  // BLOCK_16X8,
+    0x0000000000000101,  // BLOCK_16X16,
+    0x0000000001010101,  // BLOCK_16X32,
+    0x0000000000000101,  // BLOCK_32X16,
+    0x0000000001010101,  // BLOCK_32X32,
+    0x0101010101010101,  // BLOCK_32X64,
+    0x0000000001010101,  // BLOCK_64X32,
+    0x0101010101010101,  // BLOCK_64X64
 };
 
 // 64 bit mask to shift and set for each prediction size.
 static const uint64_t above_prediction_mask[BLOCK_SIZES] = {
-  0x0000000000000001ULL,  // BLOCK_4X4
-  0x0000000000000001ULL,  // BLOCK_4X8
-  0x0000000000000001ULL,  // BLOCK_8X4
-  0x0000000000000001ULL,  // BLOCK_8X8
-  0x0000000000000001ULL,  // BLOCK_8X16,
-  0x0000000000000003ULL,  // BLOCK_16X8
-  0x0000000000000003ULL,  // BLOCK_16X16
-  0x0000000000000003ULL,  // BLOCK_16X32,
-  0x000000000000000fULL,  // BLOCK_32X16,
-  0x000000000000000fULL,  // BLOCK_32X32,
-  0x000000000000000fULL,  // BLOCK_32X64,
-  0x00000000000000ffULL,  // BLOCK_64X32,
-  0x00000000000000ffULL,  // BLOCK_64X64
+    0x0000000000000001,  // BLOCK_4X4
+    0x0000000000000001,  // BLOCK_4X8
+    0x0000000000000001,  // BLOCK_8X4
+    0x0000000000000001,  // BLOCK_8X8
+    0x0000000000000001,  // BLOCK_8X16,
+    0x0000000000000003,  // BLOCK_16X8
+    0x0000000000000003,  // BLOCK_16X16
+    0x0000000000000003,  // BLOCK_16X32,
+    0x000000000000000f,  // BLOCK_32X16,
+    0x000000000000000f,  // BLOCK_32X32,
+    0x000000000000000f,  // BLOCK_32X64,
+    0x00000000000000ff,  // BLOCK_64X32,
+    0x00000000000000ff,  // BLOCK_64X64
 };
-// 64 bit mask to shift and set for each prediction size. A bit is set for
+// 64 bit mask to shift and set for each prediction size.  A bit is set for
 // each 8x8 block that would be in the left most block of the given block
 // size in the 64x64 block.
 static const uint64_t size_mask[BLOCK_SIZES] = {
-  0x0000000000000001ULL,  // BLOCK_4X4
-  0x0000000000000001ULL,  // BLOCK_4X8
-  0x0000000000000001ULL,  // BLOCK_8X4
-  0x0000000000000001ULL,  // BLOCK_8X8
-  0x0000000000000101ULL,  // BLOCK_8X16,
-  0x0000000000000003ULL,  // BLOCK_16X8
-  0x0000000000000303ULL,  // BLOCK_16X16
-  0x0000000003030303ULL,  // BLOCK_16X32,
-  0x0000000000000f0fULL,  // BLOCK_32X16,
-  0x000000000f0f0f0fULL,  // BLOCK_32X32,
-  0x0f0f0f0f0f0f0f0fULL,  // BLOCK_32X64,
-  0x00000000ffffffffULL,  // BLOCK_64X32,
-  0xffffffffffffffffULL,  // BLOCK_64X64
+    0x0000000000000001,  // BLOCK_4X4
+    0x0000000000000001,  // BLOCK_4X8
+    0x0000000000000001,  // BLOCK_8X4
+    0x0000000000000001,  // BLOCK_8X8
+    0x0000000000000101,  // BLOCK_8X16,
+    0x0000000000000003,  // BLOCK_16X8
+    0x0000000000000303,  // BLOCK_16X16
+    0x0000000003030303,  // BLOCK_16X32,
+    0x0000000000000f0f,  // BLOCK_32X16,
+    0x000000000f0f0f0f,  // BLOCK_32X32,
+    0x0f0f0f0f0f0f0f0f,  // BLOCK_32X64,
+    0x00000000ffffffff,  // BLOCK_64X32,
+    0xffffffffffffffff,  // BLOCK_64X64
 };
 
 // These are used for masking the left and above borders.
-static const uint64_t left_border =  0x1111111111111111ULL;
-static const uint64_t above_border = 0x000000ff000000ffULL;
+static const uint64_t left_border =  0x1111111111111111;
+static const uint64_t above_border = 0x000000ff000000ff;
 
 // 16 bit masks for uv transform sizes.
 static const uint16_t left_64x64_txform_mask_uv[TX_SIZES]= {
-  0xffff,  // TX_4X4
-  0xffff,  // TX_8x8
-  0x5555,  // TX_16x16
-  0x1111,  // TX_32x32
+    0xffff,  // TX_4X4
+    0xffff,  // TX_8x8
+    0x5555,  // TX_16x16
+    0x1111,  // TX_32x32
 };
 
 static const uint16_t above_64x64_txform_mask_uv[TX_SIZES]= {
-  0xffff,  // TX_4X4
-  0xffff,  // TX_8x8
-  0x0f0f,  // TX_16x16
-  0x000f,  // TX_32x32
+    0xffff,  // TX_4X4
+    0xffff,  // TX_8x8
+    0x0f0f,  // TX_16x16
+    0x000f,  // TX_32x32
 };
 
 // 16 bit left mask to shift and set for each uv prediction size.
 static const uint16_t left_prediction_mask_uv[BLOCK_SIZES] = {
-  0x0001,  // BLOCK_4X4,
-  0x0001,  // BLOCK_4X8,
-  0x0001,  // BLOCK_8X4,
-  0x0001,  // BLOCK_8X8,
-  0x0001,  // BLOCK_8X16,
-  0x0001,  // BLOCK_16X8,
-  0x0001,  // BLOCK_16X16,
-  0x0011,  // BLOCK_16X32,
-  0x0001,  // BLOCK_32X16,
-  0x0011,  // BLOCK_32X32,
-  0x1111,  // BLOCK_32X64
-  0x0011,  // BLOCK_64X32,
-  0x1111,  // BLOCK_64X64
+    0x0001,  // BLOCK_4X4,
+    0x0001,  // BLOCK_4X8,
+    0x0001,  // BLOCK_8X4,
+    0x0001,  // BLOCK_8X8,
+    0x0001,  // BLOCK_8X16,
+    0x0001,  // BLOCK_16X8,
+    0x0001,  // BLOCK_16X16,
+    0x0011,  // BLOCK_16X32,
+    0x0001,  // BLOCK_32X16,
+    0x0011,  // BLOCK_32X32,
+    0x1111,  // BLOCK_32X64
+    0x0011,  // BLOCK_64X32,
+    0x1111,  // BLOCK_64X64
 };
 // 16 bit above mask to shift and set for uv each prediction size.
 static const uint16_t above_prediction_mask_uv[BLOCK_SIZES] = {
-  0x0001,  // BLOCK_4X4
-  0x0001,  // BLOCK_4X8
-  0x0001,  // BLOCK_8X4
-  0x0001,  // BLOCK_8X8
-  0x0001,  // BLOCK_8X16,
-  0x0001,  // BLOCK_16X8
-  0x0001,  // BLOCK_16X16
-  0x0001,  // BLOCK_16X32,
-  0x0003,  // BLOCK_32X16,
-  0x0003,  // BLOCK_32X32,
-  0x0003,  // BLOCK_32X64,
-  0x000f,  // BLOCK_64X32,
-  0x000f,  // BLOCK_64X64
+    0x0001,  // BLOCK_4X4
+    0x0001,  // BLOCK_4X8
+    0x0001,  // BLOCK_8X4
+    0x0001,  // BLOCK_8X8
+    0x0001,  // BLOCK_8X16,
+    0x0001,  // BLOCK_16X8
+    0x0001,  // BLOCK_16X16
+    0x0001,  // BLOCK_16X32,
+    0x0003,  // BLOCK_32X16,
+    0x0003,  // BLOCK_32X32,
+    0x0003,  // BLOCK_32X64,
+    0x000f,  // BLOCK_64X32,
+    0x000f,  // BLOCK_64X64
 };
 
 // 64 bit mask to shift and set for each uv prediction size
 static const uint16_t size_mask_uv[BLOCK_SIZES] = {
-  0x0001,  // BLOCK_4X4
-  0x0001,  // BLOCK_4X8
-  0x0001,  // BLOCK_8X4
-  0x0001,  // BLOCK_8X8
-  0x0001,  // BLOCK_8X16,
-  0x0001,  // BLOCK_16X8
-  0x0001,  // BLOCK_16X16
-  0x0011,  // BLOCK_16X32,
-  0x0003,  // BLOCK_32X16,
-  0x0033,  // BLOCK_32X32,
-  0x3333,  // BLOCK_32X64,
-  0x00ff,  // BLOCK_64X32,
-  0xffff,  // BLOCK_64X64
+    0x0001,  // BLOCK_4X4
+    0x0001,  // BLOCK_4X8
+    0x0001,  // BLOCK_8X4
+    0x0001,  // BLOCK_8X8
+    0x0001,  // BLOCK_8X16,
+    0x0001,  // BLOCK_16X8
+    0x0001,  // BLOCK_16X16
+    0x0011,  // BLOCK_16X32,
+    0x0003,  // BLOCK_32X16,
+    0x0033,  // BLOCK_32X32,
+    0x3333,  // BLOCK_32X64,
+    0x00ff,  // BLOCK_64X32,
+    0xffff,  // BLOCK_64X64
 };
 static const uint16_t left_border_uv =  0x1111;
 static const uint16_t above_border_uv = 0x000f;
@@ -213,7 +211,7 @@ static void update_sharpness(loop_filter_info_n *lfi, int sharpness_lvl) {
 
   // For each possible value for the loop filter fill out limits
   for (lvl = 0; lvl <= MAX_LOOP_FILTER; lvl++) {
-    // Set loop filter parameters that control sharpness.
+    // Set loop filter paramaeters that control sharpness.
     int block_inside_limit = lvl >> ((sharpness_lvl > 0) + (sharpness_lvl > 4));
 
     if (sharpness_lvl > 0) {
@@ -224,9 +222,9 @@ static void update_sharpness(loop_filter_info_n *lfi, int sharpness_lvl) {
     if (block_inside_limit < 1)
       block_inside_limit = 1;
 
-    memset(lfi->lfthr[lvl].lim, block_inside_limit, SIMD_WIDTH);
-    memset(lfi->lfthr[lvl].mblim, (2 * (lvl + 2) + block_inside_limit),
-           SIMD_WIDTH);
+    vpx_memset(lfi->lfthr[lvl].lim, block_inside_limit, SIMD_WIDTH);
+    vpx_memset(lfi->lfthr[lvl].mblim, (2 * (lvl + 2) + block_inside_limit),
+               SIMD_WIDTH);
   }
 }
 
@@ -247,12 +245,12 @@ void vp9_loop_filter_init(VP9_COMMON *cm) {
 
   // init hev threshold const vectors
   for (lvl = 0; lvl <= MAX_LOOP_FILTER; lvl++)
-    memset(lfi->lfthr[lvl].hev_thr, (lvl >> 4), SIMD_WIDTH);
+    vpx_memset(lfi->lfthr[lvl].hev_thr, (lvl >> 4), SIMD_WIDTH);
 }
 
 void vp9_loop_filter_frame_init(VP9_COMMON *cm, int default_filt_lvl) {
   int seg_id;
-  // n_shift is the multiplier for lf_deltas
+  // n_shift is the a multiplier for lf_deltas
   // the multiplier is 1 for when filter_lvl is between 0 and 31;
   // 2 when filter_lvl is between 32 and 63
   const int scale = 1 << (default_filt_lvl >> 5);
@@ -268,8 +266,8 @@ void vp9_loop_filter_frame_init(VP9_COMMON *cm, int default_filt_lvl) {
 
   for (seg_id = 0; seg_id < MAX_SEGMENTS; seg_id++) {
     int lvl_seg = default_filt_lvl;
-    if (segfeature_active(seg, seg_id, SEG_LVL_ALT_LF)) {
-      const int data = get_segdata(seg, seg_id, SEG_LVL_ALT_LF);
+    if (vp9_segfeature_active(seg, seg_id, SEG_LVL_ALT_LF)) {
+      const int data = vp9_get_segdata(seg, seg_id, SEG_LVL_ALT_LF);
       lvl_seg = clamp(seg->abs_delta == SEGMENT_ABSDATA ?
                       data : default_filt_lvl + data,
                       0, MAX_LOOP_FILTER);
@@ -278,7 +276,7 @@ void vp9_loop_filter_frame_init(VP9_COMMON *cm, int default_filt_lvl) {
     if (!lf->mode_ref_delta_enabled) {
       // we could get rid of this if we assume that deltas are set to
       // zero when not in use; encoder always uses deltas
-      memset(lfi->lvl[seg_id], lvl_seg, sizeof(lfi->lvl[seg_id]));
+      vpx_memset(lfi->lvl[seg_id], lvl_seg, sizeof(lfi->lvl[seg_id]));
     } else {
       int ref, mode;
       const int intra_lvl = lvl_seg + lf->ref_deltas[INTRA_FRAME] * scale;
@@ -295,7 +293,7 @@ void vp9_loop_filter_frame_init(VP9_COMMON *cm, int default_filt_lvl) {
   }
 }
 
-static void filter_selectively_vert_row2(int subsampling_factor,
+static void filter_selectively_vert_row2(PLANE_TYPE plane_type,
                                          uint8_t *s, int pitch,
                                          unsigned int mask_16x16_l,
                                          unsigned int mask_8x8_l,
@@ -303,9 +301,9 @@ static void filter_selectively_vert_row2(int subsampling_factor,
                                          unsigned int mask_4x4_int_l,
                                          const loop_filter_info_n *lfi_n,
                                          const uint8_t *lfl) {
-  const int mask_shift = subsampling_factor ? 4 : 8;
-  const int mask_cutoff = subsampling_factor ? 0xf : 0xff;
-  const int lfl_forward = subsampling_factor ? 4 : 8;
+  const int mask_shift = plane_type ? 4 : 8;
+  const int mask_cutoff = plane_type ? 0xf : 0xff;
+  const int lfl_forward = plane_type ? 4 : 8;
 
   unsigned int mask_16x16_0 = mask_16x16_l & mask_cutoff;
   unsigned int mask_8x8_0 = mask_8x8_l & mask_cutoff;
@@ -318,8 +316,8 @@ static void filter_selectively_vert_row2(int subsampling_factor,
   unsigned int mask;
 
   for (mask = mask_16x16_0 | mask_8x8_0 | mask_4x4_0 | mask_4x4_int_0 |
-              mask_16x16_1 | mask_8x8_1 | mask_4x4_1 | mask_4x4_int_1;
-       mask; mask >>= 1) {
+      mask_16x16_1 | mask_8x8_1 | mask_4x4_1 | mask_4x4_int_1;
+      mask; mask >>= 1) {
     const loop_filter_thresh *lfi0 = lfi_n->lfthr + *lfl;
     const loop_filter_thresh *lfi1 = lfi_n->lfthr + *(lfl + lfl_forward);
 
@@ -327,55 +325,55 @@ static void filter_selectively_vert_row2(int subsampling_factor,
     if (mask & 1) {
       if ((mask_16x16_0 | mask_16x16_1) & 1) {
         if ((mask_16x16_0 & mask_16x16_1) & 1) {
-          vpx_lpf_vertical_16_dual(s, pitch, lfi0->mblim, lfi0->lim,
+          vp9_lpf_vertical_16_dual(s, pitch, lfi0->mblim, lfi0->lim,
                                    lfi0->hev_thr);
         } else if (mask_16x16_0 & 1) {
-          vpx_lpf_vertical_16(s, pitch, lfi0->mblim, lfi0->lim,
+          vp9_lpf_vertical_16(s, pitch, lfi0->mblim, lfi0->lim,
                               lfi0->hev_thr);
         } else {
-          vpx_lpf_vertical_16(s + 8 *pitch, pitch, lfi1->mblim,
+          vp9_lpf_vertical_16(s + 8 *pitch, pitch, lfi1->mblim,
                               lfi1->lim, lfi1->hev_thr);
         }
       }
 
       if ((mask_8x8_0 | mask_8x8_1) & 1) {
         if ((mask_8x8_0 & mask_8x8_1) & 1) {
-          vpx_lpf_vertical_8_dual(s, pitch, lfi0->mblim, lfi0->lim,
+          vp9_lpf_vertical_8_dual(s, pitch, lfi0->mblim, lfi0->lim,
                                   lfi0->hev_thr, lfi1->mblim, lfi1->lim,
                                   lfi1->hev_thr);
         } else if (mask_8x8_0 & 1) {
-          vpx_lpf_vertical_8(s, pitch, lfi0->mblim, lfi0->lim, lfi0->hev_thr,
+          vp9_lpf_vertical_8(s, pitch, lfi0->mblim, lfi0->lim, lfi0->hev_thr,
                              1);
         } else {
-          vpx_lpf_vertical_8(s + 8 * pitch, pitch, lfi1->mblim, lfi1->lim,
+          vp9_lpf_vertical_8(s + 8 * pitch, pitch, lfi1->mblim, lfi1->lim,
                              lfi1->hev_thr, 1);
         }
       }
 
       if ((mask_4x4_0 | mask_4x4_1) & 1) {
         if ((mask_4x4_0 & mask_4x4_1) & 1) {
-          vpx_lpf_vertical_4_dual(s, pitch, lfi0->mblim, lfi0->lim,
+          vp9_lpf_vertical_4_dual(s, pitch, lfi0->mblim, lfi0->lim,
                                   lfi0->hev_thr, lfi1->mblim, lfi1->lim,
                                   lfi1->hev_thr);
         } else if (mask_4x4_0 & 1) {
-          vpx_lpf_vertical_4(s, pitch, lfi0->mblim, lfi0->lim, lfi0->hev_thr,
+          vp9_lpf_vertical_4(s, pitch, lfi0->mblim, lfi0->lim, lfi0->hev_thr,
                              1);
         } else {
-          vpx_lpf_vertical_4(s + 8 * pitch, pitch, lfi1->mblim, lfi1->lim,
+          vp9_lpf_vertical_4(s + 8 * pitch, pitch, lfi1->mblim, lfi1->lim,
                              lfi1->hev_thr, 1);
         }
       }
 
       if ((mask_4x4_int_0 | mask_4x4_int_1) & 1) {
         if ((mask_4x4_int_0 & mask_4x4_int_1) & 1) {
-          vpx_lpf_vertical_4_dual(s + 4, pitch, lfi0->mblim, lfi0->lim,
+          vp9_lpf_vertical_4_dual(s + 4, pitch, lfi0->mblim, lfi0->lim,
                                   lfi0->hev_thr, lfi1->mblim, lfi1->lim,
                                   lfi1->hev_thr);
         } else if (mask_4x4_int_0 & 1) {
-          vpx_lpf_vertical_4(s + 4, pitch, lfi0->mblim, lfi0->lim,
+          vp9_lpf_vertical_4(s + 4, pitch, lfi0->mblim, lfi0->lim,
                              lfi0->hev_thr, 1);
         } else {
-          vpx_lpf_vertical_4(s + 8 * pitch + 4, pitch, lfi1->mblim, lfi1->lim,
+          vp9_lpf_vertical_4(s + 8 * pitch + 4, pitch, lfi1->mblim, lfi1->lim,
                              lfi1->hev_thr, 1);
         }
       }
@@ -393,107 +391,6 @@ static void filter_selectively_vert_row2(int subsampling_factor,
     mask_4x4_int_1 >>= 1;
   }
 }
-
-#if CONFIG_VP9_HIGHBITDEPTH
-static void highbd_filter_selectively_vert_row2(int subsampling_factor,
-                                                uint16_t *s, int pitch,
-                                                unsigned int mask_16x16_l,
-                                                unsigned int mask_8x8_l,
-                                                unsigned int mask_4x4_l,
-                                                unsigned int mask_4x4_int_l,
-                                                const loop_filter_info_n *lfi_n,
-                                                const uint8_t *lfl, int bd) {
-  const int mask_shift = subsampling_factor ? 4 : 8;
-  const int mask_cutoff = subsampling_factor ? 0xf : 0xff;
-  const int lfl_forward = subsampling_factor ? 4 : 8;
-
-  unsigned int mask_16x16_0 = mask_16x16_l & mask_cutoff;
-  unsigned int mask_8x8_0 = mask_8x8_l & mask_cutoff;
-  unsigned int mask_4x4_0 = mask_4x4_l & mask_cutoff;
-  unsigned int mask_4x4_int_0 = mask_4x4_int_l & mask_cutoff;
-  unsigned int mask_16x16_1 = (mask_16x16_l >> mask_shift) & mask_cutoff;
-  unsigned int mask_8x8_1 = (mask_8x8_l >> mask_shift) & mask_cutoff;
-  unsigned int mask_4x4_1 = (mask_4x4_l >> mask_shift) & mask_cutoff;
-  unsigned int mask_4x4_int_1 = (mask_4x4_int_l >> mask_shift) & mask_cutoff;
-  unsigned int mask;
-
-  for (mask = mask_16x16_0 | mask_8x8_0 | mask_4x4_0 | mask_4x4_int_0 |
-       mask_16x16_1 | mask_8x8_1 | mask_4x4_1 | mask_4x4_int_1;
-       mask; mask >>= 1) {
-    const loop_filter_thresh *lfi0 = lfi_n->lfthr + *lfl;
-    const loop_filter_thresh *lfi1 = lfi_n->lfthr + *(lfl + lfl_forward);
-
-    // TODO(yunqingwang): count in loopfilter functions should be removed.
-    if (mask & 1) {
-      if ((mask_16x16_0 | mask_16x16_1) & 1) {
-        if ((mask_16x16_0 & mask_16x16_1) & 1) {
-          vpx_highbd_lpf_vertical_16_dual(s, pitch, lfi0->mblim, lfi0->lim,
-                                          lfi0->hev_thr, bd);
-        } else if (mask_16x16_0 & 1) {
-          vpx_highbd_lpf_vertical_16(s, pitch, lfi0->mblim, lfi0->lim,
-                                     lfi0->hev_thr, bd);
-        } else {
-          vpx_highbd_lpf_vertical_16(s + 8 *pitch, pitch, lfi1->mblim,
-                                     lfi1->lim, lfi1->hev_thr, bd);
-        }
-      }
-
-      if ((mask_8x8_0 | mask_8x8_1) & 1) {
-        if ((mask_8x8_0 & mask_8x8_1) & 1) {
-          vpx_highbd_lpf_vertical_8_dual(s, pitch, lfi0->mblim, lfi0->lim,
-                                         lfi0->hev_thr, lfi1->mblim, lfi1->lim,
-                                         lfi1->hev_thr, bd);
-        } else if (mask_8x8_0 & 1) {
-          vpx_highbd_lpf_vertical_8(s, pitch, lfi0->mblim, lfi0->lim,
-                                    lfi0->hev_thr, 1, bd);
-        } else {
-          vpx_highbd_lpf_vertical_8(s + 8 * pitch, pitch, lfi1->mblim,
-                                    lfi1->lim, lfi1->hev_thr, 1, bd);
-        }
-      }
-
-      if ((mask_4x4_0 | mask_4x4_1) & 1) {
-        if ((mask_4x4_0 & mask_4x4_1) & 1) {
-          vpx_highbd_lpf_vertical_4_dual(s, pitch, lfi0->mblim, lfi0->lim,
-                                         lfi0->hev_thr, lfi1->mblim, lfi1->lim,
-                                         lfi1->hev_thr, bd);
-        } else if (mask_4x4_0 & 1) {
-          vpx_highbd_lpf_vertical_4(s, pitch, lfi0->mblim, lfi0->lim,
-                                    lfi0->hev_thr, 1, bd);
-        } else {
-          vpx_highbd_lpf_vertical_4(s + 8 * pitch, pitch, lfi1->mblim,
-                                    lfi1->lim, lfi1->hev_thr, 1, bd);
-        }
-      }
-
-      if ((mask_4x4_int_0 | mask_4x4_int_1) & 1) {
-        if ((mask_4x4_int_0 & mask_4x4_int_1) & 1) {
-          vpx_highbd_lpf_vertical_4_dual(s + 4, pitch, lfi0->mblim, lfi0->lim,
-                                         lfi0->hev_thr, lfi1->mblim, lfi1->lim,
-                                         lfi1->hev_thr, bd);
-        } else if (mask_4x4_int_0 & 1) {
-          vpx_highbd_lpf_vertical_4(s + 4, pitch, lfi0->mblim, lfi0->lim,
-                                    lfi0->hev_thr, 1, bd);
-        } else {
-          vpx_highbd_lpf_vertical_4(s + 8 * pitch + 4, pitch, lfi1->mblim,
-                                    lfi1->lim, lfi1->hev_thr, 1, bd);
-        }
-      }
-    }
-
-    s += 8;
-    lfl += 1;
-    mask_16x16_0 >>= 1;
-    mask_8x8_0 >>= 1;
-    mask_4x4_0 >>= 1;
-    mask_4x4_int_0 >>= 1;
-    mask_16x16_1 >>= 1;
-    mask_8x8_1 >>= 1;
-    mask_4x4_1 >>= 1;
-    mask_4x4_int_1 >>= 1;
-  }
-}
-#endif  // CONFIG_VP9_HIGHBITDEPTH
 
 static void filter_selectively_horiz(uint8_t *s, int pitch,
                                      unsigned int mask_16x16,
@@ -513,72 +410,72 @@ static void filter_selectively_horiz(uint8_t *s, int pitch,
     if (mask & 1) {
       if (mask_16x16 & 1) {
         if ((mask_16x16 & 3) == 3) {
-          vpx_lpf_horizontal_16(s, pitch, lfi->mblim, lfi->lim,
+          vp9_lpf_horizontal_16(s, pitch, lfi->mblim, lfi->lim,
                                 lfi->hev_thr, 2);
           count = 2;
         } else {
-          vpx_lpf_horizontal_16(s, pitch, lfi->mblim, lfi->lim,
+          vp9_lpf_horizontal_16(s, pitch, lfi->mblim, lfi->lim,
                                 lfi->hev_thr, 1);
         }
       } else if (mask_8x8 & 1) {
         if ((mask_8x8 & 3) == 3) {
-          // Next block's thresholds.
+          // Next block's thresholds
           const loop_filter_thresh *lfin = lfi_n->lfthr + *(lfl + 1);
 
-          vpx_lpf_horizontal_8_dual(s, pitch, lfi->mblim, lfi->lim,
+          vp9_lpf_horizontal_8_dual(s, pitch, lfi->mblim, lfi->lim,
                                     lfi->hev_thr, lfin->mblim, lfin->lim,
                                     lfin->hev_thr);
 
           if ((mask_4x4_int & 3) == 3) {
-            vpx_lpf_horizontal_4_dual(s + 4 * pitch, pitch, lfi->mblim,
+            vp9_lpf_horizontal_4_dual(s + 4 * pitch, pitch, lfi->mblim,
                                       lfi->lim, lfi->hev_thr, lfin->mblim,
                                       lfin->lim, lfin->hev_thr);
           } else {
             if (mask_4x4_int & 1)
-              vpx_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
+              vp9_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
                                    lfi->hev_thr, 1);
             else if (mask_4x4_int & 2)
-              vpx_lpf_horizontal_4(s + 8 + 4 * pitch, pitch, lfin->mblim,
+              vp9_lpf_horizontal_4(s + 8 + 4 * pitch, pitch, lfin->mblim,
                                    lfin->lim, lfin->hev_thr, 1);
           }
           count = 2;
         } else {
-          vpx_lpf_horizontal_8(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
+          vp9_lpf_horizontal_8(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
 
           if (mask_4x4_int & 1)
-            vpx_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
+            vp9_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
                                  lfi->hev_thr, 1);
         }
       } else if (mask_4x4 & 1) {
         if ((mask_4x4 & 3) == 3) {
-          // Next block's thresholds.
+          // Next block's thresholds
           const loop_filter_thresh *lfin = lfi_n->lfthr + *(lfl + 1);
 
-          vpx_lpf_horizontal_4_dual(s, pitch, lfi->mblim, lfi->lim,
+          vp9_lpf_horizontal_4_dual(s, pitch, lfi->mblim, lfi->lim,
                                     lfi->hev_thr, lfin->mblim, lfin->lim,
                                     lfin->hev_thr);
           if ((mask_4x4_int & 3) == 3) {
-            vpx_lpf_horizontal_4_dual(s + 4 * pitch, pitch, lfi->mblim,
+            vp9_lpf_horizontal_4_dual(s + 4 * pitch, pitch, lfi->mblim,
                                       lfi->lim, lfi->hev_thr, lfin->mblim,
                                       lfin->lim, lfin->hev_thr);
           } else {
             if (mask_4x4_int & 1)
-              vpx_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
+              vp9_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
                                    lfi->hev_thr, 1);
             else if (mask_4x4_int & 2)
-              vpx_lpf_horizontal_4(s + 8 + 4 * pitch, pitch, lfin->mblim,
+              vp9_lpf_horizontal_4(s + 8 + 4 * pitch, pitch, lfin->mblim,
                                    lfin->lim, lfin->hev_thr, 1);
           }
           count = 2;
         } else {
-          vpx_lpf_horizontal_4(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
+          vp9_lpf_horizontal_4(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
 
           if (mask_4x4_int & 1)
-            vpx_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
+            vp9_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
                                  lfi->hev_thr, 1);
         }
       } else if (mask_4x4_int & 1) {
-        vpx_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
+        vp9_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
                              lfi->hev_thr, 1);
       }
     }
@@ -591,115 +488,9 @@ static void filter_selectively_horiz(uint8_t *s, int pitch,
   }
 }
 
-#if CONFIG_VP9_HIGHBITDEPTH
-static void highbd_filter_selectively_horiz(uint16_t *s, int pitch,
-                                            unsigned int mask_16x16,
-                                            unsigned int mask_8x8,
-                                            unsigned int mask_4x4,
-                                            unsigned int mask_4x4_int,
-                                            const loop_filter_info_n *lfi_n,
-                                            const uint8_t *lfl, int bd) {
-  unsigned int mask;
-  int count;
-
-  for (mask = mask_16x16 | mask_8x8 | mask_4x4 | mask_4x4_int;
-       mask; mask >>= count) {
-    const loop_filter_thresh *lfi = lfi_n->lfthr + *lfl;
-
-    count = 1;
-    if (mask & 1) {
-      if (mask_16x16 & 1) {
-        if ((mask_16x16 & 3) == 3) {
-          vpx_highbd_lpf_horizontal_16(s, pitch, lfi->mblim, lfi->lim,
-                                       lfi->hev_thr, 2, bd);
-          count = 2;
-        } else {
-          vpx_highbd_lpf_horizontal_16(s, pitch, lfi->mblim, lfi->lim,
-                                       lfi->hev_thr, 1, bd);
-        }
-      } else if (mask_8x8 & 1) {
-        if ((mask_8x8 & 3) == 3) {
-          // Next block's thresholds.
-          const loop_filter_thresh *lfin = lfi_n->lfthr + *(lfl + 1);
-
-          vpx_highbd_lpf_horizontal_8_dual(s, pitch, lfi->mblim, lfi->lim,
-                                           lfi->hev_thr, lfin->mblim, lfin->lim,
-                                           lfin->hev_thr, bd);
-
-          if ((mask_4x4_int & 3) == 3) {
-            vpx_highbd_lpf_horizontal_4_dual(s + 4 * pitch, pitch, lfi->mblim,
-                                             lfi->lim, lfi->hev_thr,
-                                             lfin->mblim, lfin->lim,
-                                             lfin->hev_thr, bd);
-          } else {
-            if (mask_4x4_int & 1) {
-              vpx_highbd_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim,
-                                          lfi->lim, lfi->hev_thr, 1, bd);
-            } else if (mask_4x4_int & 2) {
-              vpx_highbd_lpf_horizontal_4(s + 8 + 4 * pitch, pitch, lfin->mblim,
-                                          lfin->lim, lfin->hev_thr, 1, bd);
-            }
-          }
-          count = 2;
-        } else {
-          vpx_highbd_lpf_horizontal_8(s, pitch, lfi->mblim, lfi->lim,
-                                      lfi->hev_thr, 1, bd);
-
-          if (mask_4x4_int & 1) {
-            vpx_highbd_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim,
-                                        lfi->lim, lfi->hev_thr, 1, bd);
-          }
-        }
-      } else if (mask_4x4 & 1) {
-        if ((mask_4x4 & 3) == 3) {
-          // Next block's thresholds.
-          const loop_filter_thresh *lfin = lfi_n->lfthr + *(lfl + 1);
-
-          vpx_highbd_lpf_horizontal_4_dual(s, pitch, lfi->mblim, lfi->lim,
-                                           lfi->hev_thr, lfin->mblim, lfin->lim,
-                                           lfin->hev_thr, bd);
-          if ((mask_4x4_int & 3) == 3) {
-            vpx_highbd_lpf_horizontal_4_dual(s + 4 * pitch, pitch, lfi->mblim,
-                                             lfi->lim, lfi->hev_thr,
-                                             lfin->mblim, lfin->lim,
-                                             lfin->hev_thr, bd);
-          } else {
-            if (mask_4x4_int & 1) {
-              vpx_highbd_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim,
-                                          lfi->lim, lfi->hev_thr, 1, bd);
-            } else if (mask_4x4_int & 2) {
-              vpx_highbd_lpf_horizontal_4(s + 8 + 4 * pitch, pitch, lfin->mblim,
-                                          lfin->lim, lfin->hev_thr, 1, bd);
-            }
-          }
-          count = 2;
-        } else {
-          vpx_highbd_lpf_horizontal_4(s, pitch, lfi->mblim, lfi->lim,
-                                      lfi->hev_thr, 1, bd);
-
-          if (mask_4x4_int & 1) {
-            vpx_highbd_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim,
-                                        lfi->lim, lfi->hev_thr, 1, bd);
-          }
-        }
-      } else if (mask_4x4_int & 1) {
-        vpx_highbd_lpf_horizontal_4(s + 4 * pitch, pitch, lfi->mblim, lfi->lim,
-                                    lfi->hev_thr, 1, bd);
-      }
-    }
-    s += 8 * count;
-    lfl += count;
-    mask_16x16 >>= count;
-    mask_8x8 >>= count;
-    mask_4x4 >>= count;
-    mask_4x4_int >>= count;
-  }
-}
-#endif  // CONFIG_VP9_HIGHBITDEPTH
-
 // This function ors into the current lfm structure, where to do loop
-// filters for the specific mi we are looking at. It uses information
-// including the block_size_type (32x16, 32x32, etc.), the transform size,
+// filters for the specific mi we are looking at.   It uses information
+// including the block_size_type (32x16, 32x32, etc),  the transform size,
 // whether there were any coefficients encoded, and the loop filter strength
 // block we are currently looking at. Shift is used to position the
 // 1's we produce.
@@ -711,7 +502,7 @@ static void build_masks(const loop_filter_info_n *const lfi_n,
   const MB_MODE_INFO *mbmi = &mi->mbmi;
   const BLOCK_SIZE block_size = mbmi->sb_type;
   const TX_SIZE tx_size_y = mbmi->tx_size;
-  const TX_SIZE tx_size_uv = get_uv_tx_size_impl(tx_size_y, block_size, 1, 1);
+  const TX_SIZE tx_size_uv = get_uv_tx_size(mbmi);
   const int filter_level = get_filter_level(lfi_n, mbmi);
   uint64_t *const left_y = &lfm->left_y[tx_size_y];
   uint64_t *const above_y = &lfm->above_y[tx_size_y];
@@ -729,13 +520,13 @@ static void build_masks(const loop_filter_info_n *const lfi_n,
     const int h = num_8x8_blocks_high_lookup[block_size];
     int index = shift_y;
     for (i = 0; i < h; i++) {
-      memset(&lfm->lfl_y[index], filter_level, w);
+      vpx_memset(&lfm->lfl_y[index], filter_level, w);
       index += 8;
     }
   }
 
   // These set 1 in the current block size for the block size edges.
-  // For instance if the block size is 32x16, we'll set:
+  // For instance if the block size is 32x16,   we'll set :
   //    above =   1111
   //              0000
   //    and
@@ -744,7 +535,7 @@ static void build_masks(const loop_filter_info_n *const lfi_n,
   // NOTE : In this example the low bit is left most ( 1000 ) is stored as
   //        1,  not 8...
   //
-  // U and V set things on a 16 bit scale.
+  // U and v set things on a 16 bit scale.
   //
   *above_y |= above_prediction_mask[block_size] << shift_y;
   *above_uv |= above_prediction_mask_uv[block_size] << shift_uv;
@@ -756,7 +547,7 @@ static void build_masks(const loop_filter_info_n *const lfi_n,
   if (mbmi->skip && is_inter_block(mbmi))
     return;
 
-  // Here we are adding a mask for the transform size. The transform
+  // Here we are adding a mask for the transform size.  The transform
   // size mask is set to be correct for a 64x64 prediction block size. We
   // mask to match the size of the block we are working on and then shift it
   // into place..
@@ -775,14 +566,14 @@ static void build_masks(const loop_filter_info_n *const lfi_n,
   // an 8x8 in that the internal ones can be skipped and don't depend on
   // the prediction block size.
   if (tx_size_y == TX_4X4)
-    *int_4x4_y |= (size_mask[block_size] & 0xffffffffffffffffULL) << shift_y;
+    *int_4x4_y |= (size_mask[block_size] & 0xffffffffffffffff) << shift_y;
 
   if (tx_size_uv == TX_4X4)
     *int_4x4_uv |= (size_mask_uv[block_size] & 0xffff) << shift_uv;
 }
 
 // This function does the same thing as the one above with the exception that
-// it only affects the y masks. It exists because for blocks < 16x16 in size,
+// it only affects the y masks.   It exists because for blocks < 16x16 in size,
 // we only update u and v masks on the first block.
 static void build_y_mask(const loop_filter_info_n *const lfi_n,
                          const MODE_INFO *mi, const int shift_y,
@@ -803,7 +594,7 @@ static void build_y_mask(const loop_filter_info_n *const lfi_n,
     const int h = num_8x8_blocks_high_lookup[block_size];
     int index = shift_y;
     for (i = 0; i < h; i++) {
-      memset(&lfm->lfl_y[index], filter_level, w);
+      vpx_memset(&lfm->lfl_y[index], filter_level, w);
       index += 8;
     }
   }
@@ -821,23 +612,23 @@ static void build_y_mask(const loop_filter_info_n *const lfi_n,
               left_64x64_txform_mask[tx_size_y]) << shift_y;
 
   if (tx_size_y == TX_4X4)
-    *int_4x4_y |= (size_mask[block_size] & 0xffffffffffffffffULL) << shift_y;
+    *int_4x4_y |= (size_mask[block_size] & 0xffffffffffffffff) << shift_y;
 }
 
 // This function sets up the bit masks for the entire 64x64 region represented
 // by mi_row, mi_col.
 // TODO(JBB): This function only works for yv12.
 void vp9_setup_mask(VP9_COMMON *const cm, const int mi_row, const int mi_col,
-                    MODE_INFO **mi, const int mode_info_stride,
+                    MODE_INFO **mi_8x8, const int mode_info_stride,
                     LOOP_FILTER_MASK *lfm) {
   int idx_32, idx_16, idx_8;
   const loop_filter_info_n *const lfi_n = &cm->lf_info;
-  MODE_INFO **mip = mi;
-  MODE_INFO **mip2 = mi;
+  MODE_INFO **mip = mi_8x8;
+  MODE_INFO **mip2 = mi_8x8;
 
   // These are offsets to the next mi in the 64x64 block. It is what gets
-  // added to the mi ptr as we go through each loop. It helps us to avoid
-  // setting up special row and column counters for each index. The last step
+  // added to the mi ptr as we go through each loop.  It helps us to avoids
+  // setting up special row and column counters for each index.  The last step
   // brings us out back to the starting position.
   const int offset_32[] = {4, (mode_info_stride << 2) - 4, 4,
                            -(mode_info_stride << 2) - 4};
@@ -846,7 +637,7 @@ void vp9_setup_mask(VP9_COMMON *const cm, const int mi_row, const int mi_col,
   const int offset[] = {1, mode_info_stride - 1, 1, -mode_info_stride - 1};
 
   // Following variables represent shifts to position the current block
-  // mask over the appropriate block. A shift of 36 to the left will move
+  // mask over the appropriate block.   A shift of 36 to the left will move
   // the bits for the final 32 by 32 block in the 64x64 up 4 rows and left
   // 4 rows to the appropriate spot.
   const int shift_32_y[] = {0, 4, 32, 36};
@@ -861,7 +652,6 @@ void vp9_setup_mask(VP9_COMMON *const cm, const int mi_row, const int mi_col,
                         cm->mi_cols - mi_col : MI_BLOCK_SIZE);
 
   vp9_zero(*lfm);
-  assert(mip[0] != NULL);
 
   // TODO(jimbankoski): Try moving most of the following code into decode
   // loop and storing lfm in the mbmi structure so that we don't have to go
@@ -970,14 +760,14 @@ void vp9_setup_mask(VP9_COMMON *const cm, const int mi_row, const int mi_col,
       break;
   }
   // The largest loopfilter we have is 16x16 so we use the 16x16 mask
-  // for 32x32 transforms also.
+  // for 32x32 transforms also also.
   lfm->left_y[TX_16X16] |= lfm->left_y[TX_32X32];
   lfm->above_y[TX_16X16] |= lfm->above_y[TX_32X32];
   lfm->left_uv[TX_16X16] |= lfm->left_uv[TX_32X32];
   lfm->above_uv[TX_16X16] |= lfm->above_uv[TX_32X32];
 
   // We do at least 8 tap filter on every 32x32 even if the transform size
-  // is 4x4. So if the 4x4 is set on a border pixel add it to the 8x8 and
+  // is 4x4.  So if the 4x4 is set on a border pixel add it to the 8x8 and
   // remove it from the 4x4.
   lfm->left_y[TX_8X8] |= lfm->left_y[TX_4X4] & left_border;
   lfm->left_y[TX_4X4] &= ~left_border;
@@ -1006,7 +796,7 @@ void vp9_setup_mask(VP9_COMMON *const cm, const int mi_row, const int mi_col,
     lfm->int_4x4_y &= mask_y;
     lfm->int_4x4_uv &= mask_uv;
 
-    // We don't apply a wide loop filter on the last uv block row. If set
+    // We don't apply a wide loop filter on the last uv block row.  If set
     // apply the shorter one instead.
     if (rows == 1) {
       lfm->above_uv[TX_8X8] |= lfm->above_uv[TX_16X16];
@@ -1023,7 +813,7 @@ void vp9_setup_mask(VP9_COMMON *const cm, const int mi_row, const int mi_col,
 
     // Each pixel inside the border gets a 1, the multiply copies the border
     // to where we need it.
-    const uint64_t mask_y  = (((1 << columns) - 1)) * 0x0101010101010101ULL;
+    const uint64_t mask_y  = (((1 << columns) - 1)) * 0x0101010101010101;
     const uint16_t mask_uv = ((1 << ((columns + 1) >> 1)) - 1) * 0x1111;
 
     // Internal edges are not applied on the last column of the image so
@@ -1040,7 +830,7 @@ void vp9_setup_mask(VP9_COMMON *const cm, const int mi_row, const int mi_col,
     lfm->int_4x4_y &= mask_y;
     lfm->int_4x4_uv &= mask_uv_int;
 
-    // We don't apply a wide loop filter on the last uv column. If set
+    // We don't apply a wide loop filter on the last uv column.  If set
     // apply the shorter one instead.
     if (columns == 1) {
       lfm->left_uv[TX_8X8] |= lfm->left_uv[TX_16X16];
@@ -1051,11 +841,10 @@ void vp9_setup_mask(VP9_COMMON *const cm, const int mi_row, const int mi_col,
       lfm->left_uv[TX_16X16] &= ~(lfm->left_uv[TX_16X16] & 0xcccc);
     }
   }
-  // We don't apply a loop filter on the first column in the image, mask that
-  // out.
+  // We don't a loop filter on the first column in the image.  Mask that out.
   if (mi_col == 0) {
     for (i = 0; i < TX_32X32; i++) {
-      lfm->left_y[i] &= 0xfefefefefefefefeULL;
+      lfm->left_y[i] &= 0xfefefefefefefefe;
       lfm->left_uv[i] &= 0xeeee;
     }
   }
@@ -1094,15 +883,15 @@ static void filter_selectively_vert(uint8_t *s, int pitch,
 
     if (mask & 1) {
       if (mask_16x16 & 1) {
-        vpx_lpf_vertical_16(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr);
+        vp9_lpf_vertical_16(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr);
       } else if (mask_8x8 & 1) {
-        vpx_lpf_vertical_8(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
+        vp9_lpf_vertical_8(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
       } else if (mask_4x4 & 1) {
-        vpx_lpf_vertical_4(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
+        vp9_lpf_vertical_4(s, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
       }
     }
     if (mask_4x4_int & 1)
-      vpx_lpf_vertical_4(s + 4, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
+      vp9_lpf_vertical_4(s + 4, pitch, lfi->mblim, lfi->lim, lfi->hev_thr, 1);
     s += 8;
     lfl += 1;
     mask_16x16 >>= 1;
@@ -1112,53 +901,14 @@ static void filter_selectively_vert(uint8_t *s, int pitch,
   }
 }
 
-#if CONFIG_VP9_HIGHBITDEPTH
-static void highbd_filter_selectively_vert(uint16_t *s, int pitch,
-                                           unsigned int mask_16x16,
-                                           unsigned int mask_8x8,
-                                           unsigned int mask_4x4,
-                                           unsigned int mask_4x4_int,
-                                           const loop_filter_info_n *lfi_n,
-                                           const uint8_t *lfl, int bd) {
-  unsigned int mask;
-
-  for (mask = mask_16x16 | mask_8x8 | mask_4x4 | mask_4x4_int;
-       mask; mask >>= 1) {
-    const loop_filter_thresh *lfi = lfi_n->lfthr + *lfl;
-
-    if (mask & 1) {
-      if (mask_16x16 & 1) {
-        vpx_highbd_lpf_vertical_16(s, pitch, lfi->mblim, lfi->lim,
-                                   lfi->hev_thr, bd);
-      } else if (mask_8x8 & 1) {
-        vpx_highbd_lpf_vertical_8(s, pitch, lfi->mblim, lfi->lim,
-                                  lfi->hev_thr, 1, bd);
-      } else if (mask_4x4 & 1) {
-        vpx_highbd_lpf_vertical_4(s, pitch, lfi->mblim, lfi->lim,
-                                lfi->hev_thr, 1, bd);
-      }
-    }
-    if (mask_4x4_int & 1)
-      vpx_highbd_lpf_vertical_4(s + 4, pitch, lfi->mblim, lfi->lim,
-                                lfi->hev_thr, 1, bd);
-    s += 8;
-    lfl += 1;
-    mask_16x16 >>= 1;
-    mask_8x8 >>= 1;
-    mask_4x4 >>= 1;
-    mask_4x4_int >>= 1;
-  }
-}
-#endif  // CONFIG_VP9_HIGHBITDEPTH
-
-void vp9_filter_block_plane_non420(VP9_COMMON *cm,
-                                   struct macroblockd_plane *plane,
-                                   MODE_INFO **mi_8x8,
-                                   int mi_row, int mi_col) {
+static void filter_block_plane_non420(VP9_COMMON *cm,
+                                      struct macroblockd_plane *plane,
+                                      MODE_INFO **mi_8x8,
+                                      int mi_row, int mi_col) {
   const int ss_x = plane->subsampling_x;
   const int ss_y = plane->subsampling_y;
-  const int row_step = 1 << ss_y;
-  const int col_step = 1 << ss_x;
+  const int row_step = 1 << ss_x;
+  const int col_step = 1 << ss_y;
   const int row_step_stride = cm->mi_stride * row_step;
   struct buf_2d *const dst = &plane->dst;
   uint8_t* const dst0 = dst->buf;
@@ -1189,7 +939,7 @@ void vp9_filter_block_plane_non420(VP9_COMMON *cm,
           !(r & (num_8x8_blocks_high_lookup[sb_type] - 1)) : 1;
       const int skip_this_r = skip_this && !block_edge_above;
       const TX_SIZE tx_size = (plane->plane_type == PLANE_TYPE_UV)
-                            ? get_uv_tx_size(&mi[0].mbmi, plane)
+                            ? get_uv_tx_size(&mi[0].mbmi)
                             : mi[0].mbmi.tx_size;
       const int skip_border_4x4_c = ss_x && mi_col + c == cm->mi_cols - 1;
       const int skip_border_4x4_r = ss_y && mi_row + r == cm->mi_rows - 1;
@@ -1249,32 +999,12 @@ void vp9_filter_block_plane_non420(VP9_COMMON *cm,
 
     // Disable filtering on the leftmost column
     border_mask = ~(mi_col == 0);
-#if CONFIG_VP9_HIGHBITDEPTH
-    if (cm->use_highbitdepth) {
-      highbd_filter_selectively_vert(CONVERT_TO_SHORTPTR(dst->buf),
-                                     dst->stride,
-                                     mask_16x16_c & border_mask,
-                                     mask_8x8_c & border_mask,
-                                     mask_4x4_c & border_mask,
-                                     mask_4x4_int[r],
-                                     &cm->lf_info, &lfl[r << 3],
-                                     (int)cm->bit_depth);
-    } else {
-      filter_selectively_vert(dst->buf, dst->stride,
-                              mask_16x16_c & border_mask,
-                              mask_8x8_c & border_mask,
-                              mask_4x4_c & border_mask,
-                              mask_4x4_int[r],
-                              &cm->lf_info, &lfl[r << 3]);
-    }
-#else
     filter_selectively_vert(dst->buf, dst->stride,
                             mask_16x16_c & border_mask,
                             mask_8x8_c & border_mask,
                             mask_4x4_c & border_mask,
                             mask_4x4_int[r],
                             &cm->lf_info, &lfl[r << 3]);
-#endif  // CONFIG_VP9_HIGHBITDEPTH
     dst->buf += 8 * dst->stride;
     mi_8x8 += row_step_stride;
   }
@@ -1298,287 +1028,203 @@ void vp9_filter_block_plane_non420(VP9_COMMON *cm,
       mask_8x8_r = mask_8x8[r];
       mask_4x4_r = mask_4x4[r];
     }
-#if CONFIG_VP9_HIGHBITDEPTH
-    if (cm->use_highbitdepth) {
-      highbd_filter_selectively_horiz(CONVERT_TO_SHORTPTR(dst->buf),
-                                      dst->stride,
-                                      mask_16x16_r,
-                                      mask_8x8_r,
-                                      mask_4x4_r,
-                                      mask_4x4_int_r,
-                                      &cm->lf_info, &lfl[r << 3],
-                                      (int)cm->bit_depth);
-    } else {
-      filter_selectively_horiz(dst->buf, dst->stride,
-                               mask_16x16_r,
-                               mask_8x8_r,
-                               mask_4x4_r,
-                               mask_4x4_int_r,
-                               &cm->lf_info, &lfl[r << 3]);
-    }
-#else
+
     filter_selectively_horiz(dst->buf, dst->stride,
                              mask_16x16_r,
                              mask_8x8_r,
                              mask_4x4_r,
                              mask_4x4_int_r,
                              &cm->lf_info, &lfl[r << 3]);
-#endif  // CONFIG_VP9_HIGHBITDEPTH
     dst->buf += 8 * dst->stride;
   }
 }
 
-void vp9_filter_block_plane_ss00(VP9_COMMON *const cm,
-                                 struct macroblockd_plane *const plane,
-                                 int mi_row,
-                                 LOOP_FILTER_MASK *lfm) {
+void vp9_filter_block_plane(VP9_COMMON *const cm,
+                            struct macroblockd_plane *const plane,
+                            int mi_row,
+                            LOOP_FILTER_MASK *lfm) {
   struct buf_2d *const dst = &plane->dst;
-  uint8_t *const dst0 = dst->buf;
-  int r;
-  uint64_t mask_16x16 = lfm->left_y[TX_16X16];
-  uint64_t mask_8x8 = lfm->left_y[TX_8X8];
-  uint64_t mask_4x4 = lfm->left_y[TX_4X4];
-  uint64_t mask_4x4_int = lfm->int_4x4_y;
-
-  assert(plane->subsampling_x == 0 && plane->subsampling_y == 0);
-
-  // Vertical pass: do 2 rows at one time
-  for (r = 0; r < MI_BLOCK_SIZE && mi_row + r < cm->mi_rows; r += 2) {
-    unsigned int mask_16x16_l = mask_16x16 & 0xffff;
-    unsigned int mask_8x8_l = mask_8x8 & 0xffff;
-    unsigned int mask_4x4_l = mask_4x4 & 0xffff;
-    unsigned int mask_4x4_int_l = mask_4x4_int & 0xffff;
-
-// Disable filtering on the leftmost column.
-#if CONFIG_VP9_HIGHBITDEPTH
-    if (cm->use_highbitdepth) {
-      highbd_filter_selectively_vert_row2(
-          plane->subsampling_x, CONVERT_TO_SHORTPTR(dst->buf), dst->stride,
-          mask_16x16_l, mask_8x8_l, mask_4x4_l, mask_4x4_int_l, &cm->lf_info,
-          &lfm->lfl_y[r << 3], (int)cm->bit_depth);
-    } else {
-      filter_selectively_vert_row2(
-          plane->subsampling_x, dst->buf, dst->stride, mask_16x16_l, mask_8x8_l,
-          mask_4x4_l, mask_4x4_int_l, &cm->lf_info, &lfm->lfl_y[r << 3]);
-    }
-#else
-    filter_selectively_vert_row2(
-        plane->subsampling_x, dst->buf, dst->stride, mask_16x16_l, mask_8x8_l,
-        mask_4x4_l, mask_4x4_int_l, &cm->lf_info, &lfm->lfl_y[r << 3]);
-#endif  // CONFIG_VP9_HIGHBITDEPTH
-    dst->buf += 16 * dst->stride;
-    mask_16x16 >>= 16;
-    mask_8x8 >>= 16;
-    mask_4x4 >>= 16;
-    mask_4x4_int >>= 16;
-  }
-
-  // Horizontal pass
-  dst->buf = dst0;
-  mask_16x16 = lfm->above_y[TX_16X16];
-  mask_8x8 = lfm->above_y[TX_8X8];
-  mask_4x4 = lfm->above_y[TX_4X4];
-  mask_4x4_int = lfm->int_4x4_y;
-
-  for (r = 0; r < MI_BLOCK_SIZE && mi_row + r < cm->mi_rows; r++) {
-    unsigned int mask_16x16_r;
-    unsigned int mask_8x8_r;
-    unsigned int mask_4x4_r;
-
-    if (mi_row + r == 0) {
-      mask_16x16_r = 0;
-      mask_8x8_r = 0;
-      mask_4x4_r = 0;
-    } else {
-      mask_16x16_r = mask_16x16 & 0xff;
-      mask_8x8_r = mask_8x8 & 0xff;
-      mask_4x4_r = mask_4x4 & 0xff;
-    }
-
-#if CONFIG_VP9_HIGHBITDEPTH
-    if (cm->use_highbitdepth) {
-      highbd_filter_selectively_horiz(
-          CONVERT_TO_SHORTPTR(dst->buf), dst->stride, mask_16x16_r, mask_8x8_r,
-          mask_4x4_r, mask_4x4_int & 0xff, &cm->lf_info, &lfm->lfl_y[r << 3],
-          (int)cm->bit_depth);
-    } else {
-      filter_selectively_horiz(dst->buf, dst->stride, mask_16x16_r, mask_8x8_r,
-                               mask_4x4_r, mask_4x4_int & 0xff, &cm->lf_info,
-                               &lfm->lfl_y[r << 3]);
-    }
-#else
-    filter_selectively_horiz(dst->buf, dst->stride, mask_16x16_r, mask_8x8_r,
-                             mask_4x4_r, mask_4x4_int & 0xff, &cm->lf_info,
-                             &lfm->lfl_y[r << 3]);
-#endif  // CONFIG_VP9_HIGHBITDEPTH
-
-    dst->buf += 8 * dst->stride;
-    mask_16x16 >>= 8;
-    mask_8x8 >>= 8;
-    mask_4x4 >>= 8;
-    mask_4x4_int >>= 8;
-  }
-}
-
-void vp9_filter_block_plane_ss11(VP9_COMMON *const cm,
-                                 struct macroblockd_plane *const plane,
-                                 int mi_row,
-                                 LOOP_FILTER_MASK *lfm) {
-  struct buf_2d *const dst = &plane->dst;
-  uint8_t *const dst0 = dst->buf;
+  uint8_t* const dst0 = dst->buf;
   int r, c;
 
-  uint16_t mask_16x16 = lfm->left_uv[TX_16X16];
-  uint16_t mask_8x8 = lfm->left_uv[TX_8X8];
-  uint16_t mask_4x4 = lfm->left_uv[TX_4X4];
-  uint16_t mask_4x4_int = lfm->int_4x4_uv;
+  if (!plane->plane_type) {
+    uint64_t mask_16x16 = lfm->left_y[TX_16X16];
+    uint64_t mask_8x8 = lfm->left_y[TX_8X8];
+    uint64_t mask_4x4 = lfm->left_y[TX_4X4];
+    uint64_t mask_4x4_int = lfm->int_4x4_y;
 
-  assert(plane->subsampling_x == 1 && plane->subsampling_y == 1);
+    // Vertical pass: do 2 rows at one time
+    for (r = 0; r < MI_BLOCK_SIZE && mi_row + r < cm->mi_rows; r += 2) {
+      unsigned int mask_16x16_l = mask_16x16 & 0xffff;
+      unsigned int mask_8x8_l = mask_8x8 & 0xffff;
+      unsigned int mask_4x4_l = mask_4x4 & 0xffff;
+      unsigned int mask_4x4_int_l = mask_4x4_int & 0xffff;
 
-  // Vertical pass: do 2 rows at one time
-  for (r = 0; r < MI_BLOCK_SIZE && mi_row + r < cm->mi_rows; r += 4) {
-    if (plane->plane_type == 1) {
-      for (c = 0; c < (MI_BLOCK_SIZE >> 1); c++) {
-        lfm->lfl_uv[(r << 1) + c] = lfm->lfl_y[(r << 3) + (c << 1)];
-        lfm->lfl_uv[((r + 2) << 1) + c] = lfm->lfl_y[((r + 2) << 3) + (c << 1)];
-      }
-    }
-
-    {
-      unsigned int mask_16x16_l = mask_16x16 & 0xff;
-      unsigned int mask_8x8_l = mask_8x8 & 0xff;
-      unsigned int mask_4x4_l = mask_4x4 & 0xff;
-      unsigned int mask_4x4_int_l = mask_4x4_int & 0xff;
-
-// Disable filtering on the leftmost column.
-#if CONFIG_VP9_HIGHBITDEPTH
-      if (cm->use_highbitdepth) {
-        highbd_filter_selectively_vert_row2(
-            plane->subsampling_x, CONVERT_TO_SHORTPTR(dst->buf), dst->stride,
-            mask_16x16_l, mask_8x8_l, mask_4x4_l, mask_4x4_int_l, &cm->lf_info,
-            &lfm->lfl_uv[r << 1], (int)cm->bit_depth);
-      } else {
-        filter_selectively_vert_row2(
-            plane->subsampling_x, dst->buf, dst->stride,
-            mask_16x16_l, mask_8x8_l, mask_4x4_l, mask_4x4_int_l, &cm->lf_info,
-            &lfm->lfl_uv[r << 1]);
-      }
-#else
-      filter_selectively_vert_row2(
-          plane->subsampling_x, dst->buf, dst->stride,
-          mask_16x16_l, mask_8x8_l, mask_4x4_l, mask_4x4_int_l, &cm->lf_info,
-          &lfm->lfl_uv[r << 1]);
-#endif  // CONFIG_VP9_HIGHBITDEPTH
+      // Disable filtering on the leftmost column
+      filter_selectively_vert_row2(plane->plane_type,
+                                   dst->buf, dst->stride,
+                                   mask_16x16_l,
+                                   mask_8x8_l,
+                                   mask_4x4_l,
+                                   mask_4x4_int_l,
+                                   &cm->lf_info, &lfm->lfl_y[r << 3]);
 
       dst->buf += 16 * dst->stride;
+      mask_16x16 >>= 16;
+      mask_8x8 >>= 16;
+      mask_4x4 >>= 16;
+      mask_4x4_int >>= 16;
+    }
+
+    // Horizontal pass
+    dst->buf = dst0;
+    mask_16x16 = lfm->above_y[TX_16X16];
+    mask_8x8 = lfm->above_y[TX_8X8];
+    mask_4x4 = lfm->above_y[TX_4X4];
+    mask_4x4_int = lfm->int_4x4_y;
+
+    for (r = 0; r < MI_BLOCK_SIZE && mi_row + r < cm->mi_rows; r++) {
+      unsigned int mask_16x16_r;
+      unsigned int mask_8x8_r;
+      unsigned int mask_4x4_r;
+
+      if (mi_row + r == 0) {
+        mask_16x16_r = 0;
+        mask_8x8_r = 0;
+        mask_4x4_r = 0;
+      } else {
+        mask_16x16_r = mask_16x16 & 0xff;
+        mask_8x8_r = mask_8x8 & 0xff;
+        mask_4x4_r = mask_4x4 & 0xff;
+      }
+
+      filter_selectively_horiz(dst->buf, dst->stride,
+                               mask_16x16_r,
+                               mask_8x8_r,
+                               mask_4x4_r,
+                               mask_4x4_int & 0xff,
+                               &cm->lf_info, &lfm->lfl_y[r << 3]);
+
+      dst->buf += 8 * dst->stride;
       mask_16x16 >>= 8;
       mask_8x8 >>= 8;
       mask_4x4 >>= 8;
       mask_4x4_int >>= 8;
     }
-  }
+  } else {
+    uint16_t mask_16x16 = lfm->left_uv[TX_16X16];
+    uint16_t mask_8x8 = lfm->left_uv[TX_8X8];
+    uint16_t mask_4x4 = lfm->left_uv[TX_4X4];
+    uint16_t mask_4x4_int = lfm->int_4x4_uv;
 
-  // Horizontal pass
-  dst->buf = dst0;
-  mask_16x16 = lfm->above_uv[TX_16X16];
-  mask_8x8 = lfm->above_uv[TX_8X8];
-  mask_4x4 = lfm->above_uv[TX_4X4];
-  mask_4x4_int = lfm->int_4x4_uv;
+    // Vertical pass: do 2 rows at one time
+    for (r = 0; r < MI_BLOCK_SIZE && mi_row + r < cm->mi_rows; r += 4) {
+      if (plane->plane_type == 1) {
+        for (c = 0; c < (MI_BLOCK_SIZE >> 1); c++) {
+          lfm->lfl_uv[(r << 1) + c] = lfm->lfl_y[(r << 3) + (c << 1)];
+          lfm->lfl_uv[((r + 2) << 1) + c] = lfm->lfl_y[((r + 2) << 3) +
+                                                       (c << 1)];
+        }
+      }
 
-  for (r = 0; r < MI_BLOCK_SIZE && mi_row + r < cm->mi_rows; r += 2) {
-    const int skip_border_4x4_r = mi_row + r == cm->mi_rows - 1;
-    const unsigned int mask_4x4_int_r =
-        skip_border_4x4_r ? 0 : (mask_4x4_int & 0xf);
-    unsigned int mask_16x16_r;
-    unsigned int mask_8x8_r;
-    unsigned int mask_4x4_r;
+      {
+        unsigned int mask_16x16_l = mask_16x16 & 0xff;
+        unsigned int mask_8x8_l = mask_8x8 & 0xff;
+        unsigned int mask_4x4_l = mask_4x4 & 0xff;
+        unsigned int mask_4x4_int_l = mask_4x4_int & 0xff;
 
-    if (mi_row + r == 0) {
-      mask_16x16_r = 0;
-      mask_8x8_r = 0;
-      mask_4x4_r = 0;
-    } else {
-      mask_16x16_r = mask_16x16 & 0xf;
-      mask_8x8_r = mask_8x8 & 0xf;
-      mask_4x4_r = mask_4x4 & 0xf;
+        // Disable filtering on the leftmost column
+        filter_selectively_vert_row2(plane->plane_type,
+                                     dst->buf, dst->stride,
+                                     mask_16x16_l,
+                                     mask_8x8_l,
+                                     mask_4x4_l,
+                                     mask_4x4_int_l,
+                                     &cm->lf_info, &lfm->lfl_uv[r << 1]);
+
+        dst->buf += 16 * dst->stride;
+        mask_16x16 >>= 8;
+        mask_8x8 >>= 8;
+        mask_4x4 >>= 8;
+        mask_4x4_int >>= 8;
+      }
     }
 
-#if CONFIG_VP9_HIGHBITDEPTH
-    if (cm->use_highbitdepth) {
-      highbd_filter_selectively_horiz(CONVERT_TO_SHORTPTR(dst->buf),
-                                      dst->stride, mask_16x16_r, mask_8x8_r,
-                                      mask_4x4_r, mask_4x4_int_r, &cm->lf_info,
-                                      &lfm->lfl_uv[r << 1], (int)cm->bit_depth);
-    } else {
-      filter_selectively_horiz(dst->buf, dst->stride, mask_16x16_r, mask_8x8_r,
-                               mask_4x4_r, mask_4x4_int_r, &cm->lf_info,
-                               &lfm->lfl_uv[r << 1]);
-    }
-#else
-    filter_selectively_horiz(dst->buf, dst->stride, mask_16x16_r, mask_8x8_r,
-                             mask_4x4_r, mask_4x4_int_r, &cm->lf_info,
-                             &lfm->lfl_uv[r << 1]);
-#endif  // CONFIG_VP9_HIGHBITDEPTH
+    // Horizontal pass
+    dst->buf = dst0;
+    mask_16x16 = lfm->above_uv[TX_16X16];
+    mask_8x8 = lfm->above_uv[TX_8X8];
+    mask_4x4 = lfm->above_uv[TX_4X4];
+    mask_4x4_int = lfm->int_4x4_uv;
 
-    dst->buf += 8 * dst->stride;
-    mask_16x16 >>= 4;
-    mask_8x8 >>= 4;
-    mask_4x4 >>= 4;
-    mask_4x4_int >>= 4;
+    for (r = 0; r < MI_BLOCK_SIZE && mi_row + r < cm->mi_rows; r += 2) {
+      const int skip_border_4x4_r = mi_row + r == cm->mi_rows - 1;
+      const unsigned int mask_4x4_int_r = skip_border_4x4_r ?
+          0 : (mask_4x4_int & 0xf);
+      unsigned int mask_16x16_r;
+      unsigned int mask_8x8_r;
+      unsigned int mask_4x4_r;
+
+      if (mi_row + r == 0) {
+        mask_16x16_r = 0;
+        mask_8x8_r = 0;
+        mask_4x4_r = 0;
+      } else {
+        mask_16x16_r = mask_16x16 & 0xf;
+        mask_8x8_r = mask_8x8 & 0xf;
+        mask_4x4_r = mask_4x4 & 0xf;
+      }
+
+      filter_selectively_horiz(dst->buf, dst->stride,
+                               mask_16x16_r,
+                               mask_8x8_r,
+                               mask_4x4_r,
+                               mask_4x4_int_r,
+                               &cm->lf_info, &lfm->lfl_uv[r << 1]);
+
+      dst->buf += 8 * dst->stride;
+      mask_16x16 >>= 4;
+      mask_8x8 >>= 4;
+      mask_4x4 >>= 4;
+      mask_4x4_int >>= 4;
+    }
   }
 }
 
-void vp9_loop_filter_rows(YV12_BUFFER_CONFIG *frame_buffer,
-                          VP9_COMMON *cm,
-                          struct macroblockd_plane planes[MAX_MB_PLANE],
+void vp9_loop_filter_rows(const YV12_BUFFER_CONFIG *frame_buffer,
+                          VP9_COMMON *cm, MACROBLOCKD *xd,
                           int start, int stop, int y_only) {
   const int num_planes = y_only ? 1 : MAX_MB_PLANE;
-  enum lf_path path;
-  LOOP_FILTER_MASK lfm;
   int mi_row, mi_col;
-
-  if (y_only)
-    path = LF_PATH_444;
-  else if (planes[1].subsampling_y == 1 && planes[1].subsampling_x == 1)
-    path = LF_PATH_420;
-  else if (planes[1].subsampling_y == 0 && planes[1].subsampling_x == 0)
-    path = LF_PATH_444;
-  else
-    path = LF_PATH_SLOW;
+  LOOP_FILTER_MASK lfm;
+  int use_420 = y_only || (xd->plane[1].subsampling_y == 1 &&
+      xd->plane[1].subsampling_x == 1);
 
   for (mi_row = start; mi_row < stop; mi_row += MI_BLOCK_SIZE) {
-    MODE_INFO **mi = cm->mi_grid_visible + mi_row * cm->mi_stride;
+    MODE_INFO **mi_8x8 = cm->mi_grid_visible + mi_row * cm->mi_stride;
 
     for (mi_col = 0; mi_col < cm->mi_cols; mi_col += MI_BLOCK_SIZE) {
       int plane;
 
-      vp9_setup_dst_planes(planes, frame_buffer, mi_row, mi_col);
+      vp9_setup_dst_planes(xd, frame_buffer, mi_row, mi_col);
 
       // TODO(JBB): Make setup_mask work for non 420.
-      vp9_setup_mask(cm, mi_row, mi_col, mi + mi_col, cm->mi_stride,
-                     &lfm);
+      if (use_420)
+        vp9_setup_mask(cm, mi_row, mi_col, mi_8x8 + mi_col, cm->mi_stride,
+                       &lfm);
 
-      vp9_filter_block_plane_ss00(cm, &planes[0], mi_row, &lfm);
-      for (plane = 1; plane < num_planes; ++plane) {
-        switch (path) {
-          case LF_PATH_420:
-            vp9_filter_block_plane_ss11(cm, &planes[plane], mi_row, &lfm);
-            break;
-          case LF_PATH_444:
-            vp9_filter_block_plane_ss00(cm, &planes[plane], mi_row, &lfm);
-            break;
-          case LF_PATH_SLOW:
-            vp9_filter_block_plane_non420(cm, &planes[plane], mi + mi_col,
-                                          mi_row, mi_col);
-            break;
-        }
+      for (plane = 0; plane < num_planes; ++plane) {
+        if (use_420)
+          vp9_filter_block_plane(cm, &xd->plane[plane], mi_row, &lfm);
+        else
+          filter_block_plane_non420(cm, &xd->plane[plane], mi_8x8 + mi_col,
+                                    mi_row, mi_col);
       }
     }
   }
 }
 
-void vp9_loop_filter_frame(YV12_BUFFER_CONFIG *frame,
-                           VP9_COMMON *cm, MACROBLOCKD *xd,
+void vp9_loop_filter_frame(VP9_COMMON *cm, MACROBLOCKD *xd,
                            int frame_filter_level,
                            int y_only, int partial_frame) {
   int start_mi_row, end_mi_row, mi_rows_to_filter;
@@ -1592,25 +1238,15 @@ void vp9_loop_filter_frame(YV12_BUFFER_CONFIG *frame,
   }
   end_mi_row = start_mi_row + mi_rows_to_filter;
   vp9_loop_filter_frame_init(cm, frame_filter_level);
-  vp9_loop_filter_rows(frame, cm, xd->plane,
+  vp9_loop_filter_rows(cm->frame_to_show, cm, xd,
                        start_mi_row, end_mi_row,
                        y_only);
 }
 
-void vp9_loop_filter_data_reset(
-    LFWorkerData *lf_data, YV12_BUFFER_CONFIG *frame_buffer,
-    struct VP9Common *cm, const struct macroblockd_plane planes[MAX_MB_PLANE]) {
-  lf_data->frame_buffer = frame_buffer;
-  lf_data->cm = cm;
-  lf_data->start = 0;
-  lf_data->stop = 0;
-  lf_data->y_only = 0;
-  memcpy(lf_data->planes, planes, sizeof(lf_data->planes));
-}
-
-int vp9_loop_filter_worker(LFWorkerData *const lf_data, void *unused) {
-  (void)unused;
-  vp9_loop_filter_rows(lf_data->frame_buffer, lf_data->cm, lf_data->planes,
+int vp9_loop_filter_worker(void *arg1, void *arg2) {
+  LFWorkerData *const lf_data = (LFWorkerData*)arg1;
+  (void)arg2;
+  vp9_loop_filter_rows(lf_data->frame_buffer, lf_data->cm, &lf_data->xd,
                        lf_data->start, lf_data->stop, lf_data->y_only);
   return 1;
 }

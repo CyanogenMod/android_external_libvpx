@@ -18,9 +18,9 @@
 #include "treewriter.h"
 #include "tokenize.h"
 #include "vp8/common/onyxc_int.h"
-#include "vpx_dsp/variance.h"
+#include "vp8/common/variance.h"
 #include "encodemb.h"
-#include "vp8/encoder/quantize.h"
+#include "quantize.h"
 #include "vp8/common/entropy.h"
 #include "vp8/common/threading.h"
 #include "vpx_ports/mem.h"
@@ -60,6 +60,9 @@ extern "C" {
 #if !(CONFIG_REALTIME_ONLY)
 #define VP8_TEMPORAL_ALT_REF 1
 #endif
+
+#define MAX(x,y) (((x)>(y))?(x):(y))
+#define MIN(x,y) (((x)<(y))?(x):(y))
 
 typedef struct
 {
@@ -511,22 +514,10 @@ typedef struct VP8_COMP
     int cyclic_refresh_mode_index;
     int cyclic_refresh_q;
     signed char *cyclic_refresh_map;
-    // Count on how many (consecutive) times a macroblock uses ZER0MV_LAST.
-    unsigned char *consec_zero_last;
-    // Counter that is reset when a block is checked for a mode-bias against
-    // ZEROMV_LASTREF.
-    unsigned char *consec_zero_last_mvbias;
 
     // Frame counter for the temporal pattern. Counter is rest when the temporal
     // layers are changed dynamically (run-time change).
     unsigned int temporal_pattern_counter;
-    // Temporal layer id.
-    int temporal_layer_id;
-
-    // Measure of average squared difference between source and denoised signal.
-    int mse_source_denoised;
-
-    int force_maxqp;
 
 #if CONFIG_MULTITHREAD
     /* multithread data */
@@ -667,9 +658,6 @@ typedef struct VP8_COMP
 
     int droppable;
 
-    int initial_width;
-    int initial_height;
-
 #if CONFIG_TEMPORAL_DENOISING
     VP8_DENOISER denoiser;
 #endif
@@ -697,11 +685,9 @@ typedef struct VP8_COMP
     int    mr_low_res_mb_cols;
     /* Indicate if lower-res mv info is available */
     unsigned char  mr_low_res_mv_avail;
-#endif
     /* The frame number of each reference frames */
     unsigned int current_ref_frames[MAX_REF_FRAMES];
-    // Closest reference frame to current frame.
-    MV_REFERENCE_FRAME closest_reference_frame;
+#endif
 
     struct rd_costs_struct
     {
@@ -715,11 +701,6 @@ typedef struct VP8_COMP
         [PREV_COEF_CONTEXTS][MAX_ENTROPY_TOKENS];
     } rd_costs;
 } VP8_COMP;
-
-void vp8_alloc_compressor_data(VP8_COMP *cpi);
-int vp8_reverse_trans(int x);
-void vp8_new_framerate(VP8_COMP *cpi, double framerate);
-void vp8_loopfilter_frame(VP8_COMP *cpi, VP8_COMMON *cm);
 
 void vp8_pack_bitstream(VP8_COMP *cpi, unsigned char *dest,
                         unsigned char *dest_end, unsigned long *size);

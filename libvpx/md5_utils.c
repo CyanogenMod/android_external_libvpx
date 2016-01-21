@@ -24,7 +24,7 @@
 
 #include "md5_utils.h"
 
-static void
+void
 byteSwap(UWORD32 *buf, unsigned words) {
   md5byte *p;
 
