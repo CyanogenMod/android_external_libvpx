@@ -7,11 +7,11 @@
 #define RTCD_EXTERN extern
 #endif
 
+struct yv12_buffer_config;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-struct yv12_buffer_config;
 
 void vp8_horizontal_line_2_1_scale_c(const unsigned char *source, unsigned int source_width, unsigned char *dest, unsigned int dest_width);
 #define vp8_horizontal_line_2_1_scale vp8_horizontal_line_2_1_scale_c
@@ -40,11 +40,11 @@ void vp8_yv12_copy_frame_c(const struct yv12_buffer_config *src_ybc, struct yv12
 void vp8_yv12_extend_frame_borders_c(struct yv12_buffer_config *ybf);
 #define vp8_yv12_extend_frame_borders vp8_yv12_extend_frame_borders_c
 
-void vp9_extend_frame_borders_c(struct yv12_buffer_config *ybf);
-#define vp9_extend_frame_borders vp9_extend_frame_borders_c
+void vpx_extend_frame_borders_c(struct yv12_buffer_config *ybf);
+#define vpx_extend_frame_borders vpx_extend_frame_borders_c
 
-void vp9_extend_frame_inner_borders_c(struct yv12_buffer_config *ybf);
-#define vp9_extend_frame_inner_borders vp9_extend_frame_inner_borders_c
+void vpx_extend_frame_inner_borders_c(struct yv12_buffer_config *ybf);
+#define vpx_extend_frame_inner_borders vpx_extend_frame_inner_borders_c
 
 void vpx_yv12_copy_y_c(const struct yv12_buffer_config *src_ybc, struct yv12_buffer_config *dst_ybc);
 #define vpx_yv12_copy_y vpx_yv12_copy_y_c
