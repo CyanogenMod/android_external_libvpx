@@ -152,6 +152,7 @@ int vp9_alloc_context_buffers(VP9_COMMON *cm, int width, int height) {
   return 0;
 
  fail:
+  vp9_set_mb_mi(cm, 0, 0);
   vp9_free_context_buffers(cm);
   return 1;
 }
